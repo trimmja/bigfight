@@ -1,3 +1,4 @@
+import { MAX_FRAME_DELTA } from './config';
 import type { IAudio, IInput, IRenderer } from './contracts';
 import { events } from './core/events';
 import { startLoop } from './core/loop';
@@ -47,9 +48,10 @@ export class Game {
       },
       (alpha) => {
         // Real frame delta (not the fixed step) — the renderer's auto-quality
-        // heuristic averages this.
+        // heuristic averages this. Clamped so page-load / tab-switch stalls
+        // don't read as catastrophic frames and trip a bogus downgrade.
         const now = performance.now();
-        const frameDt = (now - this.lastRenderMs) / 1000;
+        const frameDt = Math.min((now - this.lastRenderMs) / 1000, MAX_FRAME_DELTA);
         this.lastRenderMs = now;
         this.screens.render(alpha);
         this.renderer.render(frameDt);
