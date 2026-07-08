@@ -1,20 +1,17 @@
-import * as THREE from 'three';
-import { COLOR_BG, CAM_FOV } from './config';
-import type { IAudio, IInput, IRenderer, InputState } from './contracts';
+import type { IAudio, IInput, IRenderer } from './contracts';
 import { events } from './core/events';
 import { startLoop } from './core/loop';
 import { loadSave, writeSave } from './core/save';
 import type { SaveData } from './data/types';
+import { InputManager } from './input/InputManager';
+import { Renderer } from './render/Renderer';
 import { ScreenManager } from './screens/ScreenManager';
 import { BootScreen } from './screens/BootScreen';
 
 /**
  * Composition root. Owns the loop and the service singletons; screens reach
  * everything through the `game` instance passed to their hooks.
- *
- * NOTE (M1): renderer/input/audio are minimal placeholders, swapped for the
- * real implementations as M2a/M2b/M4c land. Their types are the frozen
- * contracts in contracts.ts.
+ * (audio stays a placeholder until M4c lands.)
  */
 export class Game {
   readonly screens = new ScreenManager(this);
@@ -26,11 +23,12 @@ export class Game {
   audio: IAudio;
 
   private stopLoop: (() => void) | null = null;
+  private lastRenderMs = performance.now();
 
   constructor() {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
-    this.renderer = new PlaceholderRenderer(canvas);
-    this.input = new PlaceholderInput();
+    this.renderer = new Renderer(canvas, this.save.settings.quality);
+    this.input = new InputManager();
     this.audio = new PlaceholderAudio();
   }
 
@@ -48,8 +46,13 @@ export class Game {
         this.screens.update(dt);
       },
       (alpha) => {
+        // Real frame delta (not the fixed step) — the renderer's auto-quality
+        // heuristic averages this.
+        const now = performance.now();
+        const frameDt = (now - this.lastRenderMs) / 1000;
+        this.lastRenderMs = now;
         this.screens.render(alpha);
-        this.renderer.render(1 / 60);
+        this.renderer.render(frameDt);
       },
     );
   }
@@ -65,53 +68,8 @@ export class Game {
 }
 
 // ---------------------------------------------------------------------------
-// M1 placeholders (replaced by real implementations at integration time)
+// Placeholder until M4c audio lands
 // ---------------------------------------------------------------------------
-
-class PlaceholderRenderer implements IRenderer {
-  readonly scene = new THREE.Scene();
-  readonly camera: THREE.PerspectiveCamera;
-  readonly tier = 'mobile' as const;
-  private gl: THREE.WebGLRenderer;
-
-  constructor(readonly canvas: HTMLCanvasElement) {
-    this.gl = new THREE.WebGLRenderer({ canvas, antialias: false });
-    this.gl.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.gl.setSize(innerWidth, innerHeight);
-    this.gl.setClearColor(COLOR_BG);
-    this.camera = new THREE.PerspectiveCamera(CAM_FOV, innerWidth / innerHeight, 0.1, 200);
-    this.camera.position.set(0, 2, 20);
-  }
-
-  setQuality(): void {}
-
-  render(): void {
-    this.gl.render(this.scene, this.camera);
-  }
-
-  onResize(): void {
-    this.gl.setSize(innerWidth, innerHeight);
-    this.camera.aspect = innerWidth / innerHeight;
-    this.camera.updateProjectionMatrix();
-  }
-}
-
-class PlaceholderInput implements IInput {
-  readonly state: InputState = {
-    moveX: 0,
-    moveY: 0,
-    jumpPressed: false,
-    jumpHeld: false,
-    attackPressed: false,
-    weaponPressed: false,
-    pausePressed: false,
-    anyPressed: false,
-  };
-  readonly isTouch = navigator.maxTouchPoints > 1;
-  update(): void {}
-  setTouchControlsVisible(): void {}
-  setWeaponCooldown(): void {}
-}
 
 class PlaceholderAudio implements IAudio {
   muted = false;
