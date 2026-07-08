@@ -1,4 +1,5 @@
 import { MAX_FRAME_DELTA } from './config';
+import { AudioEngine } from './audio/AudioEngine';
 import type { IAudio, IInput, IRenderer } from './contracts';
 import { events } from './core/events';
 import { startLoop } from './core/loop';
@@ -30,7 +31,8 @@ export class Game {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
     this.renderer = new Renderer(canvas, this.save.settings.quality);
     this.input = new InputManager();
-    this.audio = new PlaceholderAudio();
+    this.audio = new AudioEngine();
+    this.audio.setMuted(this.save.settings.muted);
   }
 
   start(): void {
@@ -69,13 +71,3 @@ export class Game {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Placeholder until M4c audio lands
-// ---------------------------------------------------------------------------
-
-class PlaceholderAudio implements IAudio {
-  muted = false;
-  setMuted(muted: boolean): void {
-    this.muted = muted;
-  }
-}
