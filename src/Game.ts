@@ -8,7 +8,7 @@ import type { SaveData } from './data/types';
 import { InputManager } from './input/InputManager';
 import { Renderer } from './render/Renderer';
 import { ScreenManager } from './screens/ScreenManager';
-import { BootScreen } from './screens/BootScreen';
+import { GameplayScreen } from './screens/GameplayScreen';
 
 /**
  * Composition root. Owns the loop and the service singletons; screens reach
@@ -42,7 +42,9 @@ export class Game {
     });
     window.visualViewport?.addEventListener('resize', () => this.renderer.onResize());
 
-    this.screens.replace(new BootScreen());
+    // M3 slice: boot straight into a test fight (Volt on Neon Rooftop vs a
+    // training dummy). TitleScreen takes over in M5a.
+    this.screens.replace(new GameplayScreen({ characterId: 'volt', stageId: 'rooftop' }));
     this.stopLoop = startLoop(
       (dt) => {
         this.input.update();

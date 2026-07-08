@@ -1,0 +1,95 @@
+import {
+  HITSTOP_BASE,
+  HITSTOP_MAX,
+  HITSTOP_PER_DAMAGE,
+  LAUNCH_THRESHOLD,
+} from '../config';
+import { events } from '../core/events';
+import { clamp, degToRad } from '../core/math';
+import { aabbOverlap } from '../physics/collision';
+import { computeKnockback, hitstunFor, launchVelocity, resolveAngleDeg } from './knockback';
+import type { ActiveHitbox, FighterLike, Rect } from './types';
+
+const hitboxes: ActiveHitbox[] = [];
+
+export class HitResolver {
+  beginStep(): void {
+    hitboxes.length = 0;
+  }
+
+  submit(hitbox: ActiveHitbox): void {
+    hitboxes.push(hitbox);
+  }
+
+  resolve(targets: readonly FighterLike[]): void {
+    for (let hitboxIndex = 0; hitboxIndex < hitboxes.length; hitboxIndex += 1) {
+      const hitbox = hitboxes[hitboxIndex];
+      if (hitbox === undefined) continue;
+      const attackRect = hitbox.worldRect();
+
+      for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
+        const victim = targets[targetIndex];
+        if (victim === undefined) continue;
+        if (victim.faction === hitbox.faction) continue;
+        if (victim.isInvulnerable) continue;
+        if (!victim.hurtbox.enabled) continue;
+        if (hitbox.alreadyHit.has(victim)) continue;
+
+        const victimRect = victim.hurtbox.rect();
+        if (!overlaps(attackRect, victimRect)) continue;
+
+        hitbox.alreadyHit.add(victim);
+        victim.damage += hitbox.def.damage;
+
+        const kb = computeKnockback(
+          hitbox.def,
+          victim.damage,
+          hitbox.attacker.power,
+          victim.weight,
+        );
+        const angleDeg = resolveAngleDeg(hitbox.def, kb);
+        launchVelocity(victim.body.vel, kb, angleDeg, hitbox.attacker.facing, victim.diY);
+
+        const hitstun = hitstunFor(kb);
+        const launched = kb > LAUNCH_THRESHOLD;
+        const hitstop = clamp(
+          HITSTOP_BASE + hitbox.def.damage * HITSTOP_PER_DAMAGE,
+          0,
+          HITSTOP_MAX,
+        );
+        hitbox.attacker.hitstopTimer = Math.max(hitbox.attacker.hitstopTimer, hitstop);
+        victim.hitstopTimer = Math.max(victim.hitstopTimer, hitstop);
+
+        const x = overlapCenter(attackRect.minX, attackRect.maxX, victimRect.minX, victimRect.maxX);
+        const y = overlapCenter(attackRect.minY, attackRect.maxY, victimRect.minY, victimRect.maxY);
+        events.emit('hit', {
+          pos: { x, y },
+          damage: hitbox.def.damage,
+          kb,
+          victimIsPlayer: victim.faction === 'player',
+        });
+        if (kb > 10) {
+          events.emit('screenShake', { amount: kb * 0.02 });
+        }
+
+        const result = {
+          damage: hitbox.def.damage,
+          kb,
+          angleRad: Math.atan2(victim.body.vel.y, victim.body.vel.x) || degToRad(angleDeg),
+          hitstun,
+          launched,
+        };
+        victim.onHit(result);
+        hitbox.attacker.onDealtHit(result);
+      }
+    }
+  }
+}
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return aabbOverlap(a.minX, a.maxX, a.minY, a.maxY, b.minX, b.maxX, b.minY, b.maxY);
+}
+
+function overlapCenter(aMin: number, aMax: number, bMin: number, bMax: number): number {
+  return (Math.max(aMin, bMin) + Math.min(aMax, bMax)) * 0.5;
+}
