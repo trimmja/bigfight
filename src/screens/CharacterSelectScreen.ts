@@ -26,6 +26,11 @@ export class CharacterSelectScreen implements Screen {
   private tagEl: HTMLElement | null = null;
   private statsEl: HTMLElement | null = null;
   private cards = new Map<string, HTMLButtonElement>();
+  /** Drag-to-spin state: user yaw persists, idle sway rides on top. */
+  private userYaw = -Math.PI / 2;
+  private dragPointerId: number | null = null;
+  private lastDragX = 0;
+  private spinVelocity = 0;
 
   constructor(
     private readonly callbacks: {
@@ -74,6 +79,26 @@ export class CharacterSelectScreen implements Screen {
       this.select(game, pick(rand, options).id, true);
     });
 
+    // Drag anywhere that isn't a button to spin the fighter around.
+    this.root.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement).closest('button')) return;
+      this.dragPointerId = e.pointerId;
+      this.lastDragX = e.clientX;
+      this.spinVelocity = 0;
+    });
+    this.root.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== this.dragPointerId) return;
+      const dx = e.clientX - this.lastDragX;
+      this.lastDragX = e.clientX;
+      this.userYaw += dx * 0.013;
+      this.spinVelocity = dx * 0.013 * 60;
+    });
+    const endDrag = (e: PointerEvent): void => {
+      if (e.pointerId === this.dragPointerId) this.dragPointerId = null;
+    };
+    this.root.addEventListener('pointerup', endDrag);
+    this.root.addEventListener('pointercancel', endDrag);
+
     const side = el('div', 'bf-select-side', body);
     this.nameEl = el('h2', 'bf-select-name', side);
     this.tagEl = el('p', 'bf-select-tag', side);
@@ -101,6 +126,8 @@ export class CharacterSelectScreen implements Screen {
       this.statBar('JUMP', (def.jumpVel - 12) / 4.5);
     }
     this.punchT = 0; // greet with a punch
+    this.userYaw = -Math.PI / 2; // new fighter faces the camera
+    this.spinVelocity = 0;
   }
 
   private statBar(label: string, frac: number): void {
@@ -143,10 +170,13 @@ export class CharacterSelectScreen implements Screen {
       else this.preview.setPose(poseAttack('finisher', this.punchT), blend);
     }
     if (this.punchT < 0) this.preview.setPose(poseFightStance(this.t), blend);
-    // 3/4 hero angle (face toward camera) + gentle sway — on the wrapper
-    // group, since the rig's own root yaw belongs to the facing turn.
-    // Face the camera dead-on, with a gentle idle sway.
-    this.previewGroup.rotation.y = -Math.PI / 2 + Math.sin(this.t * 0.5) * 0.14;
+    // Drag-to-spin with momentum; gentle idle sway rides on top. (Yaw lives
+    // on the wrapper group — the rig's own root yaw belongs to facing turns.)
+    if (this.dragPointerId === null && Math.abs(this.spinVelocity) > 0.01) {
+      this.userYaw += this.spinVelocity * dt;
+      this.spinVelocity *= Math.exp(-3.2 * dt);
+    }
+    this.previewGroup.rotation.y = this.userYaw + Math.sin(this.t * 0.5) * 0.1;
     this.preview.update(dt);
   }
 }
