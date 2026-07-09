@@ -118,7 +118,9 @@ export class CharacterSelectScreen implements Screen {
       this.preview.dispose();
     }
     this.preview = buildCharacterRig(def);
-    this.preview.root.position.set(3.4, -1.2, 10);
+    // Rig at the group origin; the group carries position + 3/4 sway so the
+    // character pirouettes in place.
+    this.previewGroup.position.set(3.4, -1.2, 10);
     this.preview.setShadow(null, 0);
     this.previewGroup.add(this.preview.root);
   }
@@ -141,7 +143,10 @@ export class CharacterSelectScreen implements Screen {
       else this.preview.setPose(poseAttack('finisher', this.punchT), blend);
     }
     if (this.punchT < 0) this.preview.setPose(poseIdle(this.t), blend);
-    this.preview.root.rotation.y = Math.sin(this.t * 0.5) * 0.35;
+    // 3/4 hero angle (face toward camera) + gentle sway — on the wrapper
+    // group, since the rig's own root yaw belongs to the facing turn.
+    // Face the camera dead-on, with a gentle idle sway.
+    this.previewGroup.rotation.y = -Math.PI / 2 + Math.sin(this.t * 0.5) * 0.14;
     this.preview.update(dt);
   }
 }
