@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { StageDef } from '../data/types';
 import { buildColliders, type StageColliders } from '../physics/collision';
 import { toonRamp } from '../render/toon';
+import { decorateStage } from './decorations';
 
 /**
  * Bright-cartoon (Fall Guys style) stage builder: chunky candy-colored
@@ -101,12 +102,15 @@ export function buildStage(def: StageDef, scene: THREE.Scene): BuiltStage {
     }
   }
 
+  const decorations = decorateStage(group, def);
+
   scene.add(group);
   return {
     group,
     colliders,
     def,
     dispose(): void {
+      decorations.dispose();
       scene.remove(group);
       for (const material of materials) material.dispose();
       for (const texture of textures) texture.dispose();

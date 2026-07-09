@@ -5,7 +5,8 @@ import { pick, rand } from '../core/math';
 import { CHARACTERS, characterById } from '../data/characters';
 import type { CharacterDef } from '../data/types';
 import { isCharacterUnlocked, unlockedCharacters } from '../progression';
-import { FighterRig } from '../rigs/FighterRig';
+import { buildCharacterRig } from '../rigs/characterBuilders';
+import type { FighterRig } from '../rigs/FighterRig';
 import { poseIdle, poseAttack } from '../rigs/poses';
 import { button, el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
@@ -116,7 +117,7 @@ export class CharacterSelectScreen implements Screen {
       this.previewGroup.remove(this.preview.root);
       this.preview.dispose();
     }
-    this.preview = new FighterRig({ palette: def.palette, proportions: def.proportions });
+    this.preview = buildCharacterRig(def);
     this.preview.root.position.set(3.4, -1.2, 10);
     this.preview.setShadow(null, 0);
     this.previewGroup.add(this.preview.root);

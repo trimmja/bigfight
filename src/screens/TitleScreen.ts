@@ -3,7 +3,8 @@ import { events } from '../core/events';
 import type { Game } from '../Game';
 import { characterById } from '../data/characters';
 import { poseIdle, poseRun } from '../rigs/poses';
-import { FighterRig } from '../rigs/FighterRig';
+import { buildCharacterRig } from '../rigs/characterBuilders';
+import type { FighterRig } from '../rigs/FighterRig';
 import { el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
 
@@ -29,7 +30,7 @@ export class TitleScreen implements Screen {
     ];
     for (const spot of lineup) {
       const def = characterById(spot.id);
-      const rig = new FighterRig({ palette: def.palette, proportions: def.proportions });
+      const rig = buildCharacterRig(def);
       rig.root.position.set(spot.x, -3.6, 8);
       rig.setFacing(spot.x > 0 ? -1 : 1);
       rig.setShadow(null, 0);
