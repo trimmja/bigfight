@@ -4,7 +4,7 @@ import type { Game } from '../Game';
 import { characterById } from '../data/characters';
 import { poseIdle, poseRun } from '../rigs/poses';
 import { buildCharacterRig } from '../rigs/characterBuilders';
-import type { FighterRig } from '../rigs/FighterRig';
+import type { Rig } from '../rigs/FighterRig';
 import { button, el, uiRoot } from '../ui/dom';
 import { applyUpdate, updateAvailable } from '../updates';
 import type { Screen } from './Screen';
@@ -16,7 +16,7 @@ import type { Screen } from './Screen';
 export class TitleScreen implements Screen {
   private root: HTMLElement | null = null;
   private group = new THREE.Group();
-  private rigs: FighterRig[] = [];
+  private rigs: Rig[] = [];
   private t = 0;
   private started = false;
 

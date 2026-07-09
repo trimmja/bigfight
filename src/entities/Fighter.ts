@@ -12,7 +12,7 @@ import { events } from '../core/events';
 import { clamp } from '../core/math';
 import type { AttackDef, CharacterDef, Faction, Facing, FighterStateName, Vec2, WeaponDef } from '../data/types';
 import { Body } from '../physics/Body';
-import { FighterRig } from '../rigs/FighterRig';
+import { FighterRig, type Rig } from '../rigs/FighterRig';
 import {
   poseAttack,
   poseFall,
@@ -43,7 +43,7 @@ const POSE_DAMPING = 24;
 export class Fighter extends Entity {
   readonly def: CharacterDef;
   readonly faction: Faction;
-  readonly rig: FighterRig;
+  readonly rig: Rig;
   readonly hurtbox: Hurtbox;
   readonly intents: FighterIntent = {
     moveX: 0,
@@ -102,7 +102,7 @@ export class Fighter extends Entity {
   private hitFlashTimer = 0;
   private freezeTimer = 0;
 
-  constructor(def: CharacterDef, faction: Faction, customRig?: FighterRig) {
+  constructor(def: CharacterDef, faction: Faction, customRig?: Rig) {
     const body = new Body(0.42 * def.proportions.bulk, def.proportions.height);
     const rig = customRig ?? new FighterRig({ palette: def.palette, proportions: def.proportions });
     super(body, rig.root);

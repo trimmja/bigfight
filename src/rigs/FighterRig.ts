@@ -15,6 +15,24 @@ import type { JointName, Pose } from './poses';
 
 type TintMaterial = THREE.MeshToonMaterial;
 
+/**
+ * The rig contract Fighter drives. FighterRig (bean mobs), HeroRig
+ * (characterBuilders' action-figure players), and enemy/boss rigs all
+ * satisfy it structurally.
+ */
+export interface Rig {
+  readonly root: THREE.Group;
+  readonly joints: Record<JointName, THREE.Object3D>;
+  readonly weaponSocket: THREE.Group;
+  setPose(pose: Pose, blend: number): void;
+  setFacing(f: 1 | -1): void;
+  setShadow(groundLocalY: number | null, airborneT: number): void;
+  flashColor(color: number, seconds: number): void;
+  setGhostOpacity(alpha: number): void;
+  update(dt: number): void;
+  dispose(): void;
+}
+
 const JOINTS: readonly JointName[] = [
   'hips',
   'torso',

@@ -6,7 +6,7 @@ import { CHARACTERS, characterById } from '../data/characters';
 import type { CharacterDef } from '../data/types';
 import { isCharacterUnlocked, unlockedCharacters } from '../progression';
 import { buildCharacterRig } from '../rigs/characterBuilders';
-import type { FighterRig } from '../rigs/FighterRig';
+import type { Rig } from '../rigs/FighterRig';
 import { poseFightStance, poseAttack } from '../rigs/poses';
 import { button, el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
@@ -17,7 +17,7 @@ import type { Screen } from './Screen';
  */
 export class CharacterSelectScreen implements Screen {
   private root: HTMLElement | null = null;
-  private preview: FighterRig | null = null;
+  private preview: Rig | null = null;
   private previewGroup = new THREE.Group();
   private selectedId: string;
   private t = 0;
