@@ -72,7 +72,10 @@ export function buildStage(def: StageDef, scene: THREE.Scene): BuiltStage {
 
   // ---- platforms ----
   for (const platform of def.platforms) {
-    const thickness = platform.oneWay ? 0.55 : 1.3;
+    // Full-length floors (wider than the blast zone) read as solid ground:
+    // extend the slab deep so no "floating island" underside ever shows.
+    const fullLength = platform.w >= (def.blast.right - def.blast.left) * 0.9;
+    const thickness = platform.oneWay ? 0.55 : fullLength ? 14 : 1.3;
     const slab = new THREE.Mesh(BOX, platSideMat);
     slab.scale.set(platform.w, thickness, DEPTH);
     slab.position.set(platform.x, platform.y - thickness * 0.5, 0);
