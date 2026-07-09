@@ -64,9 +64,9 @@ export const SHAKE_DECAY = 6;
 // ---- rendering ----
 export const DPR_CAP_MOBILE = 1.5;
 export const DPR_CAP_DESKTOP = 2;
-export const BLOOM_STRENGTH = 0.9;
-export const BLOOM_RADIUS = 0.6;
-export const BLOOM_THRESHOLD = 0.55;
+export const BLOOM_STRENGTH = 0.3;
+export const BLOOM_RADIUS = 0.5;
+export const BLOOM_THRESHOLD = 0.85;
 /** Auto quality tier drops to mobile if avg frame time exceeds this (ms). */
 export const AUTO_QUALITY_FRAME_MS = 20;
 
@@ -82,12 +82,14 @@ export const GOLD_DROP_VARIANCE = 0.3;
 export const PICKUP_MAGNET_RADIUS = 3.5;
 
 // ---- colors (global identity; per-content colors live in data/) ----
-export const COLOR_BG = 0x05050c;
-export const COLOR_NEON_CYAN = 0x00eaff;
-export const COLOR_NEON_PINK = 0xff2d95;
-export const COLOR_NEON_YELLOW = 0xffe94a;
-export const COLOR_NEON_GREEN = 0x58ff7d;
-export const COLOR_NEON_VIOLET = 0xa86bff;
+// Bright-cartoon era: BG is a sunny sky blue; the NEON_* names survive as the
+// candy accent set used by UI/effects.
+export const COLOR_BG = 0x8fd3ff;
+export const COLOR_NEON_CYAN = 0x1a9fe8;
+export const COLOR_NEON_PINK = 0xff5a8a;
+export const COLOR_NEON_YELLOW = 0xffc93e;
+export const COLOR_NEON_GREEN = 0x4ec95c;
+export const COLOR_NEON_VIOLET = 0x9a6bff;
 
 // ---- save ----
 export const SAVE_KEY = 'bigfight_save_v1';

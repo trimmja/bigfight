@@ -1,15 +1,17 @@
-/* ============ BIG FIGHT — neon UI theme (shell; full pass in M5a) ============ */
+/* ============ BIG FIGHT — bright cartoon UI theme (Fall Guys era) ============ */
 
 :root {
-  --bg: #05050c;
-  --panel: rgba(10, 12, 26, 0.92);
-  --neon-cyan: #00eaff;
-  --neon-pink: #ff2d95;
-  --neon-yellow: #ffe94a;
-  --neon-green: #58ff7d;
-  --neon-violet: #a86bff;
-  --text: #e8f6ff;
-  --text-dim: #7d8db0;
+  --bg: #8fd3ff;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-border: #ffffff;
+  /* Candy accent set (names kept stable for touch controls & screens). */
+  --neon-cyan: #1a9fe8;
+  --neon-pink: #ff5a8a;
+  --neon-yellow: #ffc93e;
+  --neon-green: #4ec95c;
+  --neon-violet: #9a6bff;
+  --text: #1e2a4a;
+  --text-dim: #5a6a8d;
   --safe-l: env(safe-area-inset-left, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
@@ -57,14 +59,20 @@ html, body {
   display: none; /* enabled by touch.ts on touch devices */
 }
 
-/* ---- neon text helpers ---- */
+/* ---- chunky cartoon text helpers (names kept from the neon era) ---- */
 .neon {
-  color: var(--neon-cyan);
-  text-shadow: 0 0 6px var(--neon-cyan), 0 0 18px rgba(0, 234, 255, 0.55);
+  color: #ffffff;
+  text-shadow:
+    0 3px 0 rgba(30, 42, 74, 0.35),
+    -2px 0 0 var(--neon-cyan), 2px 0 0 var(--neon-cyan),
+    0 -2px 0 var(--neon-cyan), 0 2px 0 var(--neon-cyan);
 }
 .neon-pink {
-  color: var(--neon-pink);
-  text-shadow: 0 0 6px var(--neon-pink), 0 0 18px rgba(255, 45, 149, 0.55);
+  color: #ffffff;
+  text-shadow:
+    0 3px 0 rgba(30, 42, 74, 0.35),
+    -2px 0 0 var(--neon-pink), 2px 0 0 var(--neon-pink),
+    0 -2px 0 var(--neon-pink), 0 2px 0 var(--neon-pink);
 }
 
 /* ---- rotate-your-phone overlay ---- */
@@ -72,7 +80,7 @@ html, body {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: var(--bg);
+  background: linear-gradient(#8fd3ff, #d8f2ff);
   display: none;
   flex-direction: column;
   align-items: center;
@@ -85,17 +93,18 @@ html, body {
 .rotate-phone {
   width: 46px;
   height: 84px;
-  border: 3px solid var(--neon-cyan);
-  border-radius: 10px;
-  box-shadow: 0 0 14px rgba(0, 234, 255, 0.7), inset 0 0 8px rgba(0, 234, 255, 0.3);
+  border: 4px solid #ffffff;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 0 rgba(30, 42, 74, 0.25);
   animation: rotate-hint 1.6s ease-in-out infinite;
 }
 .rotate-text {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 4px;
-  color: var(--neon-cyan);
-  text-shadow: 0 0 8px var(--neon-cyan);
+  color: #ffffff;
+  text-shadow: 0 3px 0 rgba(30, 42, 74, 0.35);
 }
 @keyframes rotate-hint {
   0%, 20% { transform: rotate(0deg); }

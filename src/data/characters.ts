@@ -19,7 +19,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
     weight: 100,
     jumpVel: 14.5,
     jumps: 2,
-    palette: { core: 0x0a0a12, glow: 0x00eaff, accent: 0x2f6bff },
+    palette: { core: 0x3fb8ff, glow: 0x1f6fd8, accent: 0xffd94a },
     proportions: { height: 1.8, bulk: 1.0, headSize: 1.0 },
     combo: [
       {
@@ -74,7 +74,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
     weight: 87,
     jumpVel: 15,
     jumps: 2,
-    palette: { core: 0x0a120c, glow: 0x58ff7d, accent: 0x9dffb0 },
+    palette: { core: 0x54d964, glow: 0x2fa348, accent: 0xf2fff4 },
     proportions: { height: 1.65, bulk: 0.85, headSize: 0.95 },
     combo: [
       {
@@ -129,7 +129,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
     weight: 114,
     jumpVel: 13.2,
     jumps: 2,
-    palette: { core: 0x0d0a14, glow: 0xa86bff, accent: 0x6a2fd4 },
+    palette: { core: 0xb06ef5, glow: 0x7a3fc4, accent: 0xffd23e },
     proportions: { height: 2.1, bulk: 1.35, headSize: 0.9 },
     combo: [
       {
@@ -184,7 +184,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
     weight: 97,
     jumpVel: 14.2,
     jumps: 2,
-    palette: { core: 0x120c08, glow: 0xff9d2e, accent: 0xffd27d },
+    palette: { core: 0xffa02e, glow: 0xd4661a, accent: 0x7adfff },
     proportions: { height: 1.8, bulk: 0.95, headSize: 1.0 },
     combo: [
       {
@@ -239,7 +239,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
     weight: 88,
     jumpVel: 14.8,
     jumps: 2,
-    palette: { core: 0x140806, glow: 0xff5a2e, accent: 0xffb347 },
+    palette: { core: 0xff5a3c, glow: 0xd42a1a, accent: 0xffc93e },
     proportions: { height: 1.7, bulk: 0.9, headSize: 1.05 },
     combo: [
       {
@@ -294,7 +294,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
     weight: 93,
     jumpVel: 16,
     jumps: 2,
-    palette: { core: 0x101010, glow: 0xfff0c0, accent: 0xffcf4a },
+    palette: { core: 0xf5e9c8, glow: 0xe8b93e, accent: 0x66d9ff },
     proportions: { height: 1.85, bulk: 0.95, headSize: 1.0 },
     combo: [
       {
@@ -349,7 +349,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
     weight: 85,
     jumpVel: 15.5,
     jumps: 2,
-    palette: { core: 0x060608, glow: 0x8f4bff, accent: 0xd0a0ff },
+    palette: { core: 0x6f4fd8, glow: 0x4a2fa0, accent: 0xff4fd8 },
     proportions: { height: 1.6, bulk: 0.8, headSize: 0.9 },
     combo: [
       {
@@ -404,7 +404,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
     weight: 115,
     jumpVel: 13,
     jumps: 2,
-    palette: { core: 0x0c0c10, glow: 0xffa51e, accent: 0x8c98a8 },
+    palette: { core: 0x9aa7b8, glow: 0x5a6a7d, accent: 0xff8a3c },
     proportions: { height: 2.2, bulk: 1.4, headSize: 0.85 },
     combo: [
       {

@@ -29,8 +29,8 @@ export const STAGES: readonly StageDef[] = [
     ],
     respawnPoint: { x: 0, y: 8 },
     unlockedAtStart: true,
-    skyColor: 0x0a0618,
-    glowColor: 0x00eaff,
+    skyColor: 0x6ec2ff,
+    glowColor: 0xff7a6e,
   },
   {
     id: 'cavern',
@@ -55,8 +55,8 @@ export const STAGES: readonly StageDef[] = [
     ],
     respawnPoint: { x: 0, y: 8 },
     unlockedAtStart: true,
-    skyColor: 0x04120a,
-    glowColor: 0x58ff7d,
+    skyColor: 0x7de0c8,
+    glowColor: 0x58d858,
   },
   {
     id: 'graveyard',
@@ -80,8 +80,8 @@ export const STAGES: readonly StageDef[] = [
     ],
     respawnPoint: { x: 0, y: 8 },
     unlockedAtStart: true,
-    skyColor: 0x0a0a14,
-    glowColor: 0xa86bff,
+    skyColor: 0xb8a8e8,
+    glowColor: 0x9a6bff,
   },
   {
     id: 'ghostship',
@@ -107,8 +107,8 @@ export const STAGES: readonly StageDef[] = [
     ],
     respawnPoint: { x: 0, y: 8 },
     unlockedAtStart: false,
-    skyColor: 0x061018,
-    glowColor: 0x7df9ff,
+    skyColor: 0x8fd8e8,
+    glowColor: 0x3cb8d8,
   },
   {
     id: 'peak',
@@ -130,8 +130,8 @@ export const STAGES: readonly StageDef[] = [
     ],
     respawnPoint: { x: 0, y: 8 },
     unlockedAtStart: false,
-    skyColor: 0x0c0a1e,
-    glowColor: 0xffe94a,
+    skyColor: 0x9cc8ff,
+    glowColor: 0xffc93e,
   },
   {
     id: 'finale',
@@ -154,8 +154,8 @@ export const STAGES: readonly StageDef[] = [
     ],
     respawnPoint: { x: 0, y: 8 },
     unlockedAtStart: false,
-    skyColor: 0x120616,
-    glowColor: 0xff2d95,
+    skyColor: 0xffb86e,
+    glowColor: 0xff5a8a,
   },
 ];
 

@@ -62,7 +62,7 @@ class Trail {
     const mat = new THREE.MeshBasicMaterial({
       vertexColors: true,
       transparent: true,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,

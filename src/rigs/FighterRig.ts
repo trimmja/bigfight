@@ -1,13 +1,19 @@
 import * as THREE from 'three';
 import { clamp, damp, lerp } from '../core/math';
 import type { Palette, Proportions } from '../data/types';
-import { attachGlow } from '../render/GlowSprites';
 import type { JointName, Pose } from './poses';
 
-type TintMaterial = THREE.MeshBasicMaterial | THREE.LineBasicMaterial | THREE.SpriteMaterial;
+/**
+ * Bright-cartoon (Fall Guys style) fighter rig: chunky rounded primitives,
+ * toon-shaded candy colors, big eyes, blob ground shadow. Same joint tree and
+ * pose semantics as always: profile rig faces +X, sagittal swings on Z.
+ *
+ * Palette semantics (bright-toon era): core = main body color,
+ * glow = limb/trim color, accent = detail pop (belly, fists, feet).
+ */
 
-const BOX = new THREE.BoxGeometry(1, 1, 1);
-const BOX_EDGES = new THREE.EdgesGeometry(BOX);
+type TintMaterial = THREE.MeshToonMaterial;
+
 const JOINTS: readonly JointName[] = [
   'hips',
   'torso',
@@ -23,6 +29,21 @@ const JOINTS: readonly JointName[] = [
   'root',
 ];
 
+// Shared unit geometries, scaled per-mesh.
+const SPHERE = new THREE.SphereGeometry(1, 20, 14);
+const CAPSULE = new THREE.CapsuleGeometry(1, 1, 4, 12);
+const SHADOW_CIRCLE = new THREE.CircleGeometry(1, 24);
+
+/** 3-step toon ramp shared by every rig (cartoon shading without assets). */
+let toonRamp: THREE.DataTexture | null = null;
+function getToonRamp(): THREE.DataTexture {
+  if (toonRamp) return toonRamp;
+  const data = new Uint8Array([165, 165, 165, 255, 220, 220, 220, 255, 255, 255, 255, 255]);
+  toonRamp = new THREE.DataTexture(data, 3, 1, THREE.RGBAFormat);
+  toonRamp.needsUpdate = true;
+  return toonRamp;
+}
+
 export class FighterRig {
   readonly root = new THREE.Group();
   readonly joints: Record<JointName, THREE.Object3D>;
@@ -31,6 +52,8 @@ export class FighterRig {
   private readonly materials: THREE.Material[] = [];
   private readonly tintMaterials: { material: TintMaterial; base: THREE.Color }[] = [];
   private readonly flash = new THREE.Color(0xffffff);
+  private readonly shadow: THREE.Mesh;
+  private readonly shadowMat: THREE.MeshBasicMaterial;
   private flashTimer = 0;
   private flashDuration = 0;
   private facingTarget: 1 | -1 = 1;
@@ -42,22 +65,25 @@ export class FighterRig {
     const prop = def.proportions;
     const height = prop.height;
     const bulk = prop.bulk;
-    const depth = 0.24 * bulk;
+    const depth = 0.26 * bulk;
     const legLen = height * 0.46;
     const torsoH = height * 0.34;
     const headH = height * 0.17 * prop.headSize;
     const torsoW = 0.54 * bulk;
     const hipW = 0.48 * bulk;
-    const limbW = 0.13 * bulk;
+    const limbW = 0.14 * bulk;
     const upperArm = height * 0.22;
     const foreArm = height * 0.2;
     const thigh = height * 0.24;
     const shin = height * 0.23;
 
-    const bodyMat = this.makeBodyMaterial(palette.core);
-    const glowMat = this.makeGlowMaterial(palette.glow);
-    const edgeMat = this.makeLineMaterial(palette.glow);
-    const accentMat = this.makeGlowMaterial(palette.accent);
+    const bodyMat = this.makeToon(palette.core);
+    // Limbs: trim color lifted toward white so they stay lively in shade.
+    const limbColor = new THREE.Color(palette.glow).lerp(new THREE.Color(0xffffff), 0.22);
+    const limbMat = this.makeToon(limbColor.getHex());
+    const accentMat = this.makeToon(palette.accent);
+    const whiteMat = this.makeToon(0xffffff);
+    const darkMat = this.makeToon(0x2a2d3a);
 
     const hips = new THREE.Group();
     const torso = new THREE.Group();
@@ -71,45 +97,64 @@ export class FighterRig {
     const shinL = new THREE.Group();
     const shinR = new THREE.Group();
 
-    this.root.position.z = 0;
     hips.position.y = legLen;
     this.root.add(hips);
 
-    addBox(hips, bodyMat, hipW, height * 0.11, depth, 0, 0, 0);
-    addEdge(hips, edgeMat, hipW * 1.04, height * 0.12, depth * 1.04, 0, 0, 0);
+    // Hips: squashed ball.
+    addBall(hips, bodyMat, hipW * 0.56, height * 0.085, depth * 1.15, 0, 0, 0);
 
+    // Torso: chunky egg + belly patch.
     torso.position.y = height * 0.02;
     hips.add(torso);
-    addBox(torso, bodyMat, torsoW, torsoH, depth, 0, torsoH * 0.5, 0);
-    addEdge(torso, edgeMat, torsoW * 1.04, torsoH * 1.04, depth * 1.04, 0, torsoH * 0.5, 0);
-    addBox(torso, accentMat, torsoW * 0.42, torsoH * 0.18, depth * 1.08, 0, torsoH * 0.54, depth * 0.54);
+    addBall(torso, bodyMat, torsoW * 0.62, torsoH * 0.62, depth * 1.35, 0, torsoH * 0.5, 0);
+    addBall(torso, accentMat, torsoW * 0.44, torsoH * 0.46, depth * 1.0, torsoW * 0.22, torsoH * 0.44, 0);
 
-    head.position.y = torsoH + headH * 0.58;
+    // Head: big ball with two big cartoon eyes (front = +X).
+    head.position.y = torsoH * 1.06 + headH * 0.5;
     torso.add(head);
-    addBox(head, bodyMat, headH * 0.9, headH, depth * 0.95, 0, 0, 0);
-    addEdge(head, edgeMat, headH * 0.95, headH * 1.05, depth, 0, 0, 0);
-    addBox(head, glowMat, headH * 0.62, headH * 0.12, depth * 1.08, 0, headH * 0.08, depth * 0.54);
+    const headR = headH * 0.62;
+    addBall(head, bodyMat, headR, headR * 0.95, headR * 0.95, 0, 0, 0);
+    for (const side of [-1, 1]) {
+      addBall(head, whiteMat, headR * 0.34, headR * 0.42, headR * 0.2, headR * 0.78, headR * 0.1, side * headR * 0.36);
+      addBall(head, darkMat, headR * 0.15, headR * 0.2, headR * 0.12, headR * 1.02, headR * 0.1, side * headR * 0.32);
+    }
 
-    armL.position.set(0, torsoH * 0.78, -depth * 0.58);
-    armR.position.set(0, torsoH * 0.78, depth * 0.58);
-    torso.add(armL, armR);
-    buildArm(armL, foreArmL, bodyMat, glowMat, edgeMat, limbW, upperArm, foreArm, depth * 0.8);
-    buildArm(armR, foreArmR, bodyMat, glowMat, edgeMat, limbW, upperArm, foreArm, depth * 0.8);
+    // Arms: stubby capsules high on the egg, flared slightly outward via a
+    // fixed rest group so poses (which relax joints to 0) keep the flare.
+    const restL = new THREE.Group();
+    const restR = new THREE.Group();
+    restL.position.set(0, torsoH * 0.9, -depth * 0.95);
+    restR.position.set(0, torsoH * 0.9, depth * 0.95);
+    restL.rotation.x = -0.3;
+    restR.rotation.x = 0.3;
+    torso.add(restL, restR);
+    restL.add(armL);
+    restR.add(armR);
+    buildLimb(armL, foreArmL, limbMat, accentMat, limbW * 0.92, upperArm * 0.82, foreArm * 0.82, true);
+    buildLimb(armR, foreArmR, limbMat, accentMat, limbW * 0.92, upperArm * 0.82, foreArm * 0.82, true);
     foreArmR.add(this.weaponSocket);
     this.weaponSocket.position.set(0, -foreArm, depth * 0.35);
 
-    legL.position.set(-hipW * 0.23, 0, -depth * 0.32);
-    legR.position.set(hipW * 0.23, 0, depth * 0.32);
+    // Legs: capsule thigh + capsule shin + shoe.
+    legL.position.set(-hipW * 0.14, 0, -depth * 0.42);
+    legR.position.set(hipW * 0.14, 0, depth * 0.42);
     hips.add(legL, legR);
-    buildLeg(legL, shinL, bodyMat, glowMat, edgeMat, limbW * 1.08, thigh, shin, depth * 0.86);
-    buildLeg(legR, shinR, bodyMat, glowMat, edgeMat, limbW * 1.08, thigh, shin, depth * 0.86);
+    buildLimb(legL, shinL, limbMat, accentMat, limbW * 1.1, thigh, shin, false);
+    buildLimb(legR, shinR, limbMat, accentMat, limbW * 1.1, thigh, shin, false);
 
-    const chestGlow = attachGlow(torso, palette.glow, torsoW * 1.25, 0.55);
-    chestGlow.position.set(0, torsoH * 0.55, depth * 0.75);
-    this.ownSpriteMaterial(chestGlow);
-    const headGlow = attachGlow(head, palette.glow, headH * 1.3, 0.35);
-    headGlow.position.set(0, headH * 0.03, depth * 0.72);
-    this.ownSpriteMaterial(headGlow);
+    // Blob shadow (owner positions it on the ground via setShadow).
+    this.shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x1b2a3a,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+    });
+    this.materials.push(this.shadowMat);
+    this.shadow = new THREE.Mesh(SHADOW_CIRCLE, this.shadowMat);
+    this.shadow.rotation.x = -Math.PI / 2;
+    this.shadow.scale.set(hipW * 1.15, hipW * 0.72, 1);
+    this.shadow.renderOrder = -1;
+    this.root.add(this.shadow);
 
     this.joints = {
       hips,
@@ -137,10 +182,29 @@ export class FighterRig {
       joint.rotation.y = lerp(joint.rotation.y, target?.y ?? 0, amount);
       joint.rotation.z = lerp(joint.rotation.z, target?.z ?? 0, amount);
     }
+    // The shadow must not inherit the tumble spin visually — counteract root z.
+    this.shadow.rotation.z = -this.root.rotation.z;
   }
 
   setFacing(f: 1 | -1): void {
     this.facingTarget = f;
+  }
+
+  /**
+   * Places the blob shadow. groundLocalY = ground world Y minus body Y (root-
+   * local). airborneT 0 = on ground, 1 = high in the air (shrinks/fades).
+   * Pass groundLocalY = null to hide (over a pit).
+   */
+  setShadow(groundLocalY: number | null, airborneT: number): void {
+    if (groundLocalY === null) {
+      this.shadow.visible = false;
+      return;
+    }
+    this.shadow.visible = true;
+    this.shadow.position.y = groundLocalY + 0.12;
+    const s = 1 - 0.45 * clamp(airborneT, 0, 1);
+    this.shadow.scale.setScalar(s);
+    this.shadowMat.opacity = 0.28 * (1 - 0.6 * clamp(airborneT, 0, 1)) * this.ghostAlpha;
   }
 
   flashColor(color: number, seconds: number): void {
@@ -156,8 +220,8 @@ export class FighterRig {
     this.ghostAlpha = clamp(alpha, 0, 1);
     for (const material of this.materials) {
       material.transparent = true;
-      material.opacity = this.ghostAlpha;
-      material.depthWrite = this.ghostAlpha >= 0.95;
+      material.opacity = material === this.shadowMat ? this.shadowMat.opacity : this.ghostAlpha;
+      if (material !== this.shadowMat) material.depthWrite = this.ghostAlpha >= 0.95;
     }
   }
 
@@ -176,68 +240,26 @@ export class FighterRig {
         entry.material.color.copy(entry.base);
       }
     }
-
-    if (this.ghostAlpha < 0.99) {
-      const pulse = 0.55 + Math.sin(performance.now() * 0.025) * 0.18;
-      for (const material of this.materials) {
-        material.opacity = Math.min(this.ghostAlpha, pulse);
-      }
-    }
   }
 
   dispose(): void {
-    this.root.parent?.remove(this.root);
-    const unique = new Set(this.materials);
-    for (const material of unique) {
-      material.dispose();
-    }
+    this.root.removeFromParent();
+    for (const material of this.materials) material.dispose();
+    // Geometries are shared module-level constants — never disposed per rig.
   }
 
-  private makeBodyMaterial(color: number): THREE.MeshBasicMaterial {
-    const material = new THREE.MeshBasicMaterial({
-      color: new THREE.Color().setHex(color, THREE.SRGBColorSpace),
-      transparent: true,
-      opacity: 1,
-    });
-    this.materials.push(material);
-    return material;
-  }
-
-  private makeGlowMaterial(color: number): THREE.MeshBasicMaterial {
-    const material = new THREE.MeshBasicMaterial({
-      color: new THREE.Color().setHex(color, THREE.SRGBColorSpace),
-      transparent: true,
-      opacity: 1,
-      toneMapped: false,
-    });
+  private makeToon(color: number): THREE.MeshToonMaterial {
+    const material = new THREE.MeshToonMaterial({ color, gradientMap: getToonRamp() });
+    material.color.convertSRGBToLinear?.();
     this.materials.push(material);
     this.tintMaterials.push({ material, base: material.color.clone() });
     return material;
-  }
-
-  private makeLineMaterial(color: number): THREE.LineBasicMaterial {
-    const material = new THREE.LineBasicMaterial({
-      color: new THREE.Color().setHex(color, THREE.SRGBColorSpace),
-      transparent: true,
-      opacity: 1,
-      toneMapped: false,
-    });
-    this.materials.push(material);
-    this.tintMaterials.push({ material, base: material.color.clone() });
-    return material;
-  }
-
-  private ownSpriteMaterial(sprite: THREE.Sprite): void {
-    const material = sprite.material.clone();
-    sprite.material = material;
-    this.materials.push(material);
-    this.tintMaterials.push({ material, base: material.color.clone() });
   }
 }
 
-function addBox(
+function addBall(
   parent: THREE.Object3D,
-  material: THREE.MeshBasicMaterial,
+  material: THREE.Material,
   sx: number,
   sy: number,
   sz: number,
@@ -245,65 +267,46 @@ function addBox(
   y: number,
   z: number,
 ): THREE.Mesh {
-  const mesh = new THREE.Mesh(BOX, material);
+  const mesh = new THREE.Mesh(SPHERE, material);
   mesh.scale.set(sx, sy, sz);
   mesh.position.set(x, y, z);
   parent.add(mesh);
   return mesh;
 }
 
-function addEdge(
-  parent: THREE.Object3D,
-  material: THREE.LineBasicMaterial,
-  sx: number,
-  sy: number,
-  sz: number,
-  x: number,
-  y: number,
-  z: number,
-): void {
-  const edges = new THREE.LineSegments(BOX_EDGES, material);
-  edges.scale.set(sx, sy, sz);
-  edges.position.set(x, y, z);
-  parent.add(edges);
-}
-
-function buildArm(
-  shoulder: THREE.Group,
-  foreGroup: THREE.Group,
-  bodyMat: THREE.MeshBasicMaterial,
-  glowMat: THREE.MeshBasicMaterial,
-  edgeMat: THREE.LineBasicMaterial,
-  limbW: number,
+/** Capsule limb hanging -Y from its pivot, with a ball hand/shoe at the end. */
+function buildLimb(
+  upperGroup: THREE.Group,
+  lowerGroup: THREE.Group,
+  limbMat: THREE.Material,
+  tipMat: THREE.Material,
+  radius: number,
   upperLen: number,
-  foreLen: number,
-  depth: number,
+  lowerLen: number,
+  isArm: boolean,
 ): void {
-  addBox(shoulder, bodyMat, limbW, upperLen, depth, 0, -upperLen * 0.5, 0);
-  addEdge(shoulder, edgeMat, limbW * 1.05, upperLen * 1.02, depth * 1.05, 0, -upperLen * 0.5, 0);
-  foreGroup.position.y = -upperLen;
-  shoulder.add(foreGroup);
-  addBox(foreGroup, bodyMat, limbW * 0.88, foreLen, depth, 0, -foreLen * 0.5, 0);
-  addEdge(foreGroup, edgeMat, limbW * 0.92, foreLen * 1.02, depth * 1.05, 0, -foreLen * 0.5, 0);
-  addBox(foreGroup, glowMat, limbW * 1.35, limbW * 1.15, depth * 1.05, 0, -foreLen - limbW * 0.15, 0);
-}
+  const upper = new THREE.Mesh(CAPSULE, limbMat);
+  upper.scale.set(radius, upperLen * 0.5, radius);
+  upper.position.y = -upperLen * 0.5;
+  upperGroup.add(upper);
 
-function buildLeg(
-  hip: THREE.Group,
-  shinGroup: THREE.Group,
-  bodyMat: THREE.MeshBasicMaterial,
-  glowMat: THREE.MeshBasicMaterial,
-  edgeMat: THREE.LineBasicMaterial,
-  limbW: number,
-  thighLen: number,
-  shinLen: number,
-  depth: number,
-): void {
-  addBox(hip, bodyMat, limbW, thighLen, depth, 0, -thighLen * 0.5, 0);
-  addEdge(hip, edgeMat, limbW * 1.05, thighLen * 1.02, depth * 1.05, 0, -thighLen * 0.5, 0);
-  shinGroup.position.y = -thighLen;
-  hip.add(shinGroup);
-  addBox(shinGroup, bodyMat, limbW * 0.92, shinLen, depth, 0, -shinLen * 0.5, 0);
-  addEdge(shinGroup, edgeMat, limbW * 0.96, shinLen * 1.02, depth * 1.05, 0, -shinLen * 0.5, 0);
-  addBox(shinGroup, glowMat, limbW * 1.55, limbW * 0.42, depth * 1.05, limbW * 0.34, -shinLen, 0);
+  lowerGroup.position.y = -upperLen;
+  upperGroup.add(lowerGroup);
+
+  const lower = new THREE.Mesh(CAPSULE, limbMat);
+  lower.scale.set(radius * 0.92, lowerLen * 0.5, radius * 0.92);
+  lower.position.y = -lowerLen * 0.5;
+  lowerGroup.add(lower);
+
+  if (isArm) {
+    const fist = new THREE.Mesh(SPHERE, tipMat);
+    fist.scale.setScalar(radius * 1.5);
+    fist.position.y = -lowerLen;
+    lowerGroup.add(fist);
+  } else {
+    const shoe = new THREE.Mesh(SPHERE, tipMat);
+    shoe.scale.set(radius * 1.7, radius * 1.1, radius * 1.5);
+    shoe.position.set(radius * 0.8, -lowerLen, 0);
+    lowerGroup.add(shoe);
+  }
 }

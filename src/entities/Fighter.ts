@@ -153,7 +153,7 @@ export class Fighter extends Entity {
         break;
     }
 
-    this.updateVisuals(dt);
+    this.updateVisuals(ctx, dt);
   }
 
   afterPhysics(ctx: WorldCtx): void {
@@ -400,7 +400,7 @@ export class Fighter extends Entity {
     if (this.intents.moveX < -0.15) this.facing = -1;
   }
 
-  private updateVisuals(dt: number): void {
+  private updateVisuals(ctx: WorldCtx, dt: number): void {
     const blend = 1 - Math.exp(-POSE_DAMPING * dt);
     const t = this.stateTime;
     const pose = this.selectPose(t);
@@ -408,7 +408,31 @@ export class Fighter extends Entity {
     this.rig.setFacing(this.facing);
     this.rig.setGhostOpacity(this.isInvulnerable ? 0.62 : 1);
     this.rig.setPose(pose, blend);
+    this.updateShadow(ctx);
     this.rig.update(dt);
+  }
+
+  /** Blob shadow: project down to the highest platform top under our feet. */
+  private updateShadow(ctx: WorldCtx): void {
+    const x = this.body.pos.x;
+    const y = this.body.pos.y;
+    let ground = -Infinity;
+    const solids = ctx.stage.colliders.solids;
+    for (let i = 0; i < solids.length; i += 1) {
+      const s = solids[i]!;
+      if (x >= s.minX && x <= s.maxX && s.maxY <= y + 0.05 && s.maxY > ground) ground = s.maxY;
+    }
+    const oneWays = ctx.stage.colliders.oneWays;
+    for (let i = 0; i < oneWays.length; i += 1) {
+      const p = oneWays[i]!;
+      if (x >= p.minX && x <= p.maxX && p.y <= y + 0.05 && p.y > ground) ground = p.y;
+    }
+    if (ground === -Infinity) {
+      this.rig.setShadow(null, 0);
+      return;
+    }
+    const airborne = clamp((y - ground) / 6, 0, 1);
+    this.rig.setShadow(ground - y, airborne);
   }
 
   private selectPose(t: number) {

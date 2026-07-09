@@ -52,7 +52,13 @@ export class Renderer implements IRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(COLOR_BG, 0.022);
+    this.scene.fog = new THREE.FogExp2(COLOR_BG, 0.006);
+
+    // Bright-cartoon lighting: soft sky/ground fill + one warm sun key.
+    const hemi = new THREE.HemisphereLight(0xd8efff, 0xffe3b8, 1.15);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    sun.position.set(8, 18, 12);
+    this.scene.add(hemi, sun);
 
     this.camera = new THREE.PerspectiveCamera(CAM_FOV, 1, 0.1, 200);
     this.camera.position.set(0, 0, 22);

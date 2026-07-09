@@ -51,7 +51,7 @@ export class Particles {
       vertexColors: true,
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       sizeAttenuation: true,
       toneMapped: false,
     });
@@ -70,10 +70,10 @@ export class Particles {
       const nl = l - dt;
       const i3 = i * 3;
       if (nl <= 0) {
+        // Normal blending can't fade via darkening (black shows on bright
+        // skies) — dead confetti pops out crisply and parks far offscreen.
         life[i] = 0;
-        col[i3] = 0;
-        col[i3 + 1] = 0;
-        col[i3 + 2] = 0;
+        pos[i3 + 1] = -9999;
         continue;
       }
       const i2 = i * 2;
@@ -82,12 +82,12 @@ export class Particles {
       pos[i3] = pos[i3]! + vel[i2]! * dt;
       pos[i3 + 1] = pos[i3 + 1]! + vy * dt;
       life[i] = nl;
-      // Ease-out fade so particles stay bright most of their life, then die fast.
+      // Last 20% of life: blend toward white so the pop-out reads as a puff.
       const f = nl / maxLife[i]!;
-      const fade = f * f;
-      col[i3] = base[i3]! * fade;
-      col[i3 + 1] = base[i3 + 1]! * fade;
-      col[i3 + 2] = base[i3 + 2]! * fade;
+      const w = f > 0.2 ? 0 : 1 - f * 5;
+      col[i3] = base[i3]! + (1 - base[i3]!) * w;
+      col[i3 + 1] = base[i3 + 1]! + (1 - base[i3 + 1]!) * w;
+      col[i3 + 2] = base[i3 + 2]! + (1 - base[i3 + 2]!) * w;
     }
     this.posAttr.needsUpdate = true;
     this.colAttr.needsUpdate = true;
