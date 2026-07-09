@@ -90,11 +90,16 @@ export function poseFightStance(t: number): Pose {
   scratch.foreArmR.x = 0.55;
   scratch.foreArmL.z = 0.95;
   scratch.foreArmR.z = 0.95;
-  // Ready crouch.
+  // Ready crouch, feet planted wide (lateral splay on X, same convention as
+  // the arm flare: positive X = outward for the -Z limb).
+  scratch.legL.x = 0.22;
+  scratch.legR.x = -0.22;
   scratch.legL.z = 0.22;
   scratch.legR.z = 0.18;
   scratch.shinL.z = -0.3;
   scratch.shinR.z = -0.26;
+  scratch.shinL.x = -0.08;
+  scratch.shinR.x = 0.08;
   return scratch;
 }
 

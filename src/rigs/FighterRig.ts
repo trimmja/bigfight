@@ -134,8 +134,10 @@ export class FighterRig {
     this.weaponSocket.position.set(0, -foreArm, depth * 0.35);
 
     // Legs: capsule thigh + capsule shin + shoe.
-    legL.position.set(-hipW * 0.14, 0, -depth * 0.42);
-    legR.position.set(hipW * 0.14, 0, depth * 0.42);
+    // Legs mounted toward the hips' outer edges so the stance reads wide from
+    // the front (they were nearly touching, like standing at attention).
+    legL.position.set(-hipW * 0.14, 0, -depth * 0.68);
+    legR.position.set(hipW * 0.14, 0, depth * 0.68);
     hips.add(legL, legR);
     buildLimb(legL, shinL, limbMat, accentMat, limbW * 1.1, thigh, shin, false);
     buildLimb(legR, shinR, limbMat, accentMat, limbW * 1.1, thigh, shin, false);
