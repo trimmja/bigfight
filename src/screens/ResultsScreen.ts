@@ -1,6 +1,9 @@
 import { events } from '../core/events';
 import type { Game } from '../Game';
-import type { MaterialId } from '../data/types';
+import { characterById } from '../data/characters';
+import { powerupById } from '../data/powerups';
+import { stageById } from '../data/stages';
+import type { LevelUnlocks, MaterialId } from '../data/types';
 import { button, el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
 
@@ -28,6 +31,7 @@ export class ResultsScreen implements Screen {
 
   constructor(
     private readonly result: LevelResult,
+    private readonly unlocks: LevelUnlocks | undefined,
     private readonly callbacks: {
       onMarket: () => void;
       onContinue: () => void;
@@ -58,6 +62,18 @@ export class ResultsScreen implements Screen {
     }
     if (!r.won) {
       el('p', 'bf-hint', panel).textContent = 'You keep everything you earned. Try again!';
+    }
+
+    if (this.unlocks) {
+      const u = this.unlocks;
+      const rows: string[] = [];
+      if (u.characterId) rows.push(`🥊 NEW FIGHTER: ${characterById(u.characterId).name}!`);
+      if (u.powerupId) rows.push(`⭐ NEW POWERUP: ${powerupById(u.powerupId).name}!`);
+      if (u.stageId) rows.push(`🗺️ NEW STAGE: ${stageById(u.stageId).name}!`);
+      for (const text of rows) {
+        el('div', 'bf-unlock-row', panel).textContent = text;
+      }
+      if (rows.length > 0) events.emit('ui', { kind: 'unlock' });
     }
 
     const col = el('div', 'bf-button-col', panel);

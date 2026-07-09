@@ -89,8 +89,10 @@ function handleLevelEnd(
   if (firstClear) save.levelsBeaten = result.levelId;
   game.persist();
 
+  const unlocks = firstClear ? levelById(result.levelId).unlocks : undefined;
+
   game.screens.replace(
-    new ResultsScreen(result, {
+    new ResultsScreen(result, unlocks, {
       onMarket: () => game.screens.replace(new MarketScreen(() => goLevelMap(game))),
       onContinue: () => {
         // After a win, Continue takes you toward the next level if there is one.
@@ -100,9 +102,4 @@ function handleLevelEnd(
       onRetry: () => startLevel(game, result.levelId, characterId, weaponId),
     }),
   );
-
-  if (firstClear) {
-    const unlocks = levelById(result.levelId).unlocks;
-    void unlocks; // unlock toast lands in the tuning pass (M7)
-  }
 }
