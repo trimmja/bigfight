@@ -33,7 +33,10 @@ export class CameraRig {
   private shake = 0;
   private readonly shakeUnsub: () => void;
 
-  constructor(camera: THREE.PerspectiveCamera) {
+  constructor(
+    camera: THREE.PerspectiveCamera,
+    private readonly shakeEnabled: () => boolean = () => true,
+  ) {
     this.camera = camera;
     // Take over orientation: look straight down -Z regardless of prior lookAt.
     camera.rotation.set(0, 0, 0);
@@ -45,6 +48,7 @@ export class CameraRig {
     this.targetZ = this.baseZ;
 
     this.shakeUnsub = events.on('screenShake', ({ amount }) => {
+      if (!this.shakeEnabled()) return;
       this.shake = Math.max(this.shake, amount);
     });
   }

@@ -27,6 +27,7 @@ export function buildStage(def: StageDef, scene: THREE.Scene): BuiltStage {
   const group = new THREE.Group();
   const materials: THREE.Material[] = [];
   const textures: THREE.Texture[] = [];
+  const geometries: THREE.BufferGeometry[] = [];
   const colliders = buildColliders(def);
 
   const toon = (color: number): THREE.MeshToonMaterial => {
@@ -47,7 +48,7 @@ export function buildStage(def: StageDef, scene: THREE.Scene): BuiltStage {
   const lipMat = toon(0xffffff);
 
   // ---- sky ----
-  group.add(buildSky(def, materials, textures));
+  group.add(buildSky(def, materials, textures, geometries));
 
   // ---- hills for depth ----
   const hillColors = [0x9fe098, 0x7fcf8e, 0xbce8a8];
@@ -114,6 +115,7 @@ export function buildStage(def: StageDef, scene: THREE.Scene): BuiltStage {
       scene.remove(group);
       for (const material of materials) material.dispose();
       for (const texture of textures) texture.dispose();
+      for (const geometry of geometries) geometry.dispose();
       // BOX/SPHERE are shared module constants — never disposed.
     },
   };
@@ -123,6 +125,7 @@ function buildSky(
   def: StageDef,
   materials: THREE.Material[],
   textures: THREE.Texture[],
+  geometries: THREE.BufferGeometry[],
 ): THREE.Mesh {
   const canvas = document.createElement('canvas');
   canvas.width = 4;
@@ -144,6 +147,7 @@ function buildSky(
   const width = def.blast.right - def.blast.left + 60;
   const height = def.blast.top - def.blast.bottom + 50;
   const geometry = new THREE.PlaneGeometry(width, height);
+  geometries.push(geometry);
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(0, (def.blast.top + def.blast.bottom) * 0.5 + 4, -24);
   mesh.renderOrder = -10;

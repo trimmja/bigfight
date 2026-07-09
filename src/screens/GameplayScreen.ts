@@ -135,7 +135,7 @@ export class GameplayScreen implements Screen {
     this.stage = buildStage(stageDef, game.renderer.scene);
     this.particles = new Particles(game.renderer.scene);
     this.trails = new Trails(game.renderer.scene);
-    this.cameraRig = new CameraRig(game.renderer.camera);
+    this.cameraRig = new CameraRig(game.renderer.camera, () => game.save.settings.shake);
     this.hitResolver = new HitResolver();
     this.physics = new PhysicsWorld();
     this.pickupManager = new PickupManager(game.renderer.scene);
@@ -325,6 +325,15 @@ export class GameplayScreen implements Screen {
 
     this.checkBlast(game, player);
     for (let i = 0; i < this.mobs.length; i += 1) this.checkMobBlast(game, this.mobs[i]!);
+    // Sweep dead mobs (KO'd last frame — drops/splits already handled) so long
+    // boss fights don't accumulate dead rigs in memory and loops.
+    for (let i = this.mobs.length - 1; i >= 0; i -= 1) {
+      const mob = this.mobs[i]!;
+      if (!mob.alive && mob.hitstopTimer <= 0) {
+        mob.dispose();
+        this.mobs.splice(i, 1);
+      }
+    }
 
     this.updateCamera(stage);
     particles.update(dt);

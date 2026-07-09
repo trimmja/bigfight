@@ -26,7 +26,13 @@ export function goLevelMap(game: Game): void {
     new LevelMapScreen({
       onPickLevel: (levelId) => goCharacterSelect(game, levelId),
       onSettings: () =>
-        game.screens.push(new SettingsScreen(() => game.screens.pop())),
+        game.screens.push(
+          new SettingsScreen(
+            () => game.screens.pop(),
+            // After a reset the map below is stale — rebuild it fresh.
+            () => goLevelMap(game),
+          ),
+        ),
     }),
   );
 }

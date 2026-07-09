@@ -220,7 +220,11 @@ export class PickupManager {
 
   spawnGold(value: number, x: number, y: number): void {
     const pickup = this.pool.obtain();
-    if (!pickup) return;
+    if (!pickup) {
+      // Pool exhausted — loot must never be lost: bank it instantly.
+      events.emit('loot', { gold: value });
+      return;
+    }
     const vx = (Math.random() * 2 - 1) * POP_X;
     const vy = POP_Y_MIN + Math.random() * (POP_Y_MAX - POP_Y_MIN);
     pickup.spawnGold(value, x, y, vx, vy);
@@ -229,7 +233,10 @@ export class PickupManager {
 
   spawnMaterial(material: MaterialId, x: number, y: number): void {
     const pickup = this.pool.obtain();
-    if (!pickup) return;
+    if (!pickup) {
+      events.emit('loot', { gold: 0, material });
+      return;
+    }
     const vx = (Math.random() * 2 - 1) * POP_X;
     const vy = POP_Y_MIN + Math.random() * (POP_Y_MAX - POP_Y_MIN);
     pickup.spawnMaterial(material, x, y, vx, vy);

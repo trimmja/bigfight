@@ -8,7 +8,11 @@ export class SettingsScreen implements Screen {
   private root: HTMLElement | null = null;
   private confirmingReset = false;
 
-  constructor(private readonly onBack: () => void) {}
+  constructor(
+    private readonly onBack: () => void,
+    /** Called after a progress reset — must rebuild stale screens below. */
+    private readonly onReset: () => void = onBack,
+  ) {}
 
   enter(game: Game): void {
     this.root = uiRoot('bf-modal-backdrop');
@@ -65,7 +69,7 @@ export class SettingsScreen implements Screen {
           return;
         }
         game.save = resetSave();
-        this.onBack();
+        this.onReset();
       },
       'bf-button',
       col,

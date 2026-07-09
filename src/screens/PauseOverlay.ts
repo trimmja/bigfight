@@ -19,6 +19,8 @@ export class PauseOverlay implements Screen {
   ) {}
 
   enter(game: Game): void {
+    // The touch layer sits above #ui — hide it so pause buttons are tappable.
+    game.input.setTouchControlsVisible(false);
     this.root = uiRoot('bf-modal-backdrop');
     const panel = el('div', 'bf-panel', this.root);
     el('h1', 'bf-title', panel).textContent = 'PAUSED';
@@ -43,7 +45,10 @@ export class PauseOverlay implements Screen {
     events.emit('ui', { kind: 'confirm' });
   }
 
-  exit(): void {
+  exit(game: Game): void {
+    // Restore controls for the gameplay screen below (its own exit re-hides
+    // them if we're quitting out).
+    game.input.setTouchControlsVisible(true);
     this.root?.remove();
     this.root = null;
   }
