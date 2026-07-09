@@ -102,6 +102,14 @@ export class CharacterSelectScreen implements Screen {
     const side = el('div', 'bf-select-side', body);
     this.nameEl = el('h2', 'bf-select-name', side);
     this.tagEl = el('p', 'bf-select-tag', side);
+    // On short screens (phones, landscape) stats hide behind this toggle so
+    // they don't overlay the character preview.
+    button(
+      '📊 STATS',
+      () => side.classList.toggle('bf-stats-open'),
+      'bf-button bf-stats-toggle',
+      side,
+    );
     this.statsEl = el('div', 'bf-select-stats', side);
     button('FIGHT! ▶', () => this.callbacks.onPick(this.selectedId), 'bf-button bf-button-green bf-button-big', side);
 

@@ -398,6 +398,30 @@ html, body {
 .bf-stat-fill { height: 100%; background: var(--neon-yellow); border-radius: 6px; }
 .bf-button-big { font-size: 21px; padding: 15px 30px; }
 .bf-select-hint { text-align: center; color: #ffffff; text-shadow: 0 2px 0 rgba(30,42,74,0.3); }
+.bf-stats-toggle { display: none; }
+
+/* Short screens (phones in landscape): compact panel, stats behind a toggle
+   so they never overlay the character preview. */
+@media (max-height: 500px) {
+  .bf-select-name { font-size: 20px; margin-top: 0; }
+  .bf-select-tag { font-size: 12px; }
+  .bf-stats-toggle {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 7px 14px;
+    font-size: 12px;
+  }
+  .bf-select-stats { display: none; }
+  .bf-stats-open .bf-select-stats {
+    display: flex;
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 10px 12px;
+    box-shadow: 0 5px 0 rgba(30, 42, 74, 0.2);
+  }
+  .bf-stats-open .bf-stat-label { color: var(--text); text-shadow: none; }
+  .bf-button-big { font-size: 17px; padding: 11px 22px; }
+}
 
 /* ---- market ---- */
 .bf-mats-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
