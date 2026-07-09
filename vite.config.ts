@@ -26,5 +26,12 @@ export default defineConfig({
   build: {
     target: 'es2020',
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        // Character design lab — unlinked design-review page (mockup.html).
+        mockup: 'mockup.html',
+      },
+    },
   },
 });
