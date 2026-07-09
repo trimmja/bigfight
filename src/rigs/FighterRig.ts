@@ -49,7 +49,7 @@ export class FighterRig {
   private flashTimer = 0;
   private flashDuration = 0;
   private facingTarget: 1 | -1 = 1;
-  private facingScale = 1;
+  private facingAngle = 0;
   private ghostAlpha = 1;
 
   constructor(def: { palette: Palette; proportions: Proportions }) {
@@ -171,7 +171,8 @@ export class FighterRig {
       const joint = this.joints[name];
       const target = pose[name];
       joint.rotation.x = lerp(joint.rotation.x, target?.x ?? 0, amount);
-      joint.rotation.y = lerp(joint.rotation.y, target?.y ?? 0, amount);
+      // Root yaw belongs to the facing turn, never to poses.
+      if (name !== 'root') joint.rotation.y = lerp(joint.rotation.y, target?.y ?? 0, amount);
       joint.rotation.z = lerp(joint.rotation.z, target?.z ?? 0, amount);
     }
     // The shadow must not inherit the tumble spin visually — counteract root z.
@@ -218,8 +219,11 @@ export class FighterRig {
   }
 
   update(dt: number): void {
-    this.facingScale = damp(this.facingScale, this.facingTarget, 28, dt);
-    this.root.scale.x = this.facingScale;
+    // Turn, don't mirror: a real 180° spin around Y. Mirroring via scale.x
+    // squashed the rig paper-thin mid-flip (and you glimpse the face mid-turn
+    // this way, which is charming).
+    this.facingAngle = damp(this.facingAngle, this.facingTarget === 1 ? 0 : Math.PI, 28, dt);
+    this.root.rotation.y = this.facingAngle;
 
     if (this.flashTimer > 0) {
       this.flashTimer = Math.max(0, this.flashTimer - dt);

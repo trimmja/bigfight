@@ -72,7 +72,7 @@ abstract class BossRigBase implements BossRig {
   private flashTimer = 0;
   private flashDuration = 0;
   private facingTarget: 1 | -1 = 1;
-  private facingScale = 1;
+  private facingAngle = 0;
   private ghostAlpha = 1;
   private animTime = 0;
 
@@ -161,8 +161,8 @@ abstract class BossRigBase implements BossRig {
 
   update(dt: number): void {
     this.animTime += dt;
-    this.facingScale = damp(this.facingScale, this.facingTarget, 28, dt);
-    this.root.scale.x = this.facingScale;
+    this.facingAngle = damp(this.facingAngle, this.facingTarget === 1 ? 0 : Math.PI, 28, dt);
+    this.root.rotation.y = this.facingAngle;
     this.bodyRoot.position.y = Math.sin(this.animTime * this.bobSpeed) * this.bobAmp;
     this.updateCustom(dt, this.animTime);
 
