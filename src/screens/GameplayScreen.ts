@@ -591,6 +591,9 @@ export class GameplayScreen implements Screen {
       if (this.levelEndTimer > 0) return;
     }
     this.levelEndSent = true;
+    // Any loot still flying toward the player is banked instantly — the coin
+    // was earned the moment it dropped; the flight is just theater.
+    this.pickupManager?.bankAll();
     // Winning pays the level's gold bounty on top of whatever loot dropped.
     const bounty = this.levelWon ? this.level.goldReward : 0;
     const result: LevelEndResult = {

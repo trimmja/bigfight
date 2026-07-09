@@ -274,6 +274,27 @@ export class PickupManager {
     }
   }
 
+  /**
+   * Instantly credit every live pickup as collected loot (with its little
+   * pickup chime). Called when the level result is tallied so coins still
+   * flying toward the player are never lost.
+   */
+  bankAll(): void {
+    for (let i = this.active.length - 1; i >= 0; i -= 1) {
+      const pickup = this.active[i]!;
+      if (!pickup.alive) {
+        this.releaseAt(i);
+        continue;
+      }
+      if (pickup.kind === 'gold') {
+        events.emit('loot', { gold: pickup.goldValue });
+      } else if (pickup.materialId) {
+        events.emit('loot', { gold: 0, material: pickup.materialId });
+      }
+      this.releaseAt(i);
+    }
+  }
+
   releaseAll(): void {
     this.active.length = 0;
     this.pool.releaseAll();
