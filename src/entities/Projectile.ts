@@ -93,6 +93,9 @@ class ProjectileSlot implements FighterLike {
   private explodeRadius = 0;
   private sticky = false;
   private piercing = false;
+  private trailColor = 0;
+  private pullRadius = 0;
+  private pullStrength = 0;
   private stuck = false;
   private exploding = false;
   private explosionSubmitted = false;
@@ -156,6 +159,9 @@ class ProjectileSlot implements FighterLike {
     this.explodeRadius = def.explodeRadius ?? 0;
     this.sticky = def.sticky === true;
     this.piercing = def.piercing === true;
+    this.trailColor = def.trailColor ?? 0;
+    this.pullRadius = def.pull?.radius ?? 0;
+    this.pullStrength = def.pull?.strength ?? 0;
     this.stuck = false;
     this.exploding = false;
     this.explosionSubmitted = false;
@@ -213,6 +219,7 @@ class ProjectileSlot implements FighterLike {
     }
 
     this.updateHoming(dt, targets);
+    this.applyPull(dt, targets);
     this.body.vel.y += GRAVITY * this.gravityScale * dt;
     const prevX = this.body.pos.x;
     const prevY = this.body.pos.y;
@@ -227,13 +234,18 @@ class ProjectileSlot implements FighterLike {
       }
     }
 
-    if (this.visual === 'rocket' || this.visual === 'flame' || this.visual === 'shockwave') {
+    const wantsTrail =
+      this.visual === 'rocket' || this.visual === 'flame' || this.visual === 'shockwave' || this.trailColor > 0;
+    if (wantsTrail) {
       this.smokeTimer -= dt;
       if (this.smokeTimer <= 0) {
         this.smokeTimer = this.visual === 'rocket' ? 0.055 : 0.04;
-        // rocket: white smoke behind; flame: embers; shockwave: crackle sparks.
+        // rocket: white smoke; flame: embers; shockwave: crackle sparks;
+        // otherwise the data-driven trailColor (frost, void, electricity…).
         const trailColor =
-          this.visual === 'rocket' ? 0xffffff : this.visual === 'flame' ? 0xffa03c : 0xfff27a;
+          this.trailColor > 0
+            ? this.trailColor
+            : this.visual === 'rocket' ? 0xffffff : this.visual === 'flame' ? 0xffa03c : 0xfff27a;
         ctx.particles.directional(
           this.body.pos.x - Math.sign(this.body.vel.x || this.facing) * this.radius * 0.8,
           this.body.pos.y,
@@ -444,6 +456,26 @@ class ProjectileSlot implements FighterLike {
     this.attackDef.poseId = src.poseId;
     this.attackDef.projectile = src.projectile;
     this.attackDef.freezeTime = src.freezeTime;
+  }
+
+  /** Black-hole suction: drag opposing fighters toward the orb while it lives. */
+  private applyPull(dt: number, targets: readonly Fighter[]): void {
+    if (this.pullRadius <= 0) return;
+    const r2 = this.pullRadius * this.pullRadius;
+    for (let i = 0; i < targets.length; i += 1) {
+      const fighter = targets[i]!;
+      if (!fighter.alive || fighter.faction === this.faction || fighter.hitstopTimer > 0) continue;
+      const dx = this.body.pos.x - fighter.body.pos.x;
+      const dy = this.body.pos.y + this.body.height * 0.5 - (fighter.body.pos.y + fighter.body.height * 0.5);
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r2 || d2 < 0.01) continue;
+      const dist = Math.sqrt(d2);
+      // Stronger near the core, weight-resisted (bosses barely budge).
+      const falloff = 1 - dist / this.pullRadius;
+      const accel = this.pullStrength * falloff * (100 / fighter.weight);
+      fighter.body.vel.x += (dx / dist) * accel * dt;
+      fighter.body.vel.y += (dy / dist) * accel * dt * 0.55;
+    }
   }
 
   private setVisual(visual: ProjectileVisual, color: number): void {

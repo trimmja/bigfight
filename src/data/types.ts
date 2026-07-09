@@ -103,6 +103,10 @@ export interface ProjectileDef {
   homing?: number;
   /** If true, projectile pierces through fighters instead of despawning on hit. */
   piercing?: boolean;
+  /** Sparkle/ember trail in this color while flying. */
+  trailColor?: number;
+  /** Gravitational pull on opposing fighters while alive (black hole). */
+  pull?: { radius: number; strength: number };
 }
 
 export interface AttackDef {

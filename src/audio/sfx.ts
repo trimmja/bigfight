@@ -131,7 +131,66 @@ export class Sfx {
     if (normalized === 'slash') return this.shootSlash();
     if (normalized === 'flame') return this.shootFlame();
     if (normalized === 'shockwave') return this.shootThunder();
+    if (normalized === 'bolt') return this.shootZap();
+    if (normalized === 'freeze') return this.shootFreeze();
     return this.shootMagic();
+  }
+
+  /** Electric zap: buzzy sawtooth crackle diving down with noise fizz. */
+  private shootZap(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.18;
+    const saw = this.ctx.createOscillator();
+    const sawGain = this.ctx.createGain();
+    saw.type = 'sawtooth';
+    saw.frequency.setValueAtTime(1400, when);
+    saw.frequency.exponentialRampToValueAtTime(180, when + duration);
+    sawGain.gain.setValueAtTime(0.0001, when);
+    sawGain.gain.exponentialRampToValueAtTime(0.12, when + 0.008);
+    sawGain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    const fizz = this.createNoiseSource();
+    const fizzFilter = this.ctx.createBiquadFilter();
+    const fizzGain = this.ctx.createGain();
+    fizzFilter.type = 'highpass';
+    fizzFilter.frequency.setValueAtTime(3000, when);
+    fizzGain.gain.setValueAtTime(0.0001, when);
+    fizzGain.gain.exponentialRampToValueAtTime(0.07, when + 0.01);
+    fizzGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.12);
+    saw.connect(sawGain);
+    sawGain.connect(this.bus);
+    fizz.connect(fizzFilter);
+    fizzFilter.connect(fizzGain);
+    fizzGain.connect(this.bus);
+    this.cleanup([saw, fizz], [sawGain, fizzFilter, fizzGain]);
+    saw.start(when);
+    saw.stop(when + duration + TAIL_SECONDS);
+    fizz.start(when, Math.random() * 0.5);
+    fizz.stop(when + 0.14 + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Ice crystallize: three quick descending glassy chimes. */
+  private shootFreeze(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const freqs = [1980, 1480, 990];
+    for (let i = 0; i < freqs.length; i += 1) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const start = when + i * 0.05;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freqs[i]!, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.09, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+      osc.connect(gain);
+      gain.connect(this.bus);
+      this.cleanup([osc], [gain]);
+      osc.start(start);
+      osc.stop(start + 0.2 + TAIL_SECONDS);
+    }
+    return 0.3;
   }
 
   /** Airy "shwip" for sword slash waves: fast bandpass noise sweep upward. */

@@ -263,6 +263,10 @@ export class Fighter extends Entity {
 
   applyFreeze(seconds: number): void {
     if (seconds <= 0) return;
+    events.emit('shoot', {
+      kind: 'freeze',
+      pos: { x: this.body.pos.x, y: this.body.pos.y + this.body.height * 0.5 },
+    });
     this.freezeTimer = Math.max(this.freezeTimer, seconds);
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
