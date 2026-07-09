@@ -51,6 +51,8 @@ export class Fighter extends Entity {
   };
 
   damage = 0;
+  damageScale = 1;
+  kbImmune = false;
   facing: Facing = 1;
   state: FighterStateName = 'idle';
   stateTime = 0;
@@ -204,6 +206,8 @@ export class Fighter extends Entity {
 
   koReset(pos: Vec2): void {
     this.damage = 0;
+    this.damageScale = 1;
+    this.kbImmune = false;
     this.alive = true;
     this.group.visible = true;
     this.body.pos.x = pos.x;
@@ -233,6 +237,8 @@ export class Fighter extends Entity {
     this.stateTime = 0;
     this.currentAttack = null;
     this.comboQueued = false;
+    this.damageScale = 1;
+    this.kbImmune = false;
     this.body.vel.x = 0;
     this.body.vel.y = 0;
     this.body.noclip = true;

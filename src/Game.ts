@@ -7,8 +7,8 @@ import { loadSave, writeSave } from './core/save';
 import type { SaveData } from './data/types';
 import { InputManager } from './input/InputManager';
 import { Renderer } from './render/Renderer';
+import { goTitle } from './flow';
 import { ScreenManager } from './screens/ScreenManager';
-import { GameplayScreen } from './screens/GameplayScreen';
 
 /**
  * Composition root. Owns the loop and the service singletons; screens reach
@@ -33,6 +33,8 @@ export class Game {
     this.input = new InputManager();
     this.audio = new AudioEngine();
     this.audio.setMuted(this.save.settings.muted);
+    // Debug handle for console inspection (harmless in production).
+    (window as unknown as { bigfight: Game }).bigfight = this;
   }
 
   start(): void {
@@ -42,9 +44,7 @@ export class Game {
     });
     window.visualViewport?.addEventListener('resize', () => this.renderer.onResize());
 
-    // M3 slice: boot straight into a test fight (Volt on Neon Rooftop vs a
-    // training dummy). TitleScreen takes over in M5a.
-    this.screens.replace(new GameplayScreen({ characterId: 'volt', stageId: 'rooftop' }));
+    goTitle(this);
     this.stopLoop = startLoop(
       (dt) => {
         this.input.update();

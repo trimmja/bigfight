@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   COLOR_NEON_CYAN,
+  COLOR_NEON_GREEN,
   COLOR_NEON_PINK,
   COLOR_NEON_YELLOW,
   DEBUG,
@@ -8,18 +9,26 @@ import {
   RESPAWN_DELAY,
   TIMESTEP,
 } from '../config';
+import { resetMobAttackTokens } from '../ai/MobBrain';
+import { WaveSpawner } from '../ai/WaveSpawner';
 import type { ActiveHitbox, Rect } from '../combat/types';
 import { HitResolver } from '../combat/HitResolver';
 import { characterById } from '../data/characters';
+import { enemyById } from '../data/enemies';
+import { levelById } from '../data/levels';
 import { stageById } from '../data/stages';
-import type { Vec2 } from '../data/types';
+import type { LevelDef, MaterialId, Vec2 } from '../data/types';
 import type { Game } from '../Game';
+import { Hud } from '../ui/hud';
+import { DamageNumbers } from '../combat/DamageNumbers';
 import { Body } from '../physics/Body';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { CameraRig } from '../render/CameraRig';
 import { Particles } from '../render/Particles';
 import { Trails } from '../render/Trails';
 import { Fighter } from '../entities/Fighter';
+import { Mob } from '../entities/Mob';
+import { PickupManager } from '../entities/Pickup';
 import { Player } from '../entities/Player';
 import type { WorldCtx } from '../entities/Entity';
 import { buildStage, type BuiltStage } from '../stages/StageBuilder';
@@ -28,28 +37,59 @@ import type { Screen } from './Screen';
 type ParticleInternals = { points: THREE.Points };
 type TrailInternals = { pool: { mesh: THREE.Mesh; reset(): void }[] };
 
-const DUMMY_RESPAWN_DELAY = 1;
+export type LevelEndResult = {
+  won: boolean;
+  goldEarned: number;
+  materialsEarned: Partial<Record<MaterialId, number>>;
+  levelId: number;
+};
+
+export type GameplayScreenOptions = {
+  levelId?: number;
+  characterId: string;
+  stageId?: string;
+  weaponId?: string;
+  onLevelEnd?: (result: LevelEndResult) => void;
+  onPause?: () => void;
+};
+
 const DEBUG_HITBOX_SLOTS = 8;
+const DEBUG_BODY_SLOTS = 18;
+const CLEAR_BEAT_SECONDS = 2.2;
 
 export class GameplayScreen implements Screen {
-  private readonly opts: { characterId: string; stageId: string };
+  private readonly opts: GameplayScreenOptions;
+  private readonly level: LevelDef;
   private stage: BuiltStage | null = null;
   private player: Player | null = null;
-  private dummy: Fighter | null = null;
+  private hud: Hud | null = null;
+  private damageNumbers: DamageNumbers | null = null;
   private particles: Particles | null = null;
   private trails: Trails | null = null;
   private cameraRig: CameraRig | null = null;
   private hitResolver: HitResolver | null = null;
   private physics: PhysicsWorld | null = null;
   private ctx: WorldCtx | null = null;
+  private waveSpawner: WaveSpawner | null = null;
+  private pickupManager: PickupManager | null = null;
   private hitUnsub: (() => void) | null = null;
-  private readonly dummySpawn: Vec2 = { x: 4, y: 0 };
+  private lootUnsub: (() => void) | null = null;
+  private waveUnsub: (() => void) | null = null;
+
+  private readonly mobs: Mob[] = [];
   private readonly physicsBodies: Body[] = [];
   private readonly liveFighters: Fighter[] = [];
   private readonly cameraPoints: Vec2[] = [];
   private readonly debugSubmittedHitboxes: ActiveHitbox[] = [];
+  private readonly splitSpawnPos: Vec2 = { x: 0, y: 0 };
+  private readonly materialsEarned: Partial<Record<MaterialId, number>> = {};
+
   private playerRespawnTimer = 0;
-  private dummyRespawnTimer = 0;
+  private goldEarned = 0;
+  private levelEnding = false;
+  private levelWon = false;
+  private levelEndTimer = 0;
+  private levelEndSent = false;
   private fps = 60;
   private lastRenderMs = performance.now();
 
@@ -60,14 +100,15 @@ export class GameplayScreen implements Screen {
   private readonly debugMaterials: THREE.Material[] = [];
   private readonly debugGeometries: THREE.BufferGeometry[] = [];
 
-  constructor(opts: { characterId: string; stageId: string }) {
+  constructor(opts: GameplayScreenOptions) {
     this.opts = opts;
+    this.level = levelById(opts.levelId ?? 1);
   }
 
   enter(game: Game): void {
-    const stageDef = stageById(this.opts.stageId);
+    resetMobAttackTokens();
+    const stageDef = stageById(this.level.stageId);
     const playerDef = characterById(this.opts.characterId);
-    const dummyDef = characterById('grim');
 
     this.stage = buildStage(stageDef, game.renderer.scene);
     this.particles = new Particles(game.renderer.scene);
@@ -75,16 +116,16 @@ export class GameplayScreen implements Screen {
     this.cameraRig = new CameraRig(game.renderer.camera);
     this.hitResolver = new HitResolver();
     this.physics = new PhysicsWorld();
+    this.pickupManager = new PickupManager(game.renderer.scene);
 
     this.player = new Player(playerDef, game.input);
+    this.player.stocks = PLAYER_STOCKS;
     this.player.koReset(stageDef.playerSpawn);
     this.player.facing = 1;
-    this.dummy = new Fighter(dummyDef, 'enemy');
-    this.dummySpawn.x = 4;
-    this.dummySpawn.y = stageDef.enemySpawns[0]?.y ?? stageDef.playerSpawn.y;
-    this.dummy.koReset(this.dummySpawn);
-    this.dummy.facing = -1;
-    game.renderer.scene.add(this.player.group, this.dummy.group);
+    game.renderer.scene.add(this.player.group);
+
+    this.hud = new Hud();
+    this.damageNumbers = new DamageNumbers(game.renderer.scene);
 
     this.ctx = {
       particles: this.particles,
@@ -103,10 +144,25 @@ export class GameplayScreen implements Screen {
       },
     };
 
+    this.waveSpawner = new WaveSpawner(
+      this.level,
+      stageDef.enemySpawns,
+      (enemyId, pos) => {
+        this.spawnMob(game, enemyId, pos);
+      },
+      (pos) => this.telegraphSpawn(game, pos),
+    );
+    this.waveSpawner.onAllWavesCleared = () => this.beginLevelCleared(game);
+
     this.cameraRig.setBounds(stageDef.blast.left, stageDef.blast.right, stageDef.blast.bottom);
     this.hitUnsub = game.events.on('hit', ({ pos, damage, kb }) => {
       this.particles?.burst(pos.x, pos.y, COLOR_NEON_YELLOW, Math.min(28, 8 + damage * 3), 5 + kb * 0.22);
     });
+    this.lootUnsub = game.events.on('loot', ({ gold, material }) => {
+      this.goldEarned += gold;
+      if (material) this.materialsEarned[material] = (this.materialsEarned[material] ?? 0) + 1;
+    });
+    this.waveUnsub = game.events.on('waveCleared', () => this.pickupManager?.vacuumAll());
 
     if (DEBUG) this.createDebug(game);
     game.input.setTouchControlsVisible(true);
@@ -115,9 +171,19 @@ export class GameplayScreen implements Screen {
 
   exit(game: Game): void {
     this.hitUnsub?.();
+    this.lootUnsub?.();
+    this.waveUnsub?.();
     this.hitUnsub = null;
+    this.lootUnsub = null;
+    this.waveUnsub = null;
+    this.hud?.dispose();
+    this.hud = null;
+    this.damageNumbers?.dispose();
+    this.damageNumbers = null;
     this.player?.dispose();
-    this.dummy?.dispose();
+    for (let i = 0; i < this.mobs.length; i += 1) this.mobs[i]!.dispose();
+    this.mobs.length = 0;
+    this.pickupManager?.dispose();
     this.stage?.dispose();
     if (this.particles) disposeParticles(this.particles, game.renderer.scene);
     if (this.trails) disposeTrails(this.trails, game.renderer.scene);
@@ -125,55 +191,72 @@ export class GameplayScreen implements Screen {
     game.input.setTouchControlsVisible(false);
     this.stage = null;
     this.player = null;
-    this.dummy = null;
     this.particles = null;
     this.trails = null;
     this.cameraRig = null;
     this.hitResolver = null;
     this.physics = null;
     this.ctx = null;
+    this.waveSpawner = null;
+    this.pickupManager = null;
   }
 
   update(game: Game, dt: number): void {
     const player = this.player;
-    const dummy = this.dummy;
     const ctx = this.ctx;
     const stage = this.stage;
     const physics = this.physics;
     const hitResolver = this.hitResolver;
-    if (!player || !dummy || !ctx || !stage || !physics || !hitResolver || !this.particles || !this.trails) return;
+    const particles = this.particles;
+    const trails = this.trails;
+    const pickupManager = this.pickupManager;
+    if (!player || !ctx || !stage || !physics || !hitResolver || !particles || !trails || !pickupManager) return;
+
+    if (!this.levelEnding && game.input.state.pausePressed && this.opts.onPause) {
+      this.opts.onPause();
+      return;
+    }
 
     hitResolver.beginStep();
     this.debugSubmittedHitboxes.length = 0;
     this.updateRespawns(ctx, dt);
 
+    if (!this.levelEnding) {
+      this.waveSpawner?.setLiveMobCount(this.countAliveMobs());
+      this.waveSpawner?.update(dt);
+    }
+
     if (player.alive) player.update(ctx, dt);
-    if (dummy.alive) dummy.update(ctx, dt);
+    for (let i = 0; i < this.mobs.length; i += 1) {
+      const mob = this.mobs[i]!;
+      if (mob.alive) mob.update(ctx, dt);
+    }
 
     this.physicsBodies.length = 0;
     this.liveFighters.length = 0;
     this.collectLiveFighter(player);
-    this.collectLiveFighter(dummy);
+    for (let i = 0; i < this.mobs.length; i += 1) this.collectLiveFighter(this.mobs[i]!);
+    pickupManager.collectBodies(this.physicsBodies);
 
     physics.step(this.physicsBodies, stage.colliders, dt);
     for (let i = 0; i < this.liveFighters.length; i += 1) {
-      this.liveFighters[i]?.afterPhysics(ctx);
+      this.liveFighters[i]!.afterPhysics(ctx);
     }
 
     hitResolver.resolve(this.liveFighters);
 
+    if (player.alive) pickupManager.update(ctx, dt, player);
+
     this.checkBlast(game, player);
-    this.checkBlast(game, dummy);
+    for (let i = 0; i < this.mobs.length; i += 1) this.checkMobBlast(game, this.mobs[i]!);
 
-    this.cameraPoints.length = 0;
-    if (player.alive) this.cameraPoints.push(player.body.pos);
-    if (dummy.alive) this.cameraPoints.push(dummy.body.pos);
-    this.cameraRig?.follow(this.cameraPoints);
-    this.cameraRig?.setBounds(stage.def.blast.left, stage.def.blast.right, stage.def.blast.bottom);
-
-    this.particles.update(dt);
-    this.trails.update(dt);
+    this.updateCamera(stage);
+    particles.update(dt);
+    trails.update(dt);
+    this.damageNumbers?.update(dt);
+    if (this.player) this.hud?.set(this.player.damage, this.player.stocks);
     if (DEBUG) this.updateDebug(dt);
+    this.updateLevelEnd(game, dt);
   }
 
   render(_game: Game, _alpha: number): void {
@@ -181,8 +264,24 @@ export class GameplayScreen implements Screen {
     const dt = Math.max(0.0001, (now - this.lastRenderMs) / 1000);
     this.lastRenderMs = now;
     this.fps = 1 / dt;
-    // CameraRig smoothing runs in render so shake stays fluid between fixed steps.
     this.cameraRig?.update(TIMESTEP);
+  }
+
+  private spawnMob(game: Game, enemyId: string, pos: Vec2): Mob | null {
+    const player = this.player;
+    if (!player) return null;
+    const mob = new Mob(enemyById(enemyId));
+    mob.setTarget(player);
+    mob.koReset(pos);
+    mob.facing = mob.body.pos.x < player.body.pos.x ? 1 : -1;
+    this.mobs.push(mob);
+    game.renderer.scene.add(mob.group);
+    return mob;
+  }
+
+  private telegraphSpawn(game: Game, pos: Vec2): void {
+    this.particles?.directional(pos.x, pos.y + 0.1, 0, 1, COLOR_NEON_GREEN, 24, 4.2);
+    game.events.emit('ui', { kind: 'confirm' });
   }
 
   private collectLiveFighter(fighter: Fighter): void {
@@ -193,45 +292,155 @@ export class GameplayScreen implements Screen {
 
   private updateRespawns(ctx: WorldCtx, dt: number): void {
     const player = this.player;
-    const dummy = this.dummy;
-    if (player && !player.alive && this.playerRespawnTimer > 0) {
-      this.playerRespawnTimer = Math.max(0, this.playerRespawnTimer - dt);
-      if (this.playerRespawnTimer === 0) {
-        if (player.stocks <= 0) player.stocks = PLAYER_STOCKS;
-        player.respawn(ctx);
-      }
-    }
-    if (dummy && !dummy.alive && this.dummyRespawnTimer > 0) {
-      this.dummyRespawnTimer = Math.max(0, this.dummyRespawnTimer - dt);
-      if (this.dummyRespawnTimer === 0) {
-        dummy.koReset(this.dummySpawn);
-        dummy.facing = -1;
-      }
-    }
+    if (!player || player.alive || this.playerRespawnTimer <= 0 || this.levelEnding) return;
+    this.playerRespawnTimer = Math.max(0, this.playerRespawnTimer - dt);
+    if (this.playerRespawnTimer === 0 && player.stocks > 0) player.respawn(ctx);
   }
 
   private checkBlast(game: Game, fighter: Fighter): void {
     const stage = this.stage;
     const particles = this.particles;
-    if (!stage || !particles || !fighter.alive) return;
+    if (!stage || !particles || !fighter.alive || this.levelEnding) return;
     const x = fighter.body.pos.x;
     const y = fighter.body.pos.y + fighter.body.height * 0.5;
     const blast = stage.def.blast;
     if (x >= blast.left && x <= blast.right && y >= blast.bottom && y <= blast.top) return;
 
-    const isPlayer = fighter === this.player;
     const pos = { x, y };
-    game.events.emit('ko', { pos, isPlayer, color: fighter.def.palette.glow });
+    game.events.emit('ko', { pos, isPlayer: true, color: fighter.def.palette.glow });
     game.events.emit('screenShake', { amount: 1.35 });
     particles.koExplosion(x, y, fighter.def.palette.glow);
     fighter.beginKo();
 
-    if (isPlayer && this.player) {
+    if (this.player) {
       this.player.stocks -= 1;
-      this.playerRespawnTimer = RESPAWN_DELAY;
-    } else {
-      this.dummyRespawnTimer = DUMMY_RESPAWN_DELAY;
+      if (this.player.stocks <= 0) {
+        this.beginLevelFailed(game);
+      } else {
+        this.playerRespawnTimer = RESPAWN_DELAY;
+      }
     }
+  }
+
+  private checkMobBlast(game: Game, mob: Mob): void {
+    const stage = this.stage;
+    const particles = this.particles;
+    const pickupManager = this.pickupManager;
+    if (!stage || !particles || !pickupManager || !mob.alive || this.levelEnding) return;
+    const x = mob.body.pos.x;
+    const y = mob.body.pos.y + mob.body.height * 0.5;
+    const blast = stage.def.blast;
+    if (x >= blast.left && x <= blast.right && y >= blast.bottom && y <= blast.top) return;
+
+    const pos = { x, y };
+    game.events.emit('ko', { pos, isPlayer: false, color: mob.def.palette.glow });
+    game.events.emit('screenShake', { amount: 1.1 });
+    particles.koExplosion(x, y, mob.def.palette.glow);
+    // Launched mobs die OUTSIDE the stage — rain their loot down onto the
+    // widest platform instead so it's always collectible.
+    let plat = stage.def.platforms[0]!;
+    for (const p of stage.def.platforms) if (p.w > plat.w) plat = p;
+    const dropX = Math.min(plat.x + plat.w * 0.5 - 1, Math.max(plat.x - plat.w * 0.5 + 1, x));
+    pickupManager.spawnDrops(mob.enemyDef, dropX, plat.y + 5);
+    mob.beginKo();
+
+    if (mob.enemyDef.splitsInto) {
+      const count = mob.enemyDef.splitsInto;
+      particles.burst(x, y, mob.enemyDef.palette.core, 18, 5);
+      for (let i = 0; i < count; i += 1) {
+        this.splitSpawnPos.x = mob.body.pos.x + (i - (count - 1) * 0.5) * 0.45;
+        this.splitSpawnPos.y = mob.body.pos.y + 0.25;
+        const child = this.spawnMob(game, 'slimeSmall', this.splitSpawnPos);
+        if (child) {
+          child.body.vel.x = (i % 2 === 0 ? -1 : 1) * (2.4 + Math.random() * 1.2);
+          child.body.vel.y = 6 + Math.random() * 1.4;
+          child.body.grounded = false;
+        }
+      }
+    }
+  }
+
+  private beginLevelCleared(game: Game): void {
+    if (this.levelEnding) return;
+    this.levelEnding = true;
+    this.levelWon = true;
+    this.levelEndTimer = CLEAR_BEAT_SECONDS;
+    this.pickupManager?.vacuumAll();
+    game.events.emit('levelCleared', { levelId: this.level.id });
+    game.events.emit('music', { mood: 'victory' });
+  }
+
+  private beginLevelFailed(game: Game): void {
+    if (this.levelEnding) return;
+    this.levelEnding = true;
+    this.levelWon = false;
+    this.levelEndTimer = 0;
+    game.events.emit('levelFailed', { levelId: this.level.id });
+    game.events.emit('music', { mood: 'defeat' });
+  }
+
+  private updateLevelEnd(game: Game, dt: number): void {
+    if (!this.levelEnding || this.levelEndSent) return;
+    if (this.levelEndTimer > 0) {
+      this.levelEndTimer = Math.max(0, this.levelEndTimer - dt);
+      if (this.levelEndTimer > 0) return;
+    }
+    this.levelEndSent = true;
+    // Winning pays the level's gold bounty on top of whatever loot dropped.
+    const bounty = this.levelWon ? this.level.goldReward : 0;
+    const result: LevelEndResult = {
+      won: this.levelWon,
+      goldEarned: this.goldEarned + bounty,
+      materialsEarned: { ...this.materialsEarned },
+      levelId: this.level.id,
+    };
+    if (this.opts.onLevelEnd) {
+      this.opts.onLevelEnd(result);
+      return;
+    }
+    game.screens.replace(new GameplayScreen({ characterId: this.opts.characterId, levelId: result.levelId }));
+  }
+
+  private updateCamera(stage: BuiltStage): void {
+    const player = this.player;
+    if (!player) return;
+    this.cameraPoints.length = 0;
+    if (player.alive) this.cameraPoints.push(player.body.pos);
+
+    let bestA: Mob | null = null;
+    let bestB: Mob | null = null;
+    let bestAD = Number.POSITIVE_INFINITY;
+    let bestBD = Number.POSITIVE_INFINITY;
+    const px = player.body.pos.x;
+    const py = player.body.pos.y;
+    for (let i = 0; i < this.mobs.length; i += 1) {
+      const mob = this.mobs[i]!;
+      if (!mob.alive) continue;
+      const dx = mob.body.pos.x - px;
+      const dy = mob.body.pos.y - py;
+      const d = dx * dx + dy * dy;
+      if (d < bestAD) {
+        bestB = bestA;
+        bestBD = bestAD;
+        bestA = mob;
+        bestAD = d;
+      } else if (d < bestBD) {
+        bestB = mob;
+        bestBD = d;
+      }
+    }
+    if (bestA) this.cameraPoints.push(bestA.body.pos);
+    if (bestB) this.cameraPoints.push(bestB.body.pos);
+    this.cameraRig?.follow(this.cameraPoints);
+    this.cameraRig?.setBounds(stage.def.blast.left, stage.def.blast.right, stage.def.blast.bottom);
+  }
+
+  private countAliveMobs(): number {
+    let count = 0;
+    for (let i = 0; i < this.mobs.length; i += 1) {
+      if (this.mobs[i]!.alive) count += 1;
+    }
+    return count;
   }
 
   private createDebug(game: Game): void {
@@ -244,7 +453,7 @@ export class GameplayScreen implements Screen {
 
     this.debugGroup = new THREE.Group();
     game.renderer.scene.add(this.debugGroup);
-    for (let i = 0; i < 2; i += 1) {
+    for (let i = 0; i < DEBUG_BODY_SLOTS; i += 1) {
       this.debugBodyLines.push(this.createLineBox(COLOR_NEON_CYAN));
     }
     for (let i = 0; i < DEBUG_HITBOX_SLOTS; i += 1) {
@@ -274,16 +483,37 @@ export class GameplayScreen implements Screen {
 
   private updateDebug(dt: number): void {
     const player = this.player;
-    const dummy = this.dummy;
-    if (!player || !dummy || !this.debugPanel) return;
+    if (!player || !this.debugPanel) return;
+    const aliveMobs = this.countAliveMobs();
+    let states = '';
+    let shown = 0;
+    for (let i = 0; i < this.mobs.length && shown < 6; i += 1) {
+      const mob = this.mobs[i]!;
+      if (!mob.alive) continue;
+      states += `${shown === 0 ? '' : ' | '}${mob.enemyDef.id}:${mob.brainState}${mob.isBlocking ? ':block' : ''}`;
+      shown += 1;
+    }
+    if (states.length === 0) states = 'none';
     this.debugPanel.textContent =
       `P ${player.state} ${player.damage.toFixed(0)}% stocks:${player.stocks}\n` +
       `vel ${player.body.vel.x.toFixed(2)}, ${player.body.vel.y.toFixed(2)} grounded:${player.body.grounded}\n` +
-      `D ${dummy.state} ${dummy.damage.toFixed(0)}%\n` +
+      `wave ${this.waveSpawner?.currentWaveNumber ?? 0}/${this.waveSpawner?.totalWaves ?? 0} pending:${this.waveSpawner?.pendingSpawns ?? 0}\n` +
+      `mobs ${aliveMobs}/${this.mobs.length} ${states}\n` +
+      `loot gold:${this.goldEarned}\n` +
       `FPS ${this.fps.toFixed(0)} step ${(dt * 1000).toFixed(1)}ms`;
 
     this.updateBodyLine(0, player);
-    this.updateBodyLine(1, dummy);
+    let lineIndex = 1;
+    for (let i = 0; i < this.mobs.length && lineIndex < this.debugBodyLines.length; i += 1) {
+      const mob = this.mobs[i]!;
+      if (!mob.alive) continue;
+      this.updateBodyLine(lineIndex, mob);
+      lineIndex += 1;
+    }
+    for (; lineIndex < this.debugBodyLines.length; lineIndex += 1) {
+      const line = this.debugBodyLines[lineIndex];
+      if (line) line.visible = false;
+    }
     for (let i = 0; i < this.debugHitboxLines.length; i += 1) {
       const line = this.debugHitboxLines[i];
       if (!line) continue;
@@ -303,7 +533,7 @@ export class GameplayScreen implements Screen {
       line.visible = false;
       return;
     }
-    updateLineBox(line, bodyRect(fighter.body), 0.25);
+    updateLineBoxFromBody(line, fighter.body, 0.25);
   }
 
   private destroyDebug(): void {
@@ -311,8 +541,8 @@ export class GameplayScreen implements Screen {
     this.debugPanel = null;
     this.debugGroup?.parent?.remove(this.debugGroup);
     this.debugGroup = null;
-    for (const geometry of this.debugGeometries) geometry.dispose();
-    for (const material of this.debugMaterials) material.dispose();
+    for (let i = 0; i < this.debugGeometries.length; i += 1) this.debugGeometries[i]!.dispose();
+    for (let i = 0; i < this.debugMaterials.length; i += 1) this.debugMaterials[i]!.dispose();
     this.debugGeometries.length = 0;
     this.debugMaterials.length = 0;
     this.debugBodyLines.length = 0;
@@ -320,13 +550,35 @@ export class GameplayScreen implements Screen {
   }
 }
 
-function bodyRect(body: Body): Rect {
-  return {
-    minX: body.minX,
-    maxX: body.maxX,
-    minY: body.minY,
-    maxY: body.maxY,
-  };
+function updateLineBoxFromBody(line: THREE.LineSegments, body: Body, z: number): void {
+  const attr = line.geometry.getAttribute('position') as THREE.BufferAttribute;
+  const pos = attr.array as Float32Array;
+  pos[0] = body.minX;
+  pos[1] = body.minY;
+  pos[2] = z;
+  pos[3] = body.maxX;
+  pos[4] = body.minY;
+  pos[5] = z;
+  pos[6] = body.maxX;
+  pos[7] = body.minY;
+  pos[8] = z;
+  pos[9] = body.maxX;
+  pos[10] = body.maxY;
+  pos[11] = z;
+  pos[12] = body.maxX;
+  pos[13] = body.maxY;
+  pos[14] = z;
+  pos[15] = body.minX;
+  pos[16] = body.maxY;
+  pos[17] = z;
+  pos[18] = body.minX;
+  pos[19] = body.maxY;
+  pos[20] = z;
+  pos[21] = body.minX;
+  pos[22] = body.minY;
+  pos[23] = z;
+  attr.needsUpdate = true;
+  line.visible = true;
 }
 
 function updateLineBox(line: THREE.LineSegments, rect: Rect, z: number): void {
@@ -369,7 +621,8 @@ function disposeParticles(particles: Particles, scene: THREE.Scene): void {
 
 function disposeTrails(trails: Trails, scene: THREE.Scene): void {
   const pool = (trails as unknown as TrailInternals).pool;
-  for (const trail of pool) {
+  for (let i = 0; i < pool.length; i += 1) {
+    const trail = pool[i]!;
     trail.reset();
     scene.remove(trail.mesh);
     trail.mesh.geometry.dispose();
@@ -379,7 +632,7 @@ function disposeTrails(trails: Trails, scene: THREE.Scene): void {
 
 function disposeMaterial(material: THREE.Material | THREE.Material[]): void {
   if (Array.isArray(material)) {
-    for (const item of material) item.dispose();
+    for (let i = 0; i < material.length; i += 1) material[i]!.dispose();
   } else {
     material.dispose();
   }

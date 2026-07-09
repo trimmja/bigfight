@@ -65,7 +65,7 @@ export class MarketScreen implements Screen {
 
   private refresh(game: Game): void {
     const save = game.save;
-    if (this.goldEl) this.goldEl.textContent = `🪙 ${save.gold}`;
+    if (this.goldEl) this.goldEl.textContent = `💰 ${save.gold}`;
     if (this.matsEl) {
       this.matsEl.replaceChildren();
       for (const [id, icon] of Object.entries(MATERIAL_ICONS) as [MaterialId, string][]) {
@@ -115,7 +115,7 @@ export class MarketScreen implements Screen {
         const row = el('div', 'bf-market-row', list);
         el('div', 'bf-market-name', row).textContent = def.name;
         el('div', 'bf-market-sub', row).textContent = def.tagline;
-        el('div', 'bf-market-cost', row).textContent = `🪙 ${cost}`;
+        el('div', 'bf-market-cost', row).textContent = `💰 ${cost}`;
         const buyBtn = button(
           owned ? 'OWNED ✓' : 'BUY',
           () => {
@@ -138,7 +138,7 @@ export class MarketScreen implements Screen {
         const row = el('div', 'bf-market-row', list);
         el('div', 'bf-market-name', row).textContent = sidekick.name;
         el('div', 'bf-market-sub', row).textContent = sidekick.tagline;
-        el('div', 'bf-market-cost', row).textContent = owned ? '' : `🪙 ${sidekick.goldCost}`;
+        el('div', 'bf-market-cost', row).textContent = owned ? '' : `💰 ${sidekick.goldCost}`;
         const label = equipped ? 'EQUIPPED ✓' : owned ? 'EQUIP' : 'BUY';
         const buyBtn = button(
           label,

@@ -57,7 +57,7 @@ export class CharacterSelectScreen implements Screen {
       el('span', 'bf-card-name', card).textContent = unlocked ? def.name : '???';
       if (!unlocked) {
         el('span', 'bf-card-lock', card).textContent =
-          def.unlock.type === 'level' ? `Beat level ${def.unlock.level}` : `🪙 in Market`;
+          def.unlock.type === 'level' ? `Beat level ${def.unlock.level}` : `💰 in Market`;
       }
       card.disabled = !unlocked;
       card.addEventListener('click', () => this.select(game, def.id, true));
@@ -117,7 +117,7 @@ export class CharacterSelectScreen implements Screen {
       this.preview.dispose();
     }
     this.preview = new FighterRig({ palette: def.palette, proportions: def.proportions });
-    this.preview.root.position.set(3.2, -3.4, 10);
+    this.preview.root.position.set(3.4, -1.2, 10);
     this.preview.setShadow(null, 0);
     this.previewGroup.add(this.preview.root);
   }

@@ -25,7 +25,7 @@ export class LevelMapScreen implements Screen {
     const header = el('div', 'bf-map-header', this.root);
     el('h1', 'bf-map-title', header).textContent = 'CAMPAIGN';
     const gold = el('div', 'bf-gold-chip', header);
-    gold.textContent = `🪙 ${game.save.gold}`;
+    gold.textContent = `💰 ${game.save.gold}`;
     button('⚙', () => this.callbacks.onSettings(), 'bf-button bf-button-round', header);
 
     const path = el('div', 'bf-map-path', this.root);

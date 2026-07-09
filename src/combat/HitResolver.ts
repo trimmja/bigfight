@@ -11,6 +11,7 @@ import { computeKnockback, hitstunFor, launchVelocity, resolveAngleDeg } from '.
 import type { ActiveHitbox, FighterLike, Rect } from './types';
 
 const hitboxes: ActiveHitbox[] = [];
+type ScaledVictim = FighterLike & { damageScale?: number; kbImmune?: boolean };
 
 export class HitResolver {
   beginStep(): void {
@@ -39,7 +40,11 @@ export class HitResolver {
         if (!overlaps(attackRect, victimRect)) continue;
 
         hitbox.alreadyHit.add(victim);
-        victim.damage += hitbox.def.damage;
+        const scaledVictim = victim as ScaledVictim;
+        const damageScale = scaledVictim.damageScale ?? 1;
+        const kbImmune = scaledVictim.kbImmune === true;
+        const damage = hitbox.def.damage * damageScale;
+        victim.damage += damage;
 
         const kb = computeKnockback(
           hitbox.def,
@@ -48,12 +53,15 @@ export class HitResolver {
           victim.weight,
         );
         const angleDeg = resolveAngleDeg(hitbox.def, kb);
-        launchVelocity(victim.body.vel, kb, angleDeg, hitbox.attacker.facing, victim.diY);
+        if (!kbImmune) {
+          launchVelocity(victim.body.vel, kb, angleDeg, hitbox.attacker.facing, victim.diY);
+        }
 
-        const hitstun = hitstunFor(kb);
-        const launched = kb > LAUNCH_THRESHOLD;
+        const effectiveKb = kbImmune ? 0 : kb;
+        const hitstun = hitstunFor(effectiveKb);
+        const launched = effectiveKb > LAUNCH_THRESHOLD;
         const hitstop = clamp(
-          HITSTOP_BASE + hitbox.def.damage * HITSTOP_PER_DAMAGE,
+          HITSTOP_BASE + damage * HITSTOP_PER_DAMAGE,
           0,
           HITSTOP_MAX,
         );
@@ -64,17 +72,17 @@ export class HitResolver {
         const y = overlapCenter(attackRect.minY, attackRect.maxY, victimRect.minY, victimRect.maxY);
         events.emit('hit', {
           pos: { x, y },
-          damage: hitbox.def.damage,
-          kb,
+          damage,
+          kb: effectiveKb,
           victimIsPlayer: victim.faction === 'player',
         });
-        if (kb > 10) {
-          events.emit('screenShake', { amount: kb * 0.02 });
+        if (effectiveKb > 10) {
+          events.emit('screenShake', { amount: effectiveKb * 0.02 });
         }
 
         const result = {
-          damage: hitbox.def.damage,
-          kb,
+          damage,
+          kb: effectiveKb,
           angleRad: Math.atan2(victim.body.vel.y, victim.body.vel.x) || degToRad(angleDeg),
           hitstun,
           launched,
