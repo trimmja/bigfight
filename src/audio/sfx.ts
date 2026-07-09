@@ -128,7 +128,109 @@ export class Sfx {
     if (normalized === 'laser') return this.shootLaser();
     if (normalized === 'rocket' || normalized === 'bomb') return this.shootWhoosh();
     if (normalized === 'feather') return this.shootFeather();
+    if (normalized === 'slash') return this.shootSlash();
+    if (normalized === 'flame') return this.shootFlame();
+    if (normalized === 'shockwave') return this.shootThunder();
     return this.shootMagic();
+  }
+
+  /** Airy "shwip" for sword slash waves: fast bandpass noise sweep upward. */
+  private shootSlash(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.14;
+    const noise = this.createNoiseSource();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    filter.type = 'bandpass';
+    filter.Q.setValueAtTime(1.6, when);
+    filter.frequency.setValueAtTime(900, when);
+    filter.frequency.exponentialRampToValueAtTime(4200, when + duration);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(0.11, when + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([noise], [filter, gain]);
+    noise.start(when, Math.random() * 0.5);
+    noise.stop(when + duration + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Fire whoosh: rising filtered roar with a crackle tail. */
+  private shootFlame(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.4;
+    const noise = this.createNoiseSource();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    filter.type = 'bandpass';
+    filter.Q.setValueAtTime(0.9, when);
+    filter.frequency.setValueAtTime(320, when);
+    filter.frequency.exponentialRampToValueAtTime(1500, when + duration * 0.6);
+    filter.frequency.exponentialRampToValueAtTime(700, when + duration);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(0.16, when + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([noise], [filter, gain]);
+    noise.start(when, Math.random() * 0.4);
+    noise.stop(when + duration + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Thunder crack for hammer shockwaves: instant snap + deep rolling boom. */
+  private shootThunder(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.55;
+    // Snap: short bright noise burst.
+    const snap = this.createNoiseSource();
+    const snapFilter = this.ctx.createBiquadFilter();
+    const snapGain = this.ctx.createGain();
+    snapFilter.type = 'highpass';
+    snapFilter.frequency.setValueAtTime(2400, when);
+    snapGain.gain.setValueAtTime(0.0001, when);
+    snapGain.gain.exponentialRampToValueAtTime(0.2, when + 0.006);
+    snapGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.08);
+    snap.connect(snapFilter);
+    snapFilter.connect(snapGain);
+    snapGain.connect(this.bus);
+    // Boom: low rumble sweeping down + sub thump.
+    const boom = this.createNoiseSource();
+    const boomFilter = this.ctx.createBiquadFilter();
+    const boomGain = this.ctx.createGain();
+    boomFilter.type = 'lowpass';
+    boomFilter.frequency.setValueAtTime(900, when);
+    boomFilter.frequency.exponentialRampToValueAtTime(120, when + duration);
+    boomGain.gain.setValueAtTime(0.0001, when);
+    boomGain.gain.exponentialRampToValueAtTime(0.22, when + 0.03);
+    boomGain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    boom.connect(boomFilter);
+    boomFilter.connect(boomGain);
+    boomGain.connect(this.bus);
+    const sub = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(70, when);
+    sub.frequency.exponentialRampToValueAtTime(38, when + 0.3);
+    subGain.gain.setValueAtTime(0.0001, when);
+    subGain.gain.exponentialRampToValueAtTime(0.24, when + 0.02);
+    subGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.35);
+    sub.connect(subGain);
+    subGain.connect(this.bus);
+    this.cleanup([snap, boom, sub], [snapFilter, snapGain, boomFilter, boomGain, subGain]);
+    snap.start(when, Math.random() * 0.5);
+    snap.stop(when + 0.1 + TAIL_SECONDS);
+    boom.start(when, Math.random() * 0.3);
+    boom.stop(when + duration + TAIL_SECONDS);
+    sub.start(when);
+    sub.stop(when + 0.4 + TAIL_SECONDS);
+    return duration;
   }
 
   /**

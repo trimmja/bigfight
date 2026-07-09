@@ -92,6 +92,7 @@ export class Fighter extends Entity {
   private weaponModel: THREE.Group | null = null;
   private currentAttackIsWeapon = false;
   private projectileFired = false;
+  private slashWaveFired = false;
   private comboResetTimer = 0;
   private wasGroundedForStep = false;
   private hitFlashTimer = 0;
@@ -239,6 +240,7 @@ export class Fighter extends Entity {
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
     this.projectileFired = false;
+    this.slashWaveFired = false;
     this.comboQueued = false;
     this.comboResetTimer = 0;
     this.body.fastFalling = false;
@@ -265,6 +267,7 @@ export class Fighter extends Entity {
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
     this.projectileFired = false;
+    this.slashWaveFired = false;
     this.comboQueued = false;
     this.body.fastFalling = false;
     this.body.vel.x *= 0.15;
@@ -306,6 +309,7 @@ export class Fighter extends Entity {
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
     this.projectileFired = false;
+    this.slashWaveFired = false;
     this.comboQueued = false;
     this.comboIndex = 0;
     this.comboResetTimer = 0;
@@ -323,6 +327,7 @@ export class Fighter extends Entity {
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
     this.projectileFired = false;
+    this.slashWaveFired = false;
     this.comboQueued = false;
     this.damageScale = 1;
     this.kbImmune = false;
@@ -396,6 +401,36 @@ export class Fighter extends Entity {
     } else if (!attack.projectile && this.attackPhaseTime >= activeStart && this.attackPhaseTime < activeEnd) {
       this.activeHitbox.def = attack;
       ctx.requestHitbox(this.activeHitbox);
+    }
+    // Melee weapon signature effect (slash wave / hammer lightning): fired
+    // once at the active frame alongside the blade hitbox — the wave carries
+    // its own weaker AttackDef, so point-blank hits harder than the wave.
+    const wave = this.currentAttackIsWeapon ? this.equippedWeapon?.slashWave : undefined;
+    if (wave && activeOrLater && !this.slashWaveFired) {
+      this.slashWaveFired = true;
+      const spawnY = this.body.pos.y + this.body.height * 0.55;
+      const spawnOff = this.body.halfW + wave.projectile.radius + 0.3;
+      ctx.fireProjectile(
+        wave.projectile,
+        wave.attack,
+        this.body.pos.x + this.facing * spawnOff,
+        spawnY,
+        this.facing,
+        this.faction,
+        this.power,
+      );
+      if (wave.bothDirections) {
+        ctx.fireProjectile(
+          wave.projectile,
+          wave.attack,
+          this.body.pos.x - this.facing * spawnOff,
+          spawnY,
+          (this.facing * -1) as Facing,
+          this.faction,
+          this.power,
+        );
+      }
+      // (ProjectileManager.fire emits the 'shoot' sfx event per wave.)
     }
     if (this.attackPhaseTime >= total) {
       if (!this.currentAttackIsWeapon && this.comboQueued && this.comboIndex < 2) {
@@ -490,6 +525,7 @@ export class Fighter extends Entity {
     this.currentAttack = attack;
     this.currentAttackIsWeapon = false;
     this.projectileFired = false;
+    this.slashWaveFired = false;
     this.attackPhaseTime = 0;
     this.stateTime = 0;
     this.state = 'attack';
@@ -502,6 +538,7 @@ export class Fighter extends Entity {
     this.currentAttack = weapon.ability;
     this.currentAttackIsWeapon = true;
     this.projectileFired = false;
+    this.slashWaveFired = false;
     this.attackPhaseTime = 0;
     this.stateTime = 0;
     this.state = 'weaponAbility';
@@ -515,6 +552,7 @@ export class Fighter extends Entity {
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
     this.projectileFired = false;
+    this.slashWaveFired = false;
     this.comboQueued = false;
     this.attackPhaseTime = 0;
     this.comboResetTimer = wasWeapon ? this.comboResetTimer : ATTACK_CHAIN_RESET;

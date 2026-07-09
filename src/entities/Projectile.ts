@@ -36,6 +36,8 @@ const VISUALS: readonly ProjectileVisual[] = [
   'wave',
   'feather',
   'shockwave',
+  'slash',
+  'flame',
 ];
 const STICKY_TRIGGER_RADIUS = 1.2;
 const STICKY_TRIGGER_RADIUS_SQ = STICKY_TRIGGER_RADIUS * STICKY_TRIGGER_RADIUS;
@@ -225,18 +227,21 @@ class ProjectileSlot implements FighterLike {
       }
     }
 
-    if (this.visual === 'rocket') {
+    if (this.visual === 'rocket' || this.visual === 'flame' || this.visual === 'shockwave') {
       this.smokeTimer -= dt;
       if (this.smokeTimer <= 0) {
-        this.smokeTimer = 0.055;
+        this.smokeTimer = this.visual === 'rocket' ? 0.055 : 0.04;
+        // rocket: white smoke behind; flame: embers; shockwave: crackle sparks.
+        const trailColor =
+          this.visual === 'rocket' ? 0xffffff : this.visual === 'flame' ? 0xffa03c : 0xfff27a;
         ctx.particles.directional(
           this.body.pos.x - Math.sign(this.body.vel.x || this.facing) * this.radius * 0.8,
           this.body.pos.y,
           -Math.sign(this.body.vel.x || this.facing),
-          0.2,
-          0xffffff,
+          this.visual === 'shockwave' ? 0.9 : 0.2,
+          trailColor,
           4,
-          1.6,
+          this.visual === 'flame' ? 2.4 : 1.6,
         );
       }
     }
@@ -535,6 +540,29 @@ class ProjectileSlot implements FighterLike {
     const ring = new THREE.Mesh(TORUS, this.primaryMat);
     ring.rotation.x = Math.PI / 2;
     visuals.shockwave.add(ring);
+
+    // Sword slash: a tall crescent trailing edge, white-hot inner arc.
+    const slashOuter = new THREE.Mesh(ARC, this.primaryMat);
+    slashOuter.scale.set(0.5, 0.9, 0.16);
+    slashOuter.rotation.z = -Math.PI / 2;
+    const slashInner = new THREE.Mesh(ARC, this.whiteMat);
+    slashInner.scale.set(0.36, 0.66, 0.1);
+    slashInner.rotation.z = -Math.PI / 2;
+    slashInner.position.x = 0.04;
+    visuals.slash.add(slashOuter, slashInner);
+
+    // Rolling flame: chunky fire cones with a white-hot core.
+    const flameBody = new THREE.Mesh(CONE, this.primaryMat);
+    flameBody.scale.set(0.42, 0.62, 0.42);
+    flameBody.rotation.z = -Math.PI / 2;
+    const flameCore = new THREE.Mesh(CONE, this.whiteMat);
+    flameCore.scale.set(0.22, 0.4, 0.22);
+    flameCore.rotation.z = -Math.PI / 2;
+    flameCore.position.x = 0.12;
+    const flameTail = new THREE.Mesh(SPHERE, this.primaryMat);
+    flameTail.scale.set(0.3, 0.34, 0.3);
+    flameTail.position.x = -0.28;
+    visuals.flame.add(flameBody, flameCore, flameTail);
 
     return visuals;
   }

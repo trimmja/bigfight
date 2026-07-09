@@ -89,7 +89,9 @@ export interface ProjectileDef {
     | 'bolt'
     | 'wave'
     | 'feather'
-    | 'shockwave';
+    | 'shockwave'
+    | 'slash'
+    | 'flame';
   color: number;
   /** If set, projectile has a hurtbox and can be destroyed by attacks (ghost lasers). */
   hp?: number;
@@ -194,6 +196,17 @@ export interface WeaponDef {
   color: number;
   /** true for the two starting weapons. */
   starter?: boolean;
+  /**
+   * Melee signature effect: fired at the ability's active frame IN ADDITION
+   * to the melee hitbox. The blade hit uses the ability's full damage; this
+   * wave carries its own (weaker) AttackDef — close range hits harder.
+   */
+  slashWave?: {
+    projectile: ProjectileDef;
+    attack: AttackDef;
+    /** Fire one wave each way (ground-slam shockwaves). */
+    bothDirections?: boolean;
+  };
 }
 
 // ---------------------------------------------------------------------------
