@@ -279,14 +279,16 @@ function buildC(rig: MockRig, chr: CharId): void {
     // Tail with spike.
     const tail = box(j.hips, dark, 0.5, 0.12, 0.12, -0.4, -0.05, 0, 0, 0.5);
     cone(tail, bone, 0.8, 1.2, -0.62, 0.4, 0, 0, -1.2);
-    // Smaller head, big jaw, heavy horns.
-    j.head.position.y = 0.92;
-    ball(j.head, body, 0.26, 0.24, 0.26, 0.04, 0, 0);
-    box(j.head, dark, 0.3, 0.12, 0.32, 0.1, -0.12, 0);
-    for (const zz of [-0.1, 0.1]) cone(j.head, bone, 0.035, 0.09, 0.22, -0.05, zz);
-    for (const zz of [-0.12, 0.12]) ball(j.head, accent, 0.045, 0.05, 0.035, 0.24, 0.06, zz);
-    cone(j.head, bone, 0.08, 0.3, -0.06, 0.2, -0.2, 0.5, 0.7);
-    cone(j.head, bone, 0.08, 0.3, -0.06, 0.2, 0.2, -0.5, 0.7);
+    // Head held clear ABOVE the chest on a thick neck, big jaw, heavy horns.
+    ball(j.torso, dark, 0.16, 0.18, 0.16, 0.06, 0.92, 0); // neck
+    j.head.position.y = 1.18;
+    j.head.position.x = 0.1;
+    ball(j.head, body, 0.28, 0.26, 0.28, 0.04, 0, 0);
+    box(j.head, dark, 0.32, 0.13, 0.36, 0.14, -0.14, 0);
+    for (const zz of [-0.11, 0.11]) cone(j.head, bone, 0.04, 0.1, 0.26, -0.05, zz);
+    for (const zz of [-0.13, 0.13]) ball(j.head, accent, 0.05, 0.055, 0.04, 0.26, 0.08, zz);
+    cone(j.head, bone, 0.09, 0.32, -0.06, 0.22, -0.22, 0.5, 0.7);
+    cone(j.head, bone, 0.09, 0.32, -0.06, 0.22, 0.22, -0.5, 0.7);
     // Muscle arms bigger than legs.
     limb(j.armL, j.foreArmL, dark, body, 0.16, 0.5, 0.48, 1.7, true);
     limb(j.armR, j.foreArmR, dark, body, 0.16, 0.5, 0.48, 1.7, true);
