@@ -34,8 +34,12 @@ export class TouchInput {
   private readonly onRootPointerDown = (event: PointerEvent): void => {
     event.preventDefault();
     this.interactionQueued = true;
-    if (this.stickPointerId !== null || event.clientX > window.innerWidth * 0.55) return;
+    if (event.clientX > window.innerWidth * 0.55) return;
 
+    // A fresh finger on the stick zone ALWAYS takes over the stick. iOS can
+    // drop pointerup during rapid multi-touch, which would otherwise leave the
+    // stick owned by a dead pointer forever.
+    if (this.stickPointerId !== null) this.releasePointer(this.stickPointerId);
     this.stickPointerId = event.pointerId;
     this.stickBaseX = event.clientX;
     this.stickBaseY = event.clientY;
@@ -111,6 +115,15 @@ export class TouchInput {
     this.root.addEventListener('pointermove', this.onRootPointerMove);
     this.root.addEventListener('pointerup', this.onRootPointerUp);
     this.root.addEventListener('pointercancel', this.onRootPointerUp);
+    // Safety nets: ups/cancels that escape the overlay (iOS gesture zones,
+    // rapid multi-touch) still release whatever they owned; losing the page
+    // releases everything so nothing stays held.
+    window.addEventListener('pointerup', this.onRootPointerUp, { capture: true });
+    window.addEventListener('pointercancel', this.onRootPointerUp, { capture: true });
+    window.addEventListener('blur', () => this.releaseAll());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.releaseAll();
+    });
   }
 
   /** Shows or hides the overlay root. */
