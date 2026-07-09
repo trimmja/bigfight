@@ -96,6 +96,8 @@ class ProjectileSlot implements FighterLike {
   private trailColor = 0;
   private pullRadius = 0;
   private pullStrength = 0;
+  private tickInterval = 0;
+  private tickTimer = 0;
   private stuck = false;
   private exploding = false;
   private explosionSubmitted = false;
@@ -122,7 +124,9 @@ class ProjectileSlot implements FighterLike {
       alreadyHit: this.alreadyHit,
       worldRect: () => this.readRect(),
       onResolvedHit: () => {
-        this.hitConfirmed = true;
+        // Only non-piercing projectiles stop on a confirmed hit — piercing
+        // shots fly on, and field projectiles (black hole) keep grinding.
+        if (!this.piercing) this.hitConfirmed = true;
       },
       stopAfterHit: true,
     };
@@ -162,6 +166,10 @@ class ProjectileSlot implements FighterLike {
     this.trailColor = def.trailColor ?? 0;
     this.pullRadius = def.pull?.radius ?? 0;
     this.pullStrength = def.pull?.strength ?? 0;
+    this.tickInterval = def.field?.tickInterval ?? 0;
+    this.tickTimer = 0;
+    // Fields never despawn on contact — they damage in ticks.
+    if (this.tickInterval > 0) this.piercing = true;
     this.stuck = false;
     this.exploding = false;
     this.explosionSubmitted = false;
@@ -213,7 +221,35 @@ class ProjectileSlot implements FighterLike {
     }
 
     if (this.stuck) {
-      this.checkStickyTrigger(ctx, targets);
+      if (this.tickInterval > 0) {
+        // Field projectile (black hole): parked and ACTIVE — keeps pulling,
+        // and re-arms its hitbox every tick so trapped enemies take repeated
+        // damage instead of one hit.
+        this.applyPull(dt, targets);
+        this.tickTimer -= dt;
+        if (this.tickTimer <= 0) {
+          this.tickTimer = this.tickInterval;
+          this.alreadyHit.clear();
+        }
+        // Suction visual: sparks streaming into the core.
+        this.smokeTimer -= dt;
+        if (this.smokeTimer <= 0 && this.trailColor > 0) {
+          this.smokeTimer = 0.05;
+          const a = Math.random() * Math.PI * 2;
+          const r = this.pullRadius > 0 ? this.pullRadius * 0.7 : 2;
+          ctx.particles.directional(
+            this.body.pos.x + Math.cos(a) * r,
+            this.body.pos.y + this.body.height * 0.5 + Math.sin(a) * r * 0.5,
+            -Math.cos(a),
+            -Math.sin(a) * 0.5,
+            this.trailColor,
+            2,
+            r * 2.2,
+          );
+        }
+      } else {
+        this.checkStickyTrigger(ctx, targets);
+      }
       this.syncVisual(dt);
       return true;
     }
@@ -272,7 +308,9 @@ class ProjectileSlot implements FighterLike {
       this.explosionSubmitted = true;
       return;
     }
-    if (this.stuck) return;
+    // Parked mines stay dormant until triggered — but parked FIELDS (black
+    // hole) keep their damaging aura live.
+    if (this.stuck && this.tickInterval <= 0) return;
     this.hitbox.def = this.attackDef;
     this.hitbox.stopAfterHit = !this.piercing;
     ctx.requestHitbox(this.hitbox);

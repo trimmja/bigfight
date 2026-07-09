@@ -107,6 +107,12 @@ export interface ProjectileDef {
   trailColor?: number;
   /** Gravitational pull on opposing fighters while alive (black hole). */
   pull?: { radius: number; strength: number };
+  /**
+   * Persistent damage field: never despawns on contact; instead re-arms its
+   * hitbox every tickInterval seconds so enemies inside take repeated hits.
+   * Combine with `sticky` to park in place and `pull` to trap victims.
+   */
+  field?: { tickInterval: number };
 }
 
 export interface AttackDef {
