@@ -12,6 +12,16 @@ import type { ActiveHitbox, FighterLike, Rect } from './types';
 
 const hitboxes: ActiveHitbox[] = [];
 type ScaledVictim = FighterLike & { damageScale?: number; kbImmune?: boolean };
+type PoweredAttacker = FighterLike & { attackMult?: number };
+type ShieldedVictim = FighterLike & {
+  shieldHits?: number;
+  onShieldBlocked?: () => void;
+  applyFreeze?: (seconds: number) => void;
+};
+type ResolvedHitbox = ActiveHitbox & {
+  onResolvedHit?: () => void;
+  stopAfterHit?: boolean;
+};
 
 export class HitResolver {
   beginStep(): void {
@@ -40,16 +50,35 @@ export class HitResolver {
         if (!overlaps(attackRect, victimRect)) continue;
 
         hitbox.alreadyHit.add(victim);
+        const x = overlapCenter(attackRect.minX, attackRect.maxX, victimRect.minX, victimRect.maxX);
+        const y = overlapCenter(attackRect.minY, attackRect.maxY, victimRect.minY, victimRect.maxY);
+        const shieldedVictim = victim as ShieldedVictim;
+        if ((shieldedVictim.shieldHits ?? 0) > 0) {
+          shieldedVictim.shieldHits = Math.max(0, (shieldedVictim.shieldHits ?? 0) - 1);
+          shieldedVictim.onShieldBlocked?.();
+          events.emit('hit', {
+            pos: { x, y },
+            damage: 0,
+            kb: 0,
+            victimIsPlayer: victim.faction === 'player',
+          });
+          events.emit('screenShake', { amount: 0.08 });
+          if (notifyResolvedHit(hitbox)) break;
+          continue;
+        }
+
         const scaledVictim = victim as ScaledVictim;
         const damageScale = scaledVictim.damageScale ?? 1;
         const kbImmune = scaledVictim.kbImmune === true;
-        const damage = hitbox.def.damage * damageScale;
+        const attacker = hitbox.attacker as PoweredAttacker;
+        const attackMult = attacker.attackMult ?? 1;
+        const damage = hitbox.def.damage * damageScale * attackMult;
         victim.damage += damage;
 
         const kb = computeKnockback(
           hitbox.def,
           victim.damage,
-          hitbox.attacker.power,
+          hitbox.attacker.power * attackMult,
           victim.weight,
         );
         const angleDeg = resolveAngleDeg(hitbox.def, kb);
@@ -68,8 +97,6 @@ export class HitResolver {
         hitbox.attacker.hitstopTimer = Math.max(hitbox.attacker.hitstopTimer, hitstop);
         victim.hitstopTimer = Math.max(victim.hitstopTimer, hitstop);
 
-        const x = overlapCenter(attackRect.minX, attackRect.maxX, victimRect.minX, victimRect.maxX);
-        const y = overlapCenter(attackRect.minY, attackRect.maxY, victimRect.minY, victimRect.maxY);
         events.emit('hit', {
           pos: { x, y },
           damage,
@@ -88,7 +115,11 @@ export class HitResolver {
           launched,
         };
         victim.onHit(result);
+        if (hitbox.def.freezeTime && hitbox.def.freezeTime > 0) {
+          shieldedVictim.applyFreeze?.(hitbox.def.freezeTime);
+        }
         hitbox.attacker.onDealtHit(result);
+        if (notifyResolvedHit(hitbox)) break;
       }
     }
   }
@@ -100,4 +131,10 @@ function overlaps(a: Rect, b: Rect): boolean {
 
 function overlapCenter(aMin: number, aMax: number, bMin: number, bMax: number): number {
   return (Math.max(aMin, bMin) + Math.min(aMax, bMax)) * 0.5;
+}
+
+function notifyResolvedHit(hitbox: ActiveHitbox): boolean {
+  const resolved = hitbox as ResolvedHitbox;
+  resolved.onResolvedHit?.();
+  return resolved.stopAfterHit === true;
 }

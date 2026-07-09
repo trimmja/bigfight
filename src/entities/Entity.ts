@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { ActiveHitbox } from '../combat/types';
-import type { BlastZone, Vec2 } from '../data/types';
+import type { AttackDef, BlastZone, Faction, Facing, ProjectileDef, Vec2 } from '../data/types';
 import type { StageColliders } from '../physics/collision';
 import { Body } from '../physics/Body';
 import type { Particles } from '../render/Particles';
@@ -18,6 +18,15 @@ export interface WorldCtx {
   };
   playerPos: Vec2;
   requestHitbox(h: ActiveHitbox): void;
+  fireProjectile(
+    def: ProjectileDef,
+    attackDef: AttackDef,
+    x: number,
+    y: number,
+    facing: Facing,
+    faction: Faction,
+    power: number,
+  ): void;
 }
 
 export abstract class Entity {

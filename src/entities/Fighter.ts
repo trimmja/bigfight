@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { LAUNCH_THRESHOLD } from '../config';
 import {
   AIR_CONTROL,
@@ -9,7 +10,7 @@ import {
 import type { ActiveHitbox, HitResult, Hurtbox, Rect } from '../combat/types';
 import { events } from '../core/events';
 import { clamp } from '../core/math';
-import type { CharacterDef, Faction, Facing, FighterStateName, Vec2 } from '../data/types';
+import type { AttackDef, CharacterDef, Faction, Facing, FighterStateName, Vec2, WeaponDef } from '../data/types';
 import { Body } from '../physics/Body';
 import { FighterRig } from '../rigs/FighterRig';
 import {
@@ -31,6 +32,7 @@ export interface FighterIntent {
   moveY: number;
   jumpPressed: boolean;
   attackPressed: boolean;
+  weaponPressed: boolean;
 }
 
 const HURTBOX_PAD_X = 0.02;
@@ -48,11 +50,14 @@ export class Fighter extends Entity {
     moveY: 0,
     jumpPressed: false,
     attackPressed: false,
+    weaponPressed: false,
   };
 
   damage = 0;
   damageScale = 1;
   kbImmune = false;
+  attackMult = 1;
+  shieldHits = 0;
   facing: Facing = 1;
   state: FighterStateName = 'idle';
   stateTime = 0;
@@ -61,21 +66,40 @@ export class Fighter extends Entity {
   invulnTimer = 0;
   comboIndex = 0;
   comboQueued = false;
-  currentAttack: CharacterDef['combo'][number] | null = null;
+  currentAttack: AttackDef | null = null;
   attackPhaseTime = 0;
+  weaponCooldown = 0;
 
   private readonly hurtRect: Rect = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
   private readonly activeRect: Rect = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
   private readonly alreadyHit = new Set<object>();
   private readonly activeHitbox: ActiveHitbox;
+  private readonly projectileAttackScratch: AttackDef = {
+    id: 'projectileScratch',
+    damage: 0,
+    baseKb: 0,
+    kbGrowth: 0,
+    angleDeg: 0,
+    windup: 0,
+    active: 0,
+    recover: 0,
+    hitbox: { x: 0, y: 0, w: 0, h: 0 },
+    sfx: 'shoot',
+    poseId: 'shoot',
+  };
   private trail: TrailHandle | null = null;
+  private equippedWeapon: WeaponDef | null = null;
+  private weaponModel: THREE.Group | null = null;
+  private currentAttackIsWeapon = false;
+  private projectileFired = false;
   private comboResetTimer = 0;
   private wasGroundedForStep = false;
   private hitFlashTimer = 0;
+  private freezeTimer = 0;
 
-  constructor(def: CharacterDef, faction: Faction) {
+  constructor(def: CharacterDef, faction: Faction, customRig?: FighterRig) {
     const body = new Body(0.42 * def.proportions.bulk, def.proportions.height);
-    const rig = new FighterRig({ palette: def.palette, proportions: def.proportions });
+    const rig = customRig ?? new FighterRig({ palette: def.palette, proportions: def.proportions });
     super(body, rig.root);
     this.def = def;
     this.faction = faction;
@@ -111,7 +135,18 @@ export class Fighter extends Entity {
     return clamp(this.intents.moveY, -1, 1);
   }
 
+  get weaponDef(): WeaponDef | null {
+    return this.equippedWeapon;
+  }
+
+  get weaponCooldownFrac(): number {
+    const cooldown = this.equippedWeapon?.cooldown ?? 0;
+    return cooldown > 0 ? clamp(this.weaponCooldown / cooldown, 0, 1) : 0;
+  }
+
   update(ctx: WorldCtx, dt: number): void {
+    if (this.weaponCooldown > 0) this.weaponCooldown = Math.max(0, this.weaponCooldown - dt);
+
     if (this.hitstopTimer > 0) {
       this.hitstopTimer = Math.max(0, this.hitstopTimer - dt);
       return;
@@ -127,6 +162,20 @@ export class Fighter extends Entity {
     }
     if (this.hitFlashTimer > 0) this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
 
+    if (this.freezeTimer > 0) {
+      this.freezeTimer = Math.max(0, this.freezeTimer - dt);
+      this.body.fastFalling = false;
+      this.body.vel.x = moveToward(this.body.vel.x, 0, ATTACK_STOP_ACCEL * dt);
+      this.state = 'hitstun';
+      this.stateTime = -this.freezeTimer;
+      if (this.freezeTimer > 0) {
+        this.updateVisuals(ctx, dt);
+        return;
+      }
+      this.state = this.body.grounded ? 'idle' : 'fall';
+      this.stateTime = 0;
+    }
+
     switch (this.state) {
       case 'idle':
       case 'run':
@@ -137,6 +186,7 @@ export class Fighter extends Entity {
         this.updateAir(ctx, dt);
         break;
       case 'attack':
+      case 'weaponAbility':
         this.updateAttack(ctx, dt);
         break;
       case 'hitstun':
@@ -148,7 +198,6 @@ export class Fighter extends Entity {
       case 'landing':
         this.updateLanding(dt);
         break;
-      case 'weaponAbility':
       case 'ko':
       case 'respawning':
         this.stateTime += dt;
@@ -188,6 +237,8 @@ export class Fighter extends Entity {
 
   onHit(result: HitResult): void {
     this.currentAttack = null;
+    this.currentAttackIsWeapon = false;
+    this.projectileFired = false;
     this.comboQueued = false;
     this.comboResetTimer = 0;
     this.body.fastFalling = false;
@@ -204,10 +255,42 @@ export class Fighter extends Entity {
     this.rig.flashColor(this.def.palette.accent, 0.035);
   }
 
+  onShieldBlocked(): void {
+    this.rig.flashColor(0x8ff6ff, 0.08);
+  }
+
+  applyFreeze(seconds: number): void {
+    if (seconds <= 0) return;
+    this.freezeTimer = Math.max(this.freezeTimer, seconds);
+    this.currentAttack = null;
+    this.currentAttackIsWeapon = false;
+    this.projectileFired = false;
+    this.comboQueued = false;
+    this.body.fastFalling = false;
+    this.body.vel.x *= 0.15;
+    if (this.body.vel.y > 1) this.body.vel.y = 1;
+    this.state = 'hitstun';
+    this.stateTime = -this.freezeTimer;
+    this.rig.flashColor(0x9df3ff, seconds);
+  }
+
+  equipWeapon(weapon: WeaponDef, model: THREE.Group): void {
+    if (this.weaponModel) {
+      this.rig.weaponSocket.remove(this.weaponModel);
+      disposeWeaponModel(this.weaponModel);
+    }
+    this.equippedWeapon = weapon;
+    this.weaponModel = model;
+    this.rig.weaponSocket.add(model);
+    this.weaponCooldown = Math.min(this.weaponCooldown, weapon.cooldown);
+  }
+
   koReset(pos: Vec2): void {
     this.damage = 0;
     this.damageScale = 1;
     this.kbImmune = false;
+    this.shieldHits = 0;
+    this.freezeTimer = 0;
     this.alive = true;
     this.group.visible = true;
     this.body.pos.x = pos.x;
@@ -221,6 +304,8 @@ export class Fighter extends Entity {
     this.stateTime = 0;
     this.jumpsUsed = 0;
     this.currentAttack = null;
+    this.currentAttackIsWeapon = false;
+    this.projectileFired = false;
     this.comboQueued = false;
     this.comboIndex = 0;
     this.comboResetTimer = 0;
@@ -236,9 +321,13 @@ export class Fighter extends Entity {
     this.state = 'ko';
     this.stateTime = 0;
     this.currentAttack = null;
+    this.currentAttackIsWeapon = false;
+    this.projectileFired = false;
     this.comboQueued = false;
     this.damageScale = 1;
     this.kbImmune = false;
+    this.shieldHits = 0;
+    this.freezeTimer = 0;
     this.body.vel.x = 0;
     this.body.vel.y = 0;
     this.body.noclip = true;
@@ -248,6 +337,11 @@ export class Fighter extends Entity {
   dispose(): void {
     this.trail?.release();
     this.trail = null;
+    if (this.weaponModel) {
+      this.rig.weaponSocket.remove(this.weaponModel);
+      disposeWeaponModel(this.weaponModel);
+      this.weaponModel = null;
+    }
     this.rig.dispose();
   }
 
@@ -256,6 +350,7 @@ export class Fighter extends Entity {
     this.body.fastFalling = false;
     this.handleFacing();
     if (this.tryStartJump()) return;
+    if (this.tryStartWeaponAbility()) return;
     if (this.tryStartAttack()) return;
     this.applyGroundMove(dt);
     this.state = Math.abs(this.body.vel.x) > 0.2 || Math.abs(this.intents.moveX) > 0.1 ? 'run' : 'idle';
@@ -266,6 +361,7 @@ export class Fighter extends Entity {
   private updateAir(_ctx: WorldCtx, dt: number): void {
     this.stateTime += dt;
     if (this.tryStartJump()) return;
+    if (this.tryStartWeaponAbility()) return;
     if (this.tryStartAttack()) return;
     this.applyAirMove(dt, AIR_CONTROL);
     if (this.intents.moveY < -0.5 && this.body.vel.y < 0) this.body.fastFalling = true;
@@ -291,15 +387,18 @@ export class Fighter extends Entity {
     const activeEnd = attack.windup + attack.active;
     const total = activeEnd + attack.recover;
     const activeOrLater = this.attackPhaseTime >= activeStart;
-    if (this.intents.attackPressed && activeOrLater && this.comboIndex < 2) {
+    if (!this.currentAttackIsWeapon && this.intents.attackPressed && activeOrLater && this.comboIndex < 2) {
       this.comboQueued = true;
     }
-    if (this.attackPhaseTime >= activeStart && this.attackPhaseTime < activeEnd) {
+    if (attack.projectile && activeOrLater && !this.projectileFired) {
+      this.fireProjectileAttack(ctx, attack);
+      this.projectileFired = true;
+    } else if (!attack.projectile && this.attackPhaseTime >= activeStart && this.attackPhaseTime < activeEnd) {
       this.activeHitbox.def = attack;
       ctx.requestHitbox(this.activeHitbox);
     }
     if (this.attackPhaseTime >= total) {
-      if (this.comboQueued && this.comboIndex < 2) {
+      if (!this.currentAttackIsWeapon && this.comboQueued && this.comboIndex < 2) {
         this.startAttack(this.comboIndex + 1);
       } else {
         this.endAttack();
@@ -366,12 +465,20 @@ export class Fighter extends Entity {
     return true;
   }
 
+  private tryStartWeaponAbility(): boolean {
+    if (!this.intents.weaponPressed || this.weaponCooldown > 0 || !this.equippedWeapon) return false;
+    this.startWeaponAbility(this.equippedWeapon);
+    return true;
+  }
+
   private startAttack(index: number): void {
     const attack = this.def.combo[index];
     if (attack === undefined) return;
     this.comboIndex = index;
     this.comboQueued = false;
     this.currentAttack = attack;
+    this.currentAttackIsWeapon = false;
+    this.projectileFired = false;
     this.attackPhaseTime = 0;
     this.stateTime = 0;
     this.state = 'attack';
@@ -379,11 +486,27 @@ export class Fighter extends Entity {
     this.alreadyHit.clear();
   }
 
+  private startWeaponAbility(weapon: WeaponDef): void {
+    this.comboQueued = false;
+    this.currentAttack = weapon.ability;
+    this.currentAttackIsWeapon = true;
+    this.projectileFired = false;
+    this.attackPhaseTime = 0;
+    this.stateTime = 0;
+    this.state = 'weaponAbility';
+    this.comboResetTimer = 0;
+    this.weaponCooldown = weapon.cooldown;
+    this.alreadyHit.clear();
+  }
+
   private endAttack(): void {
+    const wasWeapon = this.currentAttackIsWeapon;
     this.currentAttack = null;
+    this.currentAttackIsWeapon = false;
+    this.projectileFired = false;
     this.comboQueued = false;
     this.attackPhaseTime = 0;
-    this.comboResetTimer = ATTACK_CHAIN_RESET;
+    this.comboResetTimer = wasWeapon ? this.comboResetTimer : ATTACK_CHAIN_RESET;
     this.state = this.body.grounded
       ? Math.abs(this.intents.moveX) > 0.1 ? 'run' : 'idle'
       : this.body.vel.y >= 0 ? 'jump' : 'fall';
@@ -452,6 +575,7 @@ export class Fighter extends Entity {
       case 'fall':
         return poseFall();
       case 'attack':
+      case 'weaponAbility':
         return poseAttack(this.currentAttack?.poseId ?? 'finisher', this.attackPhase());
       case 'hitstun':
         return poseHit();
@@ -461,10 +585,44 @@ export class Fighter extends Entity {
         return poseLanding();
       case 'ko':
         return poseKO();
-      case 'weaponAbility':
       case 'respawning':
         return poseIdle(t);
     }
+  }
+
+  private fireProjectileAttack(ctx: WorldCtx, attack: AttackDef): void {
+    const projectile = attack.projectile;
+    if (!projectile) return;
+    const spawnX = this.body.pos.x + this.facing * (this.body.halfW + projectile.radius + 0.2);
+    const spawnY = this.body.pos.y + this.body.height * 0.62;
+    ctx.fireProjectile(
+      projectile,
+      this.projectileAttackFor(attack),
+      spawnX,
+      spawnY,
+      this.facing,
+      this.faction,
+      this.power * this.attackMult,
+    );
+  }
+
+  private projectileAttackFor(attack: AttackDef): AttackDef {
+    if (this.attackMult === 1) return attack;
+    const out = this.projectileAttackScratch;
+    out.id = attack.id;
+    out.damage = attack.damage * this.attackMult;
+    out.baseKb = attack.baseKb;
+    out.kbGrowth = attack.kbGrowth;
+    out.angleDeg = attack.angleDeg;
+    out.windup = attack.windup;
+    out.active = attack.active;
+    out.recover = attack.recover;
+    out.hitbox = attack.hitbox;
+    out.sfx = attack.sfx;
+    out.poseId = attack.poseId;
+    out.projectile = attack.projectile;
+    out.freezeTime = attack.freezeTime;
+    return out;
   }
 
   private attackPhase(): number {
@@ -516,4 +674,18 @@ function moveToward(current: number, target: number, maxDelta: number): number {
   if (current < target) return Math.min(current + maxDelta, target);
   if (current > target) return Math.max(current - maxDelta, target);
   return current;
+}
+
+function disposeWeaponModel(model: THREE.Object3D): void {
+  const materials = new Set<THREE.Material>();
+  model.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    const material = obj.material;
+    if (Array.isArray(material)) {
+      for (let i = 0; i < material.length; i += 1) materials.add(material[i]!);
+    } else {
+      materials.add(material);
+    }
+  });
+  materials.forEach((material) => material.dispose());
 }

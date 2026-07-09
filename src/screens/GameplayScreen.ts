@@ -11,14 +11,17 @@ import {
 } from '../config';
 import { resetMobAttackTokens } from '../ai/MobBrain';
 import { WaveSpawner } from '../ai/WaveSpawner';
-import type { ActiveHitbox, Rect } from '../combat/types';
+import type { ActiveHitbox, FighterLike, Rect } from '../combat/types';
 import { HitResolver } from '../combat/HitResolver';
 import { characterById } from '../data/characters';
 import { enemyById } from '../data/enemies';
 import { levelById } from '../data/levels';
+import { sidekickById } from '../data/sidekicks';
 import { stageById } from '../data/stages';
 import type { LevelDef, MaterialId, Vec2 } from '../data/types';
+import { weaponById } from '../data/weapons';
 import type { Game } from '../Game';
+import { unlockedPowerupIds } from '../progression';
 import { Hud } from '../ui/hud';
 import { DamageNumbers } from '../combat/DamageNumbers';
 import { Body } from '../physics/Body';
@@ -30,7 +33,11 @@ import { Fighter } from '../entities/Fighter';
 import { Mob } from '../entities/Mob';
 import { PickupManager } from '../entities/Pickup';
 import { Player } from '../entities/Player';
+import { PowerupSpawner } from '../entities/PowerupCrate';
+import { ProjectileManager } from '../entities/Projectile';
+import { Sidekick } from '../entities/Sidekick';
 import type { WorldCtx } from '../entities/Entity';
+import { buildWeaponModel } from '../rigs/weaponBuilders';
 import { buildStage, type BuiltStage } from '../stages/StageBuilder';
 import type { Screen } from './Screen';
 
@@ -72,6 +79,9 @@ export class GameplayScreen implements Screen {
   private ctx: WorldCtx | null = null;
   private waveSpawner: WaveSpawner | null = null;
   private pickupManager: PickupManager | null = null;
+  private projectileManager: ProjectileManager | null = null;
+  private powerupSpawner: PowerupSpawner | null = null;
+  private sidekick: Sidekick | null = null;
   private hitUnsub: (() => void) | null = null;
   private lootUnsub: (() => void) | null = null;
   private waveUnsub: (() => void) | null = null;
@@ -79,6 +89,7 @@ export class GameplayScreen implements Screen {
   private readonly mobs: Mob[] = [];
   private readonly physicsBodies: Body[] = [];
   private readonly liveFighters: Fighter[] = [];
+  private readonly combatTargets: FighterLike[] = [];
   private readonly cameraPoints: Vec2[] = [];
   private readonly debugSubmittedHitboxes: ActiveHitbox[] = [];
   private readonly splitSpawnPos: Vec2 = { x: 0, y: 0 };
@@ -117,12 +128,27 @@ export class GameplayScreen implements Screen {
     this.hitResolver = new HitResolver();
     this.physics = new PhysicsWorld();
     this.pickupManager = new PickupManager(game.renderer.scene);
+    const projectileManager = new ProjectileManager(game.renderer.scene);
+    this.projectileManager = projectileManager;
+    this.powerupSpawner = new PowerupSpawner(game.renderer.scene, unlockedPowerupIds(game.save));
 
     this.player = new Player(playerDef, game.input);
     this.player.stocks = PLAYER_STOCKS;
     this.player.koReset(stageDef.playerSpawn);
     this.player.facing = 1;
+    const weapon = weaponById(this.opts.weaponId ?? 'rustyPistol');
+    this.player.equipWeapon(weapon, buildWeaponModel(weapon));
     game.renderer.scene.add(this.player.group);
+
+    if (game.save.equippedSidekick) {
+      this.sidekick = new Sidekick(
+        sidekickById(game.save.equippedSidekick),
+        this.player,
+        projectileManager,
+        () => this.mobs,
+      );
+      game.renderer.scene.add(this.sidekick.group);
+    }
 
     this.hud = new Hud();
     this.damageNumbers = new DamageNumbers(game.renderer.scene);
@@ -141,6 +167,9 @@ export class GameplayScreen implements Screen {
         if (DEBUG && this.debugSubmittedHitboxes.length < DEBUG_HITBOX_SLOTS) {
           this.debugSubmittedHitboxes.push(h);
         }
+      },
+      fireProjectile: (def, attackDef, x, y, facing, faction, power) => {
+        this.projectileManager?.fire(def, x, y, facing, faction, power, attackDef);
       },
     };
 
@@ -180,9 +209,15 @@ export class GameplayScreen implements Screen {
     this.hud = null;
     this.damageNumbers?.dispose();
     this.damageNumbers = null;
+    this.sidekick?.dispose();
+    this.sidekick = null;
     this.player?.dispose();
     for (let i = 0; i < this.mobs.length; i += 1) this.mobs[i]!.dispose();
     this.mobs.length = 0;
+    this.projectileManager?.dispose();
+    this.projectileManager = null;
+    this.powerupSpawner?.dispose();
+    this.powerupSpawner = null;
     this.pickupManager?.dispose();
     this.stage?.dispose();
     if (this.particles) disposeParticles(this.particles, game.renderer.scene);
@@ -199,6 +234,7 @@ export class GameplayScreen implements Screen {
     this.ctx = null;
     this.waveSpawner = null;
     this.pickupManager = null;
+    game.input.setWeaponCooldown(0);
   }
 
   update(game: Game, dt: number): void {
@@ -210,7 +246,22 @@ export class GameplayScreen implements Screen {
     const particles = this.particles;
     const trails = this.trails;
     const pickupManager = this.pickupManager;
-    if (!player || !ctx || !stage || !physics || !hitResolver || !particles || !trails || !pickupManager) return;
+    const projectileManager = this.projectileManager;
+    const powerupSpawner = this.powerupSpawner;
+    if (
+      !player
+      || !ctx
+      || !stage
+      || !physics
+      || !hitResolver
+      || !particles
+      || !trails
+      || !pickupManager
+      || !projectileManager
+      || !powerupSpawner
+    ) {
+      return;
+    }
 
     if (!this.levelEnding && game.input.state.pausePressed && this.opts.onPause) {
       this.opts.onPause();
@@ -236,6 +287,8 @@ export class GameplayScreen implements Screen {
     this.liveFighters.length = 0;
     this.collectLiveFighter(player);
     for (let i = 0; i < this.mobs.length; i += 1) this.collectLiveFighter(this.mobs[i]!);
+    if (this.sidekick && !this.levelEnding) this.sidekick.update(ctx, dt);
+    projectileManager.update(ctx, dt, this.liveFighters);
     pickupManager.collectBodies(this.physicsBodies);
 
     physics.step(this.physicsBodies, stage.colliders, dt);
@@ -243,9 +296,15 @@ export class GameplayScreen implements Screen {
       this.liveFighters[i]!.afterPhysics(ctx);
     }
 
-    hitResolver.resolve(this.liveFighters);
+    projectileManager.submitHitboxes(ctx);
+    this.combatTargets.length = 0;
+    for (let i = 0; i < this.liveFighters.length; i += 1) this.combatTargets.push(this.liveFighters[i]!);
+    projectileManager.collectDestructibleTargets(this.combatTargets);
+    hitResolver.resolve(this.combatTargets);
 
     if (player.alive) pickupManager.update(ctx, dt, player);
+    if (player.alive && !this.levelEnding) powerupSpawner.update(ctx, dt, player);
+    game.input.setWeaponCooldown(player.weaponCooldownFrac);
 
     this.checkBlast(game, player);
     for (let i = 0; i < this.mobs.length; i += 1) this.checkMobBlast(game, this.mobs[i]!);
@@ -398,7 +457,11 @@ export class GameplayScreen implements Screen {
       this.opts.onLevelEnd(result);
       return;
     }
-    game.screens.replace(new GameplayScreen({ characterId: this.opts.characterId, levelId: result.levelId }));
+    game.screens.replace(new GameplayScreen({
+      characterId: this.opts.characterId,
+      levelId: result.levelId,
+      weaponId: this.opts.weaponId,
+    }));
   }
 
   private updateCamera(stage: BuiltStage): void {
