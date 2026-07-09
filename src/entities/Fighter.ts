@@ -541,7 +541,10 @@ export class Fighter extends Entity {
   }
 
   private updateVisuals(ctx: WorldCtx, dt: number): void {
-    const blend = 1 - Math.exp(-POSE_DAMPING * dt);
+    // Attacks blend twice as fast — punches must SNAP; smoothing is for
+    // locomotion.
+    const rate = this.state === 'attack' || this.state === 'weaponAbility' ? POSE_DAMPING * 2.2 : POSE_DAMPING;
+    const blend = 1 - Math.exp(-rate * dt);
     const t = this.stateTime;
     const pose = this.selectPose(t);
     this.syncGroupToBody();

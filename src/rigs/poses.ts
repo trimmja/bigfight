@@ -226,30 +226,39 @@ export function poseAttack(poseId: string, phase: number): Pose {
 }
 
 const attackFrames: Record<string, readonly AttackKeyframe[]> = {
+  // Punch anatomy (learned the hard way): windup FOLDS the elbow tight and
+  // coils the torso BACK (+z); the strike SNAPS the forearm straight (~0) and
+  // drives the torso/hips FORWARD (-z); a hold keyframe keeps the extension
+  // readable; recover returns toward guard. Off arm stays in a folded guard.
   jab1: [
-    { at: 0, pose: { torso: { z: 0.22, x: 0.18 }, armR: { z: -0.8, x: -0.45 }, foreArmR: { z: 1.1 } } },
-    { at: 0.45, pose: { torso: { z: 0.08, x: -0.18 }, armR: { z: 1.42, x: -0.08 }, foreArmR: { z: 0.1 }, armL: { z: -0.55, x: 0.35 }, legR: { z: 0.28 } } },
-    { at: 1, pose: { torso: { z: -0.18 }, armR: { z: -0.2, x: -0.25 }, foreArmR: { z: 0.55 }, armL: { z: 0.1 }, legL: { z: -0.1 } } },
+    { at: 0, pose: { torso: { z: 0.3 }, hips: { z: 0.1 }, armR: { z: -0.7 }, foreArmR: { z: 1.85 }, armL: { z: 0.5 }, foreArmL: { z: 1.35 } } },
+    { at: 0.35, pose: { torso: { z: -0.24 }, hips: { z: -0.12 }, head: { z: 0.08 }, armR: { z: 1.55 }, foreArmR: { z: 0.03 }, armL: { z: 0.35 }, foreArmL: { z: 1.5 }, legL: { z: 0.22 }, legR: { z: -0.3 } } },
+    { at: 0.6, pose: { torso: { z: -0.22 }, hips: { z: -0.1 }, armR: { z: 1.5 }, foreArmR: { z: 0.06 }, armL: { z: 0.35 }, foreArmL: { z: 1.5 }, legL: { z: 0.2 }, legR: { z: -0.26 } } },
+    { at: 1, pose: { torso: { z: 0.05 }, armR: { z: 0.45 }, foreArmR: { z: 1.25 }, armL: { z: 0.3 }, foreArmL: { z: 1.3 } } },
   ],
   jab2: [
-    { at: 0, pose: { torso: { z: 0.16, x: -0.2 }, armL: { z: -0.7, x: 0.5 }, foreArmL: { z: 1.0 }, armR: { z: 0.2 } } },
-    { at: 0.44, pose: { torso: { z: 0.1, x: 0.22 }, armL: { z: 1.38, x: 0.1 }, foreArmL: { z: 0.08 }, armR: { z: -0.35, x: -0.32 }, legL: { z: 0.2 } } },
-    { at: 1, pose: { torso: { z: -0.12 }, armL: { z: -0.12, x: 0.22 }, foreArmL: { z: 0.48 }, armR: { z: 0.05 }, legR: { z: -0.12 } } },
+    { at: 0, pose: { torso: { z: 0.32 }, hips: { z: 0.14 }, armL: { z: -0.75 }, foreArmL: { z: 1.9 }, armR: { z: 0.7 }, foreArmR: { z: 1.15 } } },
+    { at: 0.35, pose: { torso: { z: -0.3 }, hips: { z: -0.18 }, head: { z: 0.08 }, armL: { z: 1.62 }, foreArmL: { z: 0.03 }, armR: { z: 0.3 }, foreArmR: { z: 1.5 }, legR: { z: 0.24 }, legL: { z: -0.28 } } },
+    { at: 0.6, pose: { torso: { z: -0.28 }, hips: { z: -0.16 }, armL: { z: 1.56 }, foreArmL: { z: 0.06 }, armR: { z: 0.3 }, foreArmR: { z: 1.5 }, legR: { z: 0.22 }, legL: { z: -0.24 } } },
+    { at: 1, pose: { torso: { z: 0.05 }, armL: { z: 0.4 }, foreArmL: { z: 1.25 }, armR: { z: 0.35 }, foreArmR: { z: 1.3 } } },
   ],
   finisher: [
-    { at: 0, pose: { root: { z: -0.18 }, torso: { z: 0.38, x: 0.45 }, armR: { z: -0.85, x: -0.95 }, foreArmR: { z: 1.25 }, legR: { z: 0.55 } } },
-    { at: 0.52, pose: { root: { z: 0.32 }, torso: { z: 0.08, x: -0.72 }, armR: { z: 1.35, x: -0.38 }, foreArmR: { z: -0.35 }, armL: { z: -0.85, x: 0.4 }, legL: { z: 0.35 } } },
-    { at: 1, pose: { torso: { z: -0.2, x: -0.2 }, armR: { z: -0.25, x: -0.35 }, foreArmR: { z: 0.55 }, legL: { z: -0.1 } } },
+    { at: 0, pose: { root: { z: -0.1 }, torso: { z: 0.45 }, hips: { z: 0.22 }, armR: { z: -1.0, x: -0.5 }, foreArmR: { z: 1.6 }, armL: { z: 0.5 }, foreArmL: { z: 1.4 }, legR: { z: 0.3 } } },
+    { at: 0.45, pose: { root: { z: 0.12 }, torso: { z: -0.4 }, hips: { z: -0.22 }, armR: { z: 1.35, x: -0.45 }, foreArmR: { z: 0.4 }, armL: { z: 0.3 }, foreArmL: { z: 1.5 }, legL: { z: 0.3 }, legR: { z: -0.42 } } },
+    { at: 0.68, pose: { root: { z: 0.1 }, torso: { z: -0.45 }, hips: { z: -0.24 }, armR: { z: 1.05, x: -0.5 }, foreArmR: { z: 0.55 }, armL: { z: 0.3 }, foreArmL: { z: 1.5 }, legL: { z: 0.28 }, legR: { z: -0.4 } } },
+    { at: 1, pose: { torso: { z: 0 }, armR: { z: 0.4, x: -0.2 }, foreArmR: { z: 1.2 }, armL: { z: 0.35 }, foreArmL: { z: 1.35 } } },
   ],
   uppercut: [
-    { at: 0, pose: { hips: { z: -0.28 }, torso: { z: -0.45 }, armR: { z: -0.75, x: -0.25 }, foreArmR: { z: 1.05 }, legL: { z: 0.7 }, legR: { z: 0.7 }, shinL: { z: -0.95 }, shinR: { z: -0.95 } } },
-    { at: 0.48, pose: { root: { z: -0.08 }, torso: { z: 0.35 }, armR: { z: 2.55, x: -0.12 }, foreArmR: { z: 0.15 }, armL: { z: -0.55, x: 0.4 }, legR: { z: -0.35 } } },
-    { at: 1, pose: { torso: { z: 0.1 }, armR: { z: 1.0, x: -0.18 }, foreArmR: { z: 0.25 }, armL: { z: -0.1 } } },
+    { at: 0, pose: { hips: { z: 0.25 }, torso: { z: 0.42 }, armR: { z: -0.6 }, foreArmR: { z: 1.9 }, armL: { z: 0.45 }, foreArmL: { z: 1.4 }, legL: { z: 0.6 }, legR: { z: 0.6 }, shinL: { z: -1.0 }, shinR: { z: -1.0 } } },
+    { at: 0.45, pose: { root: { z: -0.06 }, torso: { z: 0.18 }, head: { z: 0.12 }, armR: { z: 2.5 }, foreArmR: { z: 0.2 }, armL: { z: 0.3 }, foreArmL: { z: 1.5 }, legR: { z: -0.3 } } },
+    { at: 0.65, pose: { torso: { z: 0.15 }, armR: { z: 2.35 }, foreArmR: { z: 0.25 }, armL: { z: 0.3 }, foreArmL: { z: 1.5 } } },
+    { at: 1, pose: { torso: { z: 0.05 }, armR: { z: 0.9 }, foreArmR: { z: 1.0 }, armL: { z: 0.3 }, foreArmL: { z: 1.3 } } },
   ],
   slam: [
-    { at: 0, pose: { torso: { z: 0.55 }, armL: { z: 2.25, x: 0.18 }, armR: { z: 2.25, x: -0.18 }, foreArmL: { z: 0.65 }, foreArmR: { z: 0.65 }, legL: { z: 0.25 }, legR: { z: 0.25 } } },
-    { at: 0.55, pose: { torso: { z: -0.72 }, armL: { z: -1.28, x: 0.24 }, armR: { z: -1.28, x: -0.24 }, foreArmL: { z: -0.4 }, foreArmR: { z: -0.4 }, hips: { z: -0.22 } } },
-    { at: 1, pose: { torso: { z: -0.18 }, armL: { z: -0.3, x: 0.25 }, armR: { z: -0.3, x: -0.25 }, foreArmL: { z: 0.3 }, foreArmR: { z: 0.3 } } },
+    { at: 0, pose: { torso: { z: 0.6 }, hips: { z: 0.15 }, armL: { z: 2.35, x: 0.18 }, armR: { z: 2.35, x: -0.18 }, foreArmL: { z: 0.7 }, foreArmR: { z: 0.7 }, legL: { z: 0.35 }, legR: { z: 0.35 }, shinL: { z: -0.5 }, shinR: { z: -0.5 } } },
+    { at: 0.5, pose: { torso: { z: -0.72 }, hips: { z: -0.25 }, armL: { z: -1.28, x: 0.24 }, armR: { z: -1.28, x: -0.24 }, foreArmL: { z: -0.35 }, foreArmR: { z: -0.35 } } },
+    { at: 0.72, pose: { torso: { z: -0.68 }, hips: { z: -0.22 }, armL: { z: -1.15, x: 0.24 }, armR: { z: -1.15, x: -0.24 }, foreArmL: { z: -0.3 }, foreArmR: { z: -0.3 } } },
+    { at: 1, pose: { torso: { z: -0.1 }, armL: { z: 0.35, x: 0.2 }, armR: { z: 0.35, x: -0.2 }, foreArmL: { z: 1.2 }, foreArmR: { z: 1.2 } } },
   ],
   spin: [
     // Spin around the HIPS (not the feet) with legs tucked, so the body never
