@@ -1,5 +1,14 @@
 import { events } from '../core/events';
+import type { PowerupId } from '../data/types';
 import { el, uiRoot } from './dom';
+
+const POWERUP_BANNERS: Record<PowerupId, string> = {
+  healOrb: '💚 HEALED!',
+  shieldBubble: '🛡️ SHIELD UP!',
+  rageMode: '🔥 RAGE MODE!',
+  giantHammer: '🔨 GIANT HAMMER!',
+  freezeRay: '❄️ FREEZE RAY!',
+};
 
 /**
  * In-fight HUD: damage %, stock pips, wave banner, boss health bar.
@@ -50,6 +59,11 @@ export class Hud {
       }),
       events.on('bossDefeated', () => {
         this.bossBar.style.display = 'none';
+      }),
+      // Powerup pickups announce themselves — a silent weapon override reads
+      // as a glitch ("why am I holding a hammer?!") instead of a reward.
+      events.on('powerup', ({ id }) => {
+        this.banner(POWERUP_BANNERS[id] ?? 'POWER UP!', 2000);
       }),
     );
   }
