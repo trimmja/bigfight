@@ -1,5 +1,9 @@
 # BIG FIGHT — Claude context
 
+**Keep this file lean.** If it's discoverable in the code (structure, APIs, constants,
+per-file behavior), it does NOT belong here — document it at the definition site instead.
+This file is only for workflow, gotchas, and design intent the code can't express.
+
 Smash-style platform fighter. **Ryder (age 9) is lead designer** — his playtest feedback is the
 spec; when a "bug report" describes intended-but-confusing behavior, fix the *communication*
 (banners, visuals) or redesign to his intent, don't just explain. Kid-friendly tone in all copy.
