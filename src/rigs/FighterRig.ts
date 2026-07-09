@@ -115,10 +115,16 @@ export class FighterRig {
     // fixed rest group so poses (which relax joints to 0) keep the flare.
     const restL = new THREE.Group();
     const restR = new THREE.Group();
-    restL.position.set(0, torsoH * 0.9, -depth * 0.95);
-    restR.position.set(0, torsoH * 0.9, depth * 0.95);
-    restL.rotation.x = -0.3;
-    restR.rotation.x = 0.3;
+    // Shoulders at the OUTER edge of the torso egg (its z radius is
+    // depth*1.35) so arms hang beside the body, not inside its silhouette —
+    // critical for front views (character select, turnarounds).
+    restL.position.set(0, torsoH * 0.9, -depth * 1.55);
+    restR.position.set(0, torsoH * 0.9, depth * 1.55);
+    // Positive-X tilt on the -Z arm points it AWAY from the body (and vice
+    // versa). These were inverted originally, which made every pose read as
+    // praying hands from the front.
+    restL.rotation.x = 0.34;
+    restR.rotation.x = -0.34;
     torso.add(restL, restR);
     restL.add(armL);
     restR.add(armR);

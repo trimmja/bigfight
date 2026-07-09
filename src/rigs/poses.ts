@@ -80,16 +80,16 @@ export function poseFightStance(t: number): Pose {
   scratch.torso.z = 0.14 - bounce * 0.03;
   scratch.head.z = -0.08;
   scratch.hips.z = -0.05;
-  // Wide boxer guard: elbows out, fists curled up BESIDE the body (lateral
-  // curl on X — a sagittal Z-curl points the fists at the camera instead).
-  scratch.armL.x = -0.55 - bounce * 0.03;
-  scratch.armR.x = 0.55 + bounce * 0.03;
-  scratch.armL.z = 0.1;
-  scratch.armR.z = 0.1;
-  scratch.foreArmL.x = -1.65;
-  scratch.foreArmR.x = 1.65;
-  scratch.foreArmL.z = 0.15;
-  scratch.foreArmR.z = 0.15;
+  // Boxer guard: elbows angled out, fists curled up at chest height beside
+  // the body (lateral X-curl — a sagittal Z-curl would aim at the camera).
+  scratch.armL.x = -0.3 - bounce * 0.03;
+  scratch.armR.x = 0.3 + bounce * 0.03;
+  scratch.armL.z = 0.3;
+  scratch.armR.z = 0.3;
+  scratch.foreArmL.x = -0.55;
+  scratch.foreArmR.x = 0.55;
+  scratch.foreArmL.z = 0.95;
+  scratch.foreArmR.z = 0.95;
   // Ready crouch.
   scratch.legL.z = 0.22;
   scratch.legR.z = 0.18;
