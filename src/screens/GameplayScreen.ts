@@ -325,6 +325,20 @@ export class GameplayScreen implements Screen {
 
     this.checkBlast(game, player);
     for (let i = 0; i < this.mobs.length; i += 1) this.checkMobBlast(game, this.mobs[i]!);
+    // Boss ring-out: bosses can't be KO'd off-stage, but knocking one out
+    // costs it 8% health and it respawns from the sky (Ryder's rule).
+    if (this.boss?.alive && stage) {
+      const b = this.boss.body;
+      const bx = b.pos.x;
+      const by = b.pos.y + b.height * 0.5;
+      const blast = stage.def.blast;
+      if (bx < blast.left || bx > blast.right || by < blast.bottom || by > blast.top) {
+        game.events.emit('screenShake', { amount: 1.2 });
+        particles.koExplosion(bx, Math.max(blast.bottom + 2, Math.min(blast.top - 2, by)), this.boss.def.palette.glow);
+        this.boss.ringOutPenalty(0, blast.top - 3);
+      }
+    }
+
     // Sweep dead mobs (KO'd last frame — drops/splits already handled) so long
     // boss fights don't accumulate dead rigs in memory and loops.
     for (let i = this.mobs.length - 1; i >= 0; i -= 1) {

@@ -117,6 +117,25 @@ export abstract class Boss extends Fighter {
     this.applyRequestedPose();
   }
 
+  /**
+   * Ring-out rule (Ryder's design): knocking the boss off the stage costs it
+   * 8% of its health, then it falls back in from the sky.
+   */
+  ringOutPenalty(x: number, y: number): void {
+    if (this.defeated || !this.alive) return;
+    this.damage += this.bossDef.defeatThreshold * 0.08;
+    this.notifyHpChanged();
+    this.body.pos.x = x;
+    this.body.pos.y = y;
+    this.body.vel.x = 0;
+    this.body.vel.y = 0;
+    this.state = 'fall';
+    this.stateTime = 0;
+    this.invulnTimer = 1.2; // brief mercy window during the fall-in
+    this.bossRig.flashColor(0xffffff, 0.3);
+    if (this.damage >= this.bossDef.defeatThreshold) this.pendingDefeat = true;
+  }
+
   override onHit(result: HitResult): void {
     if (this.defeated) return;
     const hitstun = Math.min(result.hitstun, 0.35);
