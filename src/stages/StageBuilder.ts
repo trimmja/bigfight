@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { StageDef } from '../data/types';
 import { buildColliders, type StageColliders } from '../physics/collision';
+import { toonRamp } from '../render/toon';
 
 /**
  * Bright-cartoon (Fall Guys style) stage builder: chunky candy-colored
@@ -20,15 +21,6 @@ const DEPTH = 3;
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 const SPHERE = new THREE.SphereGeometry(1, 18, 12);
 
-/** 3-step toon ramp shared with rigs (kept local to avoid cross-module state). */
-let ramp: THREE.DataTexture | null = null;
-function toonRamp(): THREE.DataTexture {
-  if (ramp) return ramp;
-  const data = new Uint8Array([130, 130, 130, 255, 205, 205, 205, 255, 255, 255, 255, 255]);
-  ramp = new THREE.DataTexture(data, 3, 1, THREE.RGBAFormat);
-  ramp.needsUpdate = true;
-  return ramp;
-}
 
 export function buildStage(def: StageDef, scene: THREE.Scene): BuiltStage {
   const group = new THREE.Group();

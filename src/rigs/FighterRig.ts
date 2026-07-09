@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp, damp, lerp } from '../core/math';
+import { makeToonMaterial } from '../render/toon';
 import type { Palette, Proportions } from '../data/types';
 import type { JointName, Pose } from './poses';
 
@@ -34,15 +35,6 @@ const SPHERE = new THREE.SphereGeometry(1, 20, 14);
 const CAPSULE = new THREE.CapsuleGeometry(1, 1, 4, 12);
 const SHADOW_CIRCLE = new THREE.CircleGeometry(1, 24);
 
-/** 3-step toon ramp shared by every rig (cartoon shading without assets). */
-let toonRamp: THREE.DataTexture | null = null;
-function getToonRamp(): THREE.DataTexture {
-  if (toonRamp) return toonRamp;
-  const data = new Uint8Array([165, 165, 165, 255, 220, 220, 220, 255, 255, 255, 255, 255]);
-  toonRamp = new THREE.DataTexture(data, 3, 1, THREE.RGBAFormat);
-  toonRamp.needsUpdate = true;
-  return toonRamp;
-}
 
 export class FighterRig {
   readonly root = new THREE.Group();
@@ -249,8 +241,7 @@ export class FighterRig {
   }
 
   private makeToon(color: number): THREE.MeshToonMaterial {
-    const material = new THREE.MeshToonMaterial({ color, gradientMap: getToonRamp() });
-    material.color.convertSRGBToLinear?.();
+    const material = makeToonMaterial(color);
     this.materials.push(material);
     this.tintMaterials.push({ material, base: material.color.clone() });
     return material;
