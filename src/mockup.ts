@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { toonRamp } from './render/toon';
 import { poseAttack, poseFightStance, poseRun, type Pose } from './rigs/poses';
-import { buildMockRig, OPTION_LABELS, type CharId, type MockRig, type OptionId } from './mockup/rigs';
+import { ALL_CHARS, buildMockRig, OPTION_LABELS, type CharId, type MockRig, type OptionId } from './mockup/rigs';
 
 const canvas = document.getElementById('lab') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -73,28 +73,43 @@ show();
 // ---------------------------------------------------------------------------
 function pickOption(id: OptionId): void {
   option = id;
+  if (id !== 'C' && chr !== 'volt' && chr !== 'grim') chr = 'volt';
   for (const o of ['A', 'B', 'C'] as const) {
     document.getElementById(`opt${o}`)!.classList.toggle('on', o === id);
   }
+  syncChrButton();
   show();
 }
 document.getElementById('optA')!.addEventListener('click', () => pickOption('A'));
 document.getElementById('optB')!.addEventListener('click', () => pickOption('B'));
 document.getElementById('optC')!.addEventListener('click', () => pickOption('C'));
-document.getElementById('chr')!.addEventListener('click', () => {
-  chr = chr === 'volt' ? 'grim' : 'volt';
+const chrBtn = document.getElementById('chr')!;
+function syncChrButton(): void {
+  chrBtn.textContent = `${chr.toUpperCase()} ▸`;
+}
+chrBtn.addEventListener('click', () => {
+  // Options A/B only have volt+grim; C has the full roster.
+  const pool: readonly CharId[] = option === 'C' ? ALL_CHARS : ['volt', 'grim'];
+  chr = pool[(pool.indexOf(chr) + 1) % pool.length] ?? 'volt';
+  syncChrButton();
   show();
 });
+syncChrButton();
+// Each character's REAL game finisher (kaze/shade spin, grim/titan slam…).
+const FINISHERS: Record<CharId, string> = {
+  volt: 'finisher', kaze: 'spin', grim: 'slam', ace: 'finisher',
+  blaze: 'finisher', nova: 'uppercut', shade: 'spin', titan: 'slam',
+};
 document.getElementById('jab')!.addEventListener('click', () => {
   attackQueue = [
     { poseId: 'jab1', duration: 0.3 },
     { poseId: 'jab2', duration: 0.3 },
-    { poseId: chr === 'grim' ? 'slam' : 'finisher', duration: 0.45 },
+    { poseId: FINISHERS[chr], duration: FINISHERS[chr] === 'spin' ? 0.55 : 0.45 },
   ];
   attackPhase = 0;
 });
 document.getElementById('weapon')!.addEventListener('click', () => {
-  attackQueue = [{ poseId: chr === 'grim' ? 'slam' : 'slash', duration: 0.6 }];
+  attackQueue = [{ poseId: chr === 'grim' || chr === 'titan' ? 'slam' : 'slash', duration: 0.6 }];
   attackPhase = 0;
 });
 document.getElementById('run')!.addEventListener('click', function (this: HTMLElement) {
