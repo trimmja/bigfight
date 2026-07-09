@@ -108,7 +108,11 @@ export class Pickup extends Entity {
     let dy = targetY - itemY;
     const distSq = dx * dx + dy * dy;
 
-    if (distSq <= COLLECT_RADIUS_SQ) {
+    const dist = Math.sqrt(Math.max(0.0001, distSq));
+    const speed = Math.hypot(this.body.vel.x, this.body.vel.y);
+    // Collect on contact — or when we'd tunnel PAST the player this step
+    // (fast magnetized pickups used to overshoot and orbit forever).
+    if (distSq <= COLLECT_RADIUS_SQ || (this.magnetized && dist <= speed * dt * 1.5)) {
       this.syncVisual(dt);
       return true;
     }
@@ -117,17 +121,15 @@ export class Pickup extends Entity {
       this.magnetized = true;
       this.body.noclip = true;
       this.body.gravityScale = 0;
-      const dist = Math.sqrt(Math.max(0.0001, distSq));
       dx /= dist;
       dy /= dist;
-      this.body.vel.x += dx * MAGNET_ACCEL * dt;
-      this.body.vel.y += dy * MAGNET_ACCEL * dt;
-      const speed = Math.hypot(this.body.vel.x, this.body.vel.y);
-      if (speed > MAGNET_MAX_SPEED) {
-        const s = MAGNET_MAX_SPEED / speed;
-        this.body.vel.x *= s;
-        this.body.vel.y *= s;
-      }
+      // Steer velocity AT the player (blend toward the ideal heading) instead
+      // of accelerating — pure acceleration preserves tangential velocity,
+      // which is exactly an orbit.
+      const targetSpeed = Math.min(MAGNET_MAX_SPEED, 6 + speed + MAGNET_ACCEL * dt);
+      const k = 1 - Math.exp(-14 * dt);
+      this.body.vel.x += (dx * targetSpeed - this.body.vel.x) * k;
+      this.body.vel.y += (dy * targetSpeed - this.body.vel.y) * k;
     }
 
     this.wasGrounded = this.body.grounded;
