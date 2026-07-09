@@ -124,6 +124,27 @@ export class TouchInput {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') this.releaseAll();
     });
+    window.addEventListener('pagehide', () => this.releaseAll());
+
+    // Ghost-stick reconciliation: iOS can end a touch WITHOUT any up/cancel
+    // event (system gestures, palm edges), leaving the stick "held" at its
+    // last vector — the character runs away forever. On every real touch
+    // interaction, if NO finger is anywhere near the stick anchor, the stick
+    // owner is a ghost → release it.
+    const reconcileStick = (event: TouchEvent): void => {
+      if (this.stickPointerId === null) return;
+      for (let i = 0; i < event.touches.length; i += 1) {
+        const touch = event.touches.item(i);
+        if (!touch) continue;
+        const dx = touch.clientX - this.stickBaseX;
+        const dy = touch.clientY - this.stickBaseY;
+        if (dx * dx + dy * dy < 220 * 220) return; // plausibly still the stick finger
+      }
+      this.releasePointer(this.stickPointerId);
+    };
+    window.addEventListener('touchstart', reconcileStick, { capture: true, passive: true });
+    window.addEventListener('touchend', reconcileStick, { capture: true, passive: true });
+    window.addEventListener('touchcancel', reconcileStick, { capture: true, passive: true });
   }
 
   /** Shows or hides the overlay root. */
