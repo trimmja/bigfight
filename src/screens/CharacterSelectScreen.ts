@@ -153,9 +153,8 @@ export class CharacterSelectScreen implements Screen {
       this.preview.dispose();
     }
     this.preview = buildCharacterRig(def);
-    // Rig at the group origin; the group carries position + 3/4 sway so the
-    // character pirouettes in place.
-    this.previewGroup.position.set(3.4, -1.2, 10);
+    // Rig at the group origin; the group carries position/scale/spin —
+    // placement is aspect-aware and happens every frame in update().
     this.preview.setShadow(null, 0);
     this.previewGroup.add(this.preview.root);
   }
@@ -168,9 +167,20 @@ export class CharacterSelectScreen implements Screen {
     this.root = null;
   }
 
-  update(_game: Game, dt: number): void {
+  update(game: Game, dt: number): void {
     this.t += dt;
     if (!this.preview) return;
+
+    // Anchor the fighter to the middle of the right-hand zone regardless of
+    // aspect ratio (phones squished him small and high), at ~2x scale.
+    const cam = game.renderer.camera;
+    const dist = cam.position.z - 10;
+    const halfH = Math.tan((cam.fov * Math.PI) / 360) * dist;
+    const halfW = halfH * cam.aspect;
+    const scale = 2.0;
+    this.previewGroup.scale.setScalar(scale);
+    this.previewGroup.position.set(halfW * 0.47, halfH * 0.18 - 1.05 * scale, 10);
+
     const blend = 1 - Math.exp(-14 * dt);
     if (this.punchT >= 0) {
       this.punchT += dt * 2.4;
