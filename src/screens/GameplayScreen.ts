@@ -235,6 +235,7 @@ export class GameplayScreen implements Screen {
     this.stage?.dispose();
     if (this.particles) disposeParticles(this.particles, game.renderer.scene);
     if (this.trails) disposeTrails(this.trails, game.renderer.scene);
+    this.cameraRig?.dispose();
     this.destroyDebug();
     game.input.setTouchControlsVisible(false);
     this.stage = null;

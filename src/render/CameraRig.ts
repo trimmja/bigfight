@@ -31,6 +31,7 @@ export class CameraRig {
   private minY = Number.NEGATIVE_INFINITY;
 
   private shake = 0;
+  private readonly shakeUnsub: () => void;
 
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
@@ -43,9 +44,14 @@ export class CameraRig {
     this.targetY = this.baseY;
     this.targetZ = this.baseZ;
 
-    events.on('screenShake', ({ amount }) => {
+    this.shakeUnsub = events.on('screenShake', ({ amount }) => {
       this.shake = Math.max(this.shake, amount);
     });
+  }
+
+  /** Unsubscribes from the event bus — call when the owning screen exits. */
+  dispose(): void {
+    this.shakeUnsub();
   }
 
   /** Clamp the framed view so it never drifts off-stage / below the floor. */
