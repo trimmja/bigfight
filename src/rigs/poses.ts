@@ -267,6 +267,13 @@ const attackFrames: Record<string, readonly AttackKeyframe[]> = {
     { at: 0.5, pose: { hips: { z: Math.PI }, torso: { z: 0.1 }, armL: { z: 1.2, x: -0.5 }, armR: { z: 1.2, x: 0.5 }, legL: { z: 0.85 }, legR: { z: 0.85 }, shinL: { z: -1.3 }, shinR: { z: -1.3 } } },
     { at: 1, pose: { hips: { z: Math.PI * 2 }, armL: { z: 0.25, x: 0.3 }, armR: { z: 0.25, x: -0.3 } } },
   ],
+  kick: [
+    // Snap kick: chamber the knee, SNAP the leg out straight, retract.
+    { at: 0, pose: { torso: { z: 0.2 }, hips: { z: 0.08 }, legR: { z: 0.95 }, shinR: { z: -1.5 }, legL: { z: -0.15 }, armL: { z: 0.5 }, foreArmL: { z: 1.4 }, armR: { z: 0.3 }, foreArmR: { z: 1.2 } } },
+    { at: 0.38, pose: { torso: { z: 0.32 }, hips: { z: -0.05 }, head: { z: -0.1 }, legR: { z: 1.6 }, shinR: { z: -0.04 }, legL: { z: -0.3 }, shinL: { z: 0.2 }, armL: { z: 0.6 }, foreArmL: { z: 1.3 }, armR: { z: -0.4 }, foreArmR: { z: 0.8 } } },
+    { at: 0.6, pose: { torso: { z: 0.3 }, hips: { z: -0.04 }, legR: { z: 1.5 }, shinR: { z: -0.08 }, legL: { z: -0.28 }, shinL: { z: 0.2 }, armL: { z: 0.6 }, foreArmL: { z: 1.3 }, armR: { z: -0.35 }, foreArmR: { z: 0.85 } } },
+    { at: 1, pose: { torso: { z: 0.1 }, legR: { z: 0.4 }, shinR: { z: -0.6 }, armL: { z: 0.4 }, foreArmL: { z: 1.3 }, armR: { z: 0.3 }, foreArmR: { z: 1.2 } } },
+  ],
   poke: [
     { at: 0, pose: { torso: { z: 0.15 }, armR: { z: -0.45, x: -0.15 }, foreArmR: { z: 0.9 }, armL: { z: -0.2 } } },
     { at: 0.42, pose: { torso: { z: 0.32 }, armR: { z: 1.62, x: -0.02 }, foreArmR: { z: 0.02 }, legR: { z: -0.32 }, legL: { z: 0.2 } } },

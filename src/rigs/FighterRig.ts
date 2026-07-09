@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp, damp, lerp } from '../core/math';
+import { clamp, damp } from '../core/math';
 import { makeToonMaterial } from '../render/toon';
 import type { Palette, Proportions } from '../data/types';
 import type { JointName, Pose } from './poses';
@@ -178,10 +178,12 @@ export class FighterRig {
       const name = JOINTS[i]!;
       const joint = this.joints[name];
       const target = pose[name];
-      joint.rotation.x = lerp(joint.rotation.x, target?.x ?? 0, amount);
+      // Shortest-path angle blending: after a full 360° spin the joint relaxes
+      // in place instead of visibly unwinding backwards.
+      joint.rotation.x = angleLerp(joint.rotation.x, target?.x ?? 0, amount);
       // Root yaw belongs to the facing turn, never to poses.
-      if (name !== 'root') joint.rotation.y = lerp(joint.rotation.y, target?.y ?? 0, amount);
-      joint.rotation.z = lerp(joint.rotation.z, target?.z ?? 0, amount);
+      if (name !== 'root') joint.rotation.y = angleLerp(joint.rotation.y, target?.y ?? 0, amount);
+      joint.rotation.z = angleLerp(joint.rotation.z, target?.z ?? 0, amount);
     }
     // The shadow must not inherit the tumble spin visually — counteract root z.
     this.shadow.rotation.z = -this.root.rotation.z;
@@ -258,6 +260,15 @@ export class FighterRig {
     this.tintMaterials.push({ material, base: material.color.clone() });
     return material;
   }
+}
+
+/** Lerp between angles along the SHORTEST arc (2π-aware). */
+function angleLerp(current: number, target: number, amount: number): number {
+  const TWO_PI = Math.PI * 2;
+  let delta = (target - current) % TWO_PI;
+  if (delta > Math.PI) delta -= TWO_PI;
+  if (delta < -Math.PI) delta += TWO_PI;
+  return current + delta * amount;
 }
 
 function addBall(

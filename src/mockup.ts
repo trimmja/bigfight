@@ -95,7 +95,12 @@ chrBtn.addEventListener('click', () => {
   show();
 });
 syncChrButton();
-// Each character's REAL game finisher (kaze/shade spin, grim/titan slam…).
+// Each character's REAL game combo (kaze/blaze/shade kick on hit 2;
+// kaze/shade spin finishers, grim/titan slams, nova uppercut).
+const HIT2: Record<CharId, string> = {
+  volt: 'jab2', kaze: 'kick', grim: 'jab2', ace: 'jab2',
+  blaze: 'kick', nova: 'jab2', shade: 'kick', titan: 'jab2',
+};
 const FINISHERS: Record<CharId, string> = {
   volt: 'finisher', kaze: 'spin', grim: 'slam', ace: 'finisher',
   blaze: 'finisher', nova: 'uppercut', shade: 'spin', titan: 'slam',
@@ -103,7 +108,7 @@ const FINISHERS: Record<CharId, string> = {
 document.getElementById('jab')!.addEventListener('click', () => {
   attackQueue = [
     { poseId: 'jab1', duration: 0.3 },
-    { poseId: 'jab2', duration: 0.3 },
+    { poseId: HIT2[chr], duration: HIT2[chr] === 'kick' ? 0.4 : 0.3 },
     { poseId: FINISHERS[chr], duration: FINISHERS[chr] === 'spin' ? 0.55 : 0.45 },
   ];
   attackPhase = 0;

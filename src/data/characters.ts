@@ -101,7 +101,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
         recover: 0.1,
         hitbox: { x: 0.9, y: 0.9, w: 1.2, h: 1.0 },
         sfx: 'hitLight',
-        poseId: 'jab2',
+        poseId: 'kick',
       },
       {
         id: 'kazeFinisher',
@@ -266,7 +266,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
         recover: 0.11,
         hitbox: { x: 0.9, y: 0.9, w: 1.2, h: 1.0 },
         sfx: 'hitLight',
-        poseId: 'jab2',
+        poseId: 'kick',
       },
       {
         id: 'blazeFinisher',
@@ -376,7 +376,7 @@ export const CHARACTERS: readonly CharacterDef[] = [
         recover: 0.09,
         hitbox: { x: 0.9, y: 0.9, w: 1.2, h: 1.0 },
         sfx: 'hitLight',
-        poseId: 'jab2',
+        poseId: 'kick',
       },
       {
         id: 'shadeFinisher',

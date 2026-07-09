@@ -47,9 +47,9 @@ export class MockRig {
       const joint = this.joints[name];
       if (!joint) continue;
       const target = pose[name];
-      joint.rotation.x = lerp(joint.rotation.x, target?.x ?? 0, amount);
-      if (name !== 'root') joint.rotation.y = lerp(joint.rotation.y, target?.y ?? 0, amount);
-      joint.rotation.z = lerp(joint.rotation.z, target?.z ?? 0, amount);
+      joint.rotation.x = angleLerp(joint.rotation.x, target?.x ?? 0, amount);
+      if (name !== 'root') joint.rotation.y = angleLerp(joint.rotation.y, target?.y ?? 0, amount);
+      joint.rotation.z = angleLerp(joint.rotation.z, target?.z ?? 0, amount);
     }
   }
 
@@ -62,6 +62,15 @@ export class MockRig {
     this.root.removeFromParent();
     for (const m of this.materials) m.dispose();
   }
+}
+
+/** Lerp between angles along the SHORTEST arc (2π-aware). */
+function angleLerp(current: number, target: number, amount: number): number {
+  const TWO_PI = Math.PI * 2;
+  let delta = (target - current) % TWO_PI;
+  if (delta > Math.PI) delta -= TWO_PI;
+  if (delta < -Math.PI) delta += TWO_PI;
+  return current + delta * amount;
 }
 
 function ball(parent: THREE.Object3D, mat: THREE.Material, sx: number, sy: number, sz: number, x: number, y: number, z: number, rx = 0, rz = 0): THREE.Mesh {
