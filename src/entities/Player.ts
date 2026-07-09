@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { HEAL_ORB_AMOUNT, PLAYER_STOCKS, RAGE_MULT, RESPAWN_INVULN, SHIELD_HITS } from '../config';
 import type { IInput } from '../contracts';
-import type { CharacterDef, PowerupDef, WeaponDef } from '../data/types';
+import type { AttackDef, CharacterDef, PowerupDef, WeaponDef } from '../data/types';
 import { buildCharacterRig } from '../rigs/characterBuilders';
 import { buildWeaponModel } from '../rigs/weaponBuilders';
 import { makeToonMaterial } from '../render/toon';
@@ -11,28 +11,44 @@ import { Fighter } from './Fighter';
 const NO_HITBOX = { x: 0, y: 0, w: 0, h: 0 };
 const SHIELD_GEOMETRY = new THREE.SphereGeometry(1, 24, 16);
 
-const GIANT_HAMMER_WEAPON: WeaponDef = {
+/** Model-only stub for the hammer-mode visual (never equipped as a weapon). */
+const GIANT_HAMMER_MODEL_STUB: WeaponDef = {
   id: 'powerupGiantHammer',
   name: 'Giant Hammer',
-  tagline: 'Temporary smash power.',
+  tagline: 'SMASH.',
   category: 'melee',
   ability: {
     id: 'powerupGiantHammerSlam',
-    damage: 20,
-    baseKb: 14,
-    kbGrowth: 0.24,
-    angleDeg: 82,
-    windup: 0.18,
-    active: 0.12,
-    recover: 0.26,
-    hitbox: { x: 1.05, y: 0.9, w: 2.1, h: 1.7 },
+    damage: 0,
+    baseKb: 0,
+    kbGrowth: 0,
+    angleDeg: 0,
+    windup: 0,
+    active: 0,
+    recover: 0,
+    hitbox: NO_HITBOX,
     sfx: 'slash',
     poseId: 'slam',
   },
-  cooldown: 1.15,
+  cooldown: 1,
   recipe: {},
   model: 'thunderHammer',
   color: 0xffe94a,
+};
+
+/** The relentless auto-swing (Smash Bros hammer): fast loop, huge launcher. */
+const HAMMER_SWING: AttackDef = {
+  id: 'powerupHammerSwing',
+  damage: 15,
+  baseKb: 11,
+  kbGrowth: 0.2,
+  angleDeg: 60,
+  windup: 0.09,
+  active: 0.1,
+  recover: 0.09,
+  hitbox: { x: 1.05, y: 0.9, w: 2.2, h: 1.8 },
+  sfx: 'slash',
+  poseId: 'slam',
 };
 
 const FREEZE_RAY_WEAPON: WeaponDef = {
@@ -75,6 +91,9 @@ export class Player extends Fighter {
   stocks = PLAYER_STOCKS;
 
   private shieldTimer = 0;
+  private hammerTimer = 0;
+  private hammerPulse = 0;
+  private hammerModel: THREE.Group | null = null;
   private rageTimer = 0;
   private ragePulseTime = 0;
   private temporaryWeaponTimer = 0;
@@ -94,6 +113,29 @@ export class Player extends Fighter {
     this.intents.attackPressed = state.attackPressed;
     this.intents.weaponPressed = state.weaponPressed;
     this.updatePowerupTimers(dt);
+
+    // HAMMER MODE (Smash Bros style): relentless auto-swinging; manual
+    // attacks and weapon abilities are locked out; you steer the rampage.
+    if (this.hammerTimer > 0 && this.hitstopTimer <= 0) {
+      this.intents.attackPressed = false;
+      this.intents.weaponPressed = false;
+      if (
+        this.state === 'idle' ||
+        this.state === 'run' ||
+        this.state === 'jump' ||
+        this.state === 'fall' ||
+        (this.state === 'attack' && this.currentAttack === null)
+      ) {
+        this.startCustomAttack(HAMMER_SWING);
+      }
+      // Danger flash: pulse red the whole time.
+      this.hammerPulse += dt;
+      if (this.hammerPulse >= 0.16) {
+        this.hammerPulse = 0;
+        this.rig.flashColor(0xff3030, 0.09);
+      }
+    }
+
     super.update(ctx, dt);
     this.updateShieldVisual(dt);
     this.updateRagePulse(dt);
@@ -124,7 +166,7 @@ export class Player extends Fighter {
         this.rig.flashColor(def.color, 0.18);
         break;
       case 'giantHammer':
-        this.activateTemporaryWeapon(GIANT_HAMMER_WEAPON, def.duration);
+        this.startHammerMode(def.duration);
         this.rig.flashColor(def.color, 0.18);
         break;
       case 'freezeRay':
@@ -139,7 +181,27 @@ export class Player extends Fighter {
     super.dispose();
   }
 
+  private startHammerMode(duration: number): void {
+    this.hammerTimer = duration;
+    this.autoSwingMove = true;
+    if (!this.hammerModel) {
+      this.hammerModel = buildWeaponModel(GIANT_HAMMER_MODEL_STUB);
+      this.hammerModel.scale.setScalar(1.6);
+    }
+    this.setWeaponModelOverride(this.hammerModel);
+  }
+
+  private endHammerMode(): void {
+    this.autoSwingMove = false;
+    this.setWeaponModelOverride(null);
+    // Let the current swing finish naturally; no new ones start.
+  }
+
   private updatePowerupTimers(dt: number): void {
+    if (this.hammerTimer > 0) {
+      this.hammerTimer = Math.max(0, this.hammerTimer - dt);
+      if (this.hammerTimer === 0) this.endHammerMode();
+    }
     if (this.rageTimer > 0) {
       this.rageTimer = Math.max(0, this.rageTimer - dt);
       if (this.rageTimer === 0) this.attackMult = 1;

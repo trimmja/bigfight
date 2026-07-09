@@ -87,9 +87,13 @@ export class Fighter extends Entity {
     sfx: 'shoot',
     poseId: 'shoot',
   };
+  /** Hammer powerup: keep running while auto-swinging. */
+  autoSwingMove = false;
+
   private trail: TrailHandle | null = null;
   private equippedWeapon: WeaponDef | null = null;
   private weaponModel: THREE.Group | null = null;
+  private modelOverride: THREE.Group | null = null;
   private currentAttackIsWeapon = false;
   private projectileFired = false;
   private slashWaveFired = false;
@@ -288,8 +292,43 @@ export class Fighter extends Entity {
     }
     this.equippedWeapon = weapon;
     this.weaponModel = model;
-    this.rig.weaponSocket.add(model);
+    if (!this.modelOverride) this.rig.weaponSocket.add(model);
     this.weaponCooldown = Math.min(this.weaponCooldown, weapon.cooldown);
+  }
+
+  /**
+   * Visually swap the held model WITHOUT touching the equipped weapon
+   * (giant-hammer powerup). Pass null to restore the real weapon's model.
+   */
+  setWeaponModelOverride(model: THREE.Group | null): void {
+    if (this.modelOverride) {
+      this.rig.weaponSocket.remove(this.modelOverride);
+      this.modelOverride = null;
+      if (this.weaponModel) this.rig.weaponSocket.add(this.weaponModel);
+    }
+    if (model) {
+      if (this.weaponModel) this.rig.weaponSocket.remove(this.weaponModel);
+      this.modelOverride = model;
+      this.rig.weaponSocket.add(model);
+    }
+  }
+
+  /** Trigger an attack outside the combo system (hammer-mode auto swings). */
+  startCustomAttack(def: AttackDef): void {
+    this.currentAttack = def;
+    this.currentAttackIsWeapon = true;
+    this.projectileFired = false;
+    this.slashWaveFired = false;
+    this.comboQueued = false;
+    this.attackPhaseTime = 0;
+    this.stateTime = 0;
+    this.state = 'attack';
+    this.alreadyHit.clear();
+  }
+
+  private handleFacing2(): void {
+    if (this.intents.moveX > 0.15) this.facing = 1;
+    if (this.intents.moveX < -0.15) this.facing = -1;
   }
 
   koReset(pos: Vec2): void {
@@ -387,7 +426,13 @@ export class Fighter extends Entity {
     this.stateTime += dt;
     this.attackPhaseTime += dt;
     if (this.body.grounded) {
-      this.body.vel.x = moveToward(this.body.vel.x, 0, ATTACK_STOP_ACCEL * dt);
+      // Hammer mode: keep running while swinging (Smash-style rampage).
+      if (this.autoSwingMove) {
+        this.handleFacing2();
+        this.applyGroundMove(dt);
+      } else {
+        this.body.vel.x = moveToward(this.body.vel.x, 0, ATTACK_STOP_ACCEL * dt);
+      }
     } else {
       this.applyAirMove(dt, AIR_CONTROL);
     }
