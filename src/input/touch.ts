@@ -84,19 +84,22 @@ export class TouchInput {
     this.root.appendChild(knob);
     this.stickKnob = knob;
 
-    const jump = this.createButton('JUMP', 'var(--neon-cyan)', 76);
-    jump.style.right = 'calc(var(--safe-r) + 22px)';
-    jump.style.bottom = 'calc(var(--safe-b) + 22px)';
+    // Sizes +30% (playtest: originals were fiddly for kid thumbs). Offsets
+    // recomputed so the 16px gaps hold: JUMP spans 20..120 from the corner,
+    // ATK sits left of it (136+), PWR above it (136+), centers aligned.
+    const jump = this.createButton('JUMP', 'var(--neon-cyan)', 100);
+    jump.style.right = 'calc(var(--safe-r) + 20px)';
+    jump.style.bottom = 'calc(var(--safe-b) + 20px)';
     this.bindButton(jump, 'jump');
 
-    const attack = this.createButton('ATK', 'var(--neon-pink)', 64);
-    attack.style.right = 'calc(var(--safe-r) + 112px)';
-    attack.style.bottom = 'calc(var(--safe-b) + 28px)';
+    const attack = this.createButton('ATK', 'var(--neon-pink)', 84);
+    attack.style.right = 'calc(var(--safe-r) + 136px)';
+    attack.style.bottom = 'calc(var(--safe-b) + 26px)';
     this.bindButton(attack, 'attack');
 
-    const weapon = this.createButton('PWR', 'var(--neon-yellow)', 56);
-    weapon.style.right = 'calc(var(--safe-r) + 32px)';
-    weapon.style.bottom = 'calc(var(--safe-b) + 112px)';
+    const weapon = this.createButton('PWR', 'var(--neon-yellow)', 74);
+    weapon.style.right = 'calc(var(--safe-r) + 33px)';
+    weapon.style.bottom = 'calc(var(--safe-b) + 136px)';
     weapon.style.setProperty('--cooldown-frac', '0');
     weapon.style.background = 'conic-gradient(var(--neon-yellow) calc(var(--cooldown-frac, 0) * 1turn),'
       + 'rgba(255,233,74,0.10) 0),rgba(5,5,12,0.58)';
@@ -175,7 +178,7 @@ export class TouchInput {
       + `border:2px solid ${color};background:rgba(5,5,12,0.58);color:${color};`
       + `box-shadow:0 0 18px color-mix(in srgb, ${color} 58%, transparent),`
       + `inset 0 0 12px color-mix(in srgb, ${color} 18%, transparent);`
-      + 'font:800 12px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
+      + 'font:800 14px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;'
       + 'letter-spacing:0;text-align:center;padding:0;touch-action:none;user-select:none;'
       + '-webkit-user-select:none;pointer-events:auto;';
     this.root?.appendChild(button);
