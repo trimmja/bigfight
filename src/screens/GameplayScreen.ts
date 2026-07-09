@@ -309,6 +309,7 @@ export class GameplayScreen implements Screen {
     pickupManager.collectBodies(this.physicsBodies);
 
     physics.step(this.physicsBodies, stage.colliders, dt);
+    this.separateFighters(dt);
     for (let i = 0; i < this.liveFighters.length; i += 1) {
       this.liveFighters[i]!.afterPhysics(ctx);
     }
@@ -364,6 +365,35 @@ export class GameplayScreen implements Screen {
     this.lastRenderMs = now;
     this.fps = 1 / dt;
     this.cameraRig?.update(TIMESTEP);
+  }
+
+  /**
+   * Fighters are solid to each other (Ryder's rule: jump over enemies, don't
+   * walk through them). Positional push-apart, weight-weighted; skipped for
+   * anyone being launched/stunned so knockback still carries through, and for
+   * ghosts (noclip) and respawn-invulnerable fighters.
+   */
+  private separateFighters(dt: number): void {
+    const maxPush = 10 * dt; // shove speed cap: firm but not teleporty
+    for (let i = 0; i < this.liveFighters.length; i += 1) {
+      const a = this.liveFighters[i]!;
+      if (!fighterIsSolid(a)) continue;
+      for (let k = i + 1; k < this.liveFighters.length; k += 1) {
+        const b = this.liveFighters[k]!;
+        if (!fighterIsSolid(b)) continue;
+        const overlapX =
+          Math.min(a.body.maxX, b.body.maxX) - Math.max(a.body.minX, b.body.minX);
+        if (overlapX <= 0) continue;
+        const overlapY =
+          Math.min(a.body.maxY, b.body.maxY) - Math.max(a.body.minY, b.body.minY);
+        if (overlapY <= 0.05) continue; // airborne clearance — jumping over works
+        const push = Math.min(overlapX, maxPush);
+        const dir = a.body.pos.x <= b.body.pos.x ? -1 : 1;
+        const total = a.weight + b.weight;
+        a.body.pos.x += dir * push * (b.weight / total);
+        b.body.pos.x -= dir * push * (a.weight / total);
+      }
+    }
   }
 
   private spawnMob(game: Game, enemyId: string, pos: Vec2): Mob | null {
@@ -797,6 +827,19 @@ function updateLineBox(line: THREE.LineSegments, rect: Rect, z: number): void {
   pos[23] = z;
   attr.needsUpdate = true;
   line.visible = true;
+}
+
+/** Solid for body-blocking: on their feet and physically present. */
+function fighterIsSolid(f: Fighter): boolean {
+  return (
+    f.alive &&
+    !f.body.noclip &&
+    !f.isInvulnerable &&
+    f.state !== 'launched' &&
+    f.state !== 'hitstun' &&
+    f.state !== 'ko' &&
+    f.state !== 'respawning'
+  );
 }
 
 function disposeParticles(particles: Particles, scene: THREE.Scene): void {
