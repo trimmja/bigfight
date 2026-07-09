@@ -12,8 +12,9 @@ export const MAX_STEPS_PER_FRAME = 5;
 export const GRAVITY = -38;
 export const MAX_FALL = -22;
 export const FASTFALL_MULT = 1.6;
-export const FRICTION_GROUND = 30;
-export const AIR_CONTROL = 12;
+// Ground accel/decel: fighters hit full run speed in ~0.14s — snappy, arcadey.
+export const FRICTION_GROUND = 55;
+export const AIR_CONTROL = 14;
 export const DROP_THROUGH_TIME = 0.25;
 
 // ---- combat feel ----

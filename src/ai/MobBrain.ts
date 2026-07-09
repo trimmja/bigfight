@@ -172,6 +172,12 @@ export class MobBrain {
     this.mob.intents.moveX = Math.abs(dx) > 0.15 ? Math.sign(dx) : 0;
     if (dy > 2.1 && this.mob.body.grounded) this.mob.intents.jumpPressed = true;
     if (dt > 0) this.mob.intents.moveY = 0;
+    // Player below us on a one-way platform → drop through and engage
+    // (otherwise platform spawns camp up top forever).
+    if (dy < -2.1 && this.mob.body.grounded && Math.abs(dx) < 4) {
+      this.mob.intents.moveY = -1;
+      this.mob.intents.jumpPressed = true;
+    }
   }
 
   private updateWindup(): void {
