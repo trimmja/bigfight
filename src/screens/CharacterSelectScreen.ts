@@ -7,7 +7,7 @@ import type { CharacterDef } from '../data/types';
 import { isCharacterUnlocked, unlockedCharacters } from '../progression';
 import { buildCharacterRig } from '../rigs/characterBuilders';
 import type { FighterRig } from '../rigs/FighterRig';
-import { poseIdle, poseAttack } from '../rigs/poses';
+import { poseFightStance, poseAttack } from '../rigs/poses';
 import { button, el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
 
@@ -142,7 +142,7 @@ export class CharacterSelectScreen implements Screen {
       if (this.punchT >= 1) this.punchT = -1;
       else this.preview.setPose(poseAttack('finisher', this.punchT), blend);
     }
-    if (this.punchT < 0) this.preview.setPose(poseIdle(this.t), blend);
+    if (this.punchT < 0) this.preview.setPose(poseFightStance(this.t), blend);
     // 3/4 hero angle (face toward camera) + gentle sway — on the wrapper
     // group, since the rig's own root yaw belongs to the facing turn.
     // Face the camera dead-on, with a gentle idle sway.
