@@ -460,6 +460,11 @@ export class Fighter extends Entity {
 
   private tryStartAttack(): boolean {
     if (!this.intents.attackPressed) return false;
+    // Spin fighters (Kaze, Shade) use their spin as the air attack directly.
+    if (!this.body.grounded && this.def.combo[2].poseId === 'spin') {
+      this.startAttack(2);
+      return true;
+    }
     const nextIndex = this.comboResetTimer > 0 ? clamp(this.comboIndex + 1, 0, 2) : 0;
     this.startAttack(nextIndex);
     return true;
@@ -474,6 +479,12 @@ export class Fighter extends Entity {
   private startAttack(index: number): void {
     const attack = this.def.combo[index];
     if (attack === undefined) return;
+    // Grounded spin gets a little hop (Link-style spin attack) — carries the
+    // spin clear of the floor and feels great.
+    if (attack.poseId === 'spin' && this.body.grounded) {
+      this.body.vel.y = 5.5;
+      this.body.grounded = false;
+    }
     this.comboIndex = index;
     this.comboQueued = false;
     this.currentAttack = attack;

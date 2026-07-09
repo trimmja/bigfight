@@ -218,9 +218,11 @@ const attackFrames: Record<string, readonly AttackKeyframe[]> = {
     { at: 1, pose: { torso: { z: -0.18 }, armL: { z: -0.3, x: 0.25 }, armR: { z: -0.3, x: -0.25 }, foreArmL: { z: 0.3 }, foreArmR: { z: 0.3 } } },
   ],
   spin: [
-    { at: 0, pose: { root: { z: 0 }, torso: { z: 0.2 }, armL: { z: 0.5, x: 1.15 }, armR: { z: 0.55, x: -1.15 }, legL: { z: 0.25 } } },
-    { at: 0.5, pose: { root: { z: Math.PI }, torso: { z: 0.1 }, armL: { z: 0.75, x: -1.2 }, armR: { z: 0.7, x: 1.2 }, legR: { z: 0.25 } } },
-    { at: 1, pose: { root: { z: Math.PI * 2 }, armL: { z: 0.25, x: 0.6 }, armR: { z: 0.25, x: -0.6 } } },
+    // Spin around the HIPS (not the feet) with legs tucked, so the body never
+    // sweeps below the floor; the Fighter adds a physical hop during active.
+    { at: 0, pose: { hips: { z: 0 }, torso: { z: 0.25 }, armL: { z: 0.9, x: 0.4 }, armR: { z: 0.9, x: -0.4 }, legL: { z: 0.85 }, legR: { z: 0.85 }, shinL: { z: -1.3 }, shinR: { z: -1.3 } } },
+    { at: 0.5, pose: { hips: { z: Math.PI }, torso: { z: 0.1 }, armL: { z: 1.2, x: -0.5 }, armR: { z: 1.2, x: 0.5 }, legL: { z: 0.85 }, legR: { z: 0.85 }, shinL: { z: -1.3 }, shinR: { z: -1.3 } } },
+    { at: 1, pose: { hips: { z: Math.PI * 2 }, armL: { z: 0.25, x: 0.3 }, armR: { z: 0.25, x: -0.3 } } },
   ],
   poke: [
     { at: 0, pose: { torso: { z: 0.15 }, armR: { z: -0.45, x: -0.15 }, foreArmR: { z: 0.9 }, armL: { z: -0.2 } } },
