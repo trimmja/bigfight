@@ -319,7 +319,7 @@ html, body {
   padding: 20px 10px;
   scrollbar-width: none;
 }
-.bf-map-node { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 86px; }
+.bf-map-node { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 96px; }
 .bf-map-node-alt { transform: translateY(-26px); }
 .bf-level {
   width: 64px;
@@ -338,6 +338,27 @@ html, body {
 .bf-level-boss { border-color: var(--neon-yellow); font-size: 28px; }
 @keyframes bf-bounce { 50% { transform: translateY(-7px); } }
 .bf-level-name { font-size: 12px; font-weight: 700; color: #ffffff; text-shadow: 0 2px 0 rgba(30,42,74,0.35); text-align: center; }
+.bf-level-reward {
+  min-height: 28px;
+  max-width: 96px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  background: rgba(30, 42, 74, 0.18);
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.35px;
+  line-height: 1.12;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(30, 42, 74, 0.32);
+}
+.bf-map-node-next .bf-level-reward {
+  background: rgba(255, 201, 62, 0.82);
+  color: #6a4a00;
+  box-shadow: 0 2px 0 rgba(30, 42, 74, 0.18);
+  text-shadow: none;
+}
+.bf-map-node-locked .bf-level-reward { background: rgba(30, 42, 74, 0.12); }
 
 /* ---- select screens (characters / weapons) ---- */
 .bf-select-screen, .bf-market-screen {

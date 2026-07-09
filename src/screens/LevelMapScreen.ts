@@ -1,12 +1,17 @@
 import { events } from '../core/events';
 import type { Game } from '../Game';
+import { characterById } from '../data/characters';
 import { LEVELS } from '../data/levels';
+import { powerupById } from '../data/powerups';
+import { stageById } from '../data/stages';
+import type { LevelDef } from '../data/types';
 import { button, el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
 
 /**
  * Campaign hub: a winding path of level bubbles. Beaten = green check,
- * next playable = bouncing gold, locked = gray. Boss levels get a crown.
+ * next playable = bouncing gold, locked = gray. Locked nodes deliberately
+ * stay mysterious, but preview the kind of reward waiting ahead.
  */
 export class LevelMapScreen implements Screen {
   private root: HTMLElement | null = null;
@@ -36,7 +41,14 @@ export class LevelMapScreen implements Screen {
       const locked = level.id > beaten + 1;
       const boss = level.bossId !== undefined;
 
-      const node = el('div', 'bf-map-node' + (level.id % 2 === 0 ? ' bf-map-node-alt' : ''), path);
+      const node = el(
+        'div',
+        'bf-map-node'
+          + (level.id % 2 === 0 ? ' bf-map-node-alt' : '')
+          + (isNext ? ' bf-map-node-next' : '')
+          + (locked ? ' bf-map-node-locked' : ''),
+        path,
+      );
       const bubble = el(
         'button',
         'bf-level' +
@@ -51,6 +63,10 @@ export class LevelMapScreen implements Screen {
       if (isBeaten) bubble.textContent = '✓';
       bubble.disabled = locked;
       el('div', 'bf-level-name', node).textContent = locked ? '???' : level.name;
+      if (!isBeaten) {
+        const reward = el('div', 'bf-level-reward', node);
+        reward.textContent = rewardPreview(level, isNext);
+      }
       bubble.addEventListener('click', () => {
         if (locked) return;
         events.emit('ui', { kind: 'confirm' });
@@ -67,4 +83,32 @@ export class LevelMapScreen implements Screen {
   }
 
   update(): void {}
+}
+
+/**
+ * The next playable level can name its prize; farther-off levels show only
+ * the reward type, preserving a little campaign mystery while giving players
+ * a reason to keep moving along the path.
+ */
+function rewardPreview(level: LevelDef, revealName: boolean): string {
+  const unlocks = level.unlocks;
+  if (unlocks?.powerupId && unlocks.stageId) {
+    const name = powerupById(unlocks.powerupId).name.toUpperCase();
+    return revealName ? `⭐ WIN ${name}! + STAGE` : '⭐ POWER + 🗺️ STAGE';
+  }
+  if (unlocks?.characterId) {
+    const name = characterById(unlocks.characterId).name.toUpperCase();
+    return revealName ? `🥊 WIN ${name}!` : '🥊 NEW FIGHTER';
+  }
+  if (unlocks?.powerupId) {
+    const name = powerupById(unlocks.powerupId).name.toUpperCase();
+    return revealName ? `⭐ WIN ${name}!` : '⭐ NEW POWER';
+  }
+  if (unlocks?.stageId) {
+    const name = stageById(unlocks.stageId).name.toUpperCase();
+    return revealName ? `🗺️ UNLOCK ${name}!` : '🗺️ NEW STAGE';
+  }
+  if (level.id === LEVELS.length) return '🏆 FINAL BOSS';
+  if (level.bossId) return '👑 BOSS FIGHT';
+  return revealName ? '⚡ START HERE!' : '✨ SECRET FIGHT';
 }
