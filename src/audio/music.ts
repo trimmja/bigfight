@@ -277,14 +277,16 @@ export class Music {
 
     source.buffer = this.noiseBuffer;
     filter.type = 'highpass';
-    filter.frequency.setValueAtTime(6000, when);
+    filter.frequency.setValueAtTime(7200, when);
     this.envelope(gain.gain, when, peak, 0.003, duration);
 
     source.connect(filter);
     filter.connect(gain);
     gain.connect(output);
     this.cleanup([source], [filter, gain]);
-    source.start(when, 0.17);
+    // Random slice each hit — replaying the SAME noise slice every offbeat
+    // reads as a pitched "igniter click" instead of an airy hat.
+    source.start(when, Math.random() * (this.noiseBuffer.duration - 0.1));
     source.stop(when + duration + NOTE_TAIL_SECONDS);
   }
 
