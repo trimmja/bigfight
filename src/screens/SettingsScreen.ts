@@ -1,6 +1,7 @@
 import type { Game } from '../Game';
 import { resetSave } from '../core/save';
 import { button, el, uiRoot } from '../ui/dom';
+import { applyUpdate, updateAvailable } from '../updates';
 import type { Screen } from './Screen';
 
 /** Settings: sound, quality, screen shake, reset progress (with confirm). */
@@ -54,6 +55,32 @@ export class SettingsScreen implements Screen {
         game.save.settings.shake = !game.save.settings.shake;
         game.persist();
         shakeBtn.textContent = game.save.settings.shake ? 'SCREEN SHAKE: ON' : 'SCREEN SHAKE: OFF';
+      },
+      'bf-button',
+      col,
+    );
+
+    let updateReady = false;
+    const updateBtn = button(
+      'CHECK FOR UPDATES',
+      () => {
+        if (updateReady) {
+          applyUpdate();
+          return;
+        }
+        updateBtn.textContent = 'CHECKING…';
+        void updateAvailable().then((available) => {
+          if (available) {
+            updateReady = true;
+            updateBtn.textContent = '🔄 UPDATE NOW!';
+            updateBtn.classList.add('bf-button-yellow');
+          } else {
+            updateBtn.textContent = 'UP TO DATE ✓';
+            setTimeout(() => {
+              updateBtn.textContent = 'CHECK FOR UPDATES';
+            }, 2500);
+          }
+        });
       },
       'bf-button',
       col,

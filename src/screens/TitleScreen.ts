@@ -5,7 +5,8 @@ import { characterById } from '../data/characters';
 import { poseIdle, poseRun } from '../rigs/poses';
 import { buildCharacterRig } from '../rigs/characterBuilders';
 import type { FighterRig } from '../rigs/FighterRig';
-import { el, uiRoot } from '../ui/dom';
+import { button, el, uiRoot } from '../ui/dom';
+import { applyUpdate, updateAvailable } from '../updates';
 import type { Screen } from './Screen';
 
 /**
@@ -56,6 +57,14 @@ export class TitleScreen implements Screen {
     };
     this.root.addEventListener('pointerdown', start);
     events.emit('music', { mood: 'menu' });
+
+    // Quiet update check — a one-tap refresh beats force-quitting the webapp
+    // (save data survives the reload untouched).
+    void updateAvailable().then((available) => {
+      if (!available || !this.root) return;
+      const updateBtn = button('🔄 UPDATE!', () => applyUpdate(), 'bf-button bf-button-yellow bf-update-pill', this.root);
+      updateBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    });
   }
 
   exit(game: Game): void {

@@ -272,6 +272,13 @@ html, body {
 }
 @keyframes bf-pulse { 50% { opacity: 0.45; transform: scale(0.96); } }
 
+.bf-update-pill {
+  position: absolute;
+  top: calc(var(--safe-t) + 14px);
+  right: calc(var(--safe-r) + 14px);
+  animation: bf-bounce 1s ease-in-out infinite;
+}
+
 /* ---- level map ---- */
 .bf-map-screen {
   position: absolute;
