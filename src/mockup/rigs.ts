@@ -6,6 +6,11 @@
  *  A "HEROES"  — game stature, identity-defining head shapes & gear
  *  B "CHIBI"   — giant heads, tiny bodies, huge mitts (maximum cute)
  *  C "ACTION"  — taller athletic figures, armor/muscle, small heads
+ *
+ * ⚠️ Direction C SHIPPED (2026-07-08): the live designs now live in
+ * src/rigs/characterBuilders.ts — that file is the source of truth. The C
+ * builders below are a frozen snapshot from the review; if you iterate on
+ * character looks here, port the winner over there (they don't share code).
  */
 import * as THREE from 'three';
 import { clamp, lerp } from '../core/math';

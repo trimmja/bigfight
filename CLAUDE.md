@@ -27,6 +27,11 @@ spec; when a "bug report" describes intended-but-confusing behavior, fix the *co
 - Pose/animation work: never guess rotation signs — measure world positions or render a
   contact-sheet of variants and look. Axis conventions are documented in `src/rigs/poses.ts`.
 
+## Design-review workflow
+Visual redesigns go mockup-first: build options in the Character Lab (`/mockup.html`,
+`window.lab` = step/pick/attack), let Ryder & Jacob click through the animations, iterate on
+their picks, THEN port to the game. Don't restyle live game code on taste-guesses.
+
 ## Design decisions that aren't obvious from code
 - Losing keeps all loot (Ryder's rule) — never add loss penalties.
 - Melee weapons: point-blank (blade) must out-damage the ranged effect (wave).

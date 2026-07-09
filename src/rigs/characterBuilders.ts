@@ -6,6 +6,11 @@
  *
  * Visual heights are normalized to each character's proportions.height so
  * physics bodies and hitboxes stay aligned.
+ *
+ * The Character Lab (src/mockup/rigs.ts, served at /mockup.html) holds a
+ * frozen snapshot of these designs for side-by-side review — it does NOT
+ * import this file. Redesign flow: iterate in the Lab, get family sign-off,
+ * then port the geometry here.
  */
 import * as THREE from 'three';
 import { clamp, damp } from '../core/math';
