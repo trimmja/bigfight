@@ -14,11 +14,11 @@ import { WaveSpawner } from '../ai/WaveSpawner';
 import type { ActiveHitbox, FighterLike, Rect } from '../combat/types';
 import { HitResolver } from '../combat/HitResolver';
 import { characterById } from '../data/characters';
-import { enemyById } from '../data/enemies';
+import { bossById, enemyById } from '../data/enemies';
 import { levelById } from '../data/levels';
 import { sidekickById } from '../data/sidekicks';
 import { stageById } from '../data/stages';
-import type { LevelDef, MaterialId, Vec2 } from '../data/types';
+import type { BossDef, LevelDef, MaterialId, Vec2 } from '../data/types';
 import { weaponById } from '../data/weapons';
 import type { Game } from '../Game';
 import { unlockedPowerupIds } from '../progression';
@@ -29,6 +29,10 @@ import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { CameraRig } from '../render/CameraRig';
 import { Particles } from '../render/Particles';
 import { Trails } from '../render/Trails';
+import { Boss } from '../entities/Boss';
+import { GiantEagle } from '../entities/bosses/GiantEagle';
+import { GiantGhost } from '../entities/bosses/GiantGhost';
+import { SkeletonKing } from '../entities/bosses/SkeletonKing';
 import { Fighter } from '../entities/Fighter';
 import { Mob } from '../entities/Mob';
 import { PickupManager } from '../entities/Pickup';
@@ -43,6 +47,10 @@ import type { Screen } from './Screen';
 
 type ParticleInternals = { points: THREE.Points };
 type TrailInternals = { pool: { mesh: THREE.Mesh; reset(): void }[] };
+type BossDropSource = Pick<BossDef, 'gold' | 'drops'>;
+type BossDropPickupManager = {
+  spawnDrops(def: BossDropSource, x: number, y: number): void;
+};
 
 export type LevelEndResult = {
   won: boolean;
@@ -82,6 +90,7 @@ export class GameplayScreen implements Screen {
   private projectileManager: ProjectileManager | null = null;
   private powerupSpawner: PowerupSpawner | null = null;
   private sidekick: Sidekick | null = null;
+  private boss: Boss | null = null;
   private hitUnsub: (() => void) | null = null;
   private lootUnsub: (() => void) | null = null;
   private waveUnsub: (() => void) | null = null;
@@ -101,6 +110,8 @@ export class GameplayScreen implements Screen {
   private levelWon = false;
   private levelEndTimer = 0;
   private levelEndSent = false;
+  private bossSpawnQueued = false;
+  private bossSpawnTimer = 0;
   private fps = 60;
   private lastRenderMs = performance.now();
 
@@ -145,7 +156,7 @@ export class GameplayScreen implements Screen {
         sidekickById(game.save.equippedSidekick),
         this.player,
         projectileManager,
-        () => this.mobs,
+        () => this.liveFighters,
       );
       game.renderer.scene.add(this.sidekick.group);
     }
@@ -181,7 +192,7 @@ export class GameplayScreen implements Screen {
       },
       (pos) => this.telegraphSpawn(game, pos),
     );
-    this.waveSpawner.onAllWavesCleared = () => this.beginLevelCleared(game);
+    this.waveSpawner.onAllWavesCleared = () => this.handleAllWavesCleared(game);
 
     this.cameraRig.setBounds(stageDef.blast.left, stageDef.blast.right, stageDef.blast.bottom);
     this.hitUnsub = game.events.on('hit', ({ pos, damage, kb }) => {
@@ -211,6 +222,8 @@ export class GameplayScreen implements Screen {
     this.damageNumbers = null;
     this.sidekick?.dispose();
     this.sidekick = null;
+    this.boss?.dispose();
+    this.boss = null;
     this.player?.dispose();
     for (let i = 0; i < this.mobs.length; i += 1) this.mobs[i]!.dispose();
     this.mobs.length = 0;
@@ -275,6 +288,7 @@ export class GameplayScreen implements Screen {
     if (!this.levelEnding) {
       this.waveSpawner?.setLiveMobCount(this.countAliveMobs());
       this.waveSpawner?.update(dt);
+      this.updateBossSpawn(game, dt);
     }
 
     if (player.alive) player.update(ctx, dt);
@@ -282,11 +296,13 @@ export class GameplayScreen implements Screen {
       const mob = this.mobs[i]!;
       if (mob.alive) mob.update(ctx, dt);
     }
+    if (this.boss?.alive) this.boss.update(ctx, dt);
 
     this.physicsBodies.length = 0;
     this.liveFighters.length = 0;
     this.collectLiveFighter(player);
     for (let i = 0; i < this.mobs.length; i += 1) this.collectLiveFighter(this.mobs[i]!);
+    if (this.boss) this.collectLiveFighter(this.boss);
     if (this.sidekick && !this.levelEnding) this.sidekick.update(ctx, dt);
     projectileManager.update(ctx, dt, this.liveFighters);
     pickupManager.collectBodies(this.physicsBodies);
@@ -341,6 +357,82 @@ export class GameplayScreen implements Screen {
   private telegraphSpawn(game: Game, pos: Vec2): void {
     this.particles?.directional(pos.x, pos.y + 0.1, 0, 1, COLOR_NEON_GREEN, 24, 4.2);
     game.events.emit('ui', { kind: 'confirm' });
+  }
+
+  private handleAllWavesCleared(game: Game): void {
+    if (!this.level.bossId) {
+      this.beginLevelCleared(game);
+      return;
+    }
+    if (this.boss || this.bossSpawnQueued || this.levelEnding) return;
+    this.bossSpawnQueued = true;
+    this.bossSpawnTimer = 1;
+    this.pickupManager?.vacuumAll();
+  }
+
+  private updateBossSpawn(game: Game, dt: number): void {
+    if (!this.bossSpawnQueued) return;
+    this.bossSpawnTimer = Math.max(0, this.bossSpawnTimer - dt);
+    if (this.bossSpawnTimer > 0) return;
+    this.bossSpawnQueued = false;
+    this.spawnBoss(game);
+  }
+
+  private spawnBoss(game: Game): void {
+    const bossId = this.level.bossId;
+    const stage = this.stage;
+    const player = this.player;
+    if (!bossId || !stage || !player) return;
+
+    const def = bossById(bossId);
+    const boss = this.createBoss(game, bossId);
+    const spawn = stage.def.respawnPoint;
+    boss.koReset({ x: 0, y: spawn.y });
+    boss.facing = boss.body.pos.x < player.body.pos.x ? 1 : -1;
+    this.boss = boss;
+    game.renderer.scene.add(boss.group);
+    game.events.emit('bossSpawned', { name: def.name, title: def.title });
+    game.events.emit('bossHp', { frac: 1 });
+    game.events.emit('music', { mood: 'boss' });
+  }
+
+  private createBoss(game: Game, bossId: NonNullable<LevelDef['bossId']>): Boss {
+    const drops = (def: BossDef, x: number, y: number) => this.spawnBossDrops(def, x, y);
+    const requestMinion = (enemyId: string, pos: Vec2) => this.spawnBossMinion(game, enemyId, pos);
+    const defeated = (boss: Boss) => this.handleBossDefeated(game, boss);
+    switch (bossId) {
+      case 'skeletonKing':
+        return new SkeletonKing(drops, requestMinion, defeated);
+      case 'giantGhost':
+        return new GiantGhost(drops, requestMinion, defeated);
+      case 'giantEagle':
+        return new GiantEagle(drops, requestMinion, defeated);
+    }
+  }
+
+  private spawnBossMinion(game: Game, enemyId: string, pos: Vec2): Mob | null {
+    if (this.levelEnding) return null;
+    const mob = this.spawnMob(game, enemyId, pos);
+    if (!mob) return null;
+    mob.body.vel.y = Math.max(mob.body.vel.y, 3.2);
+    mob.body.grounded = false;
+    return mob;
+  }
+
+  private spawnBossDrops(def: BossDef, x: number, _y: number): void {
+    const stage = this.stage;
+    const pickupManager = this.pickupManager;
+    if (!stage || !pickupManager) return;
+
+    let plat = stage.def.platforms[0]!;
+    for (const p of stage.def.platforms) if (p.w > plat.w) plat = p;
+    const dropX = Math.min(plat.x + plat.w * 0.5 - 1, Math.max(plat.x - plat.w * 0.5 + 1, x));
+    (pickupManager as unknown as BossDropPickupManager).spawnDrops(def, dropX, plat.y + 5);
+  }
+
+  private handleBossDefeated(game: Game, boss: Boss): void {
+    if (this.boss !== boss) return;
+    this.beginLevelCleared(game);
   }
 
   private collectLiveFighter(fighter: Fighter): void {
@@ -469,6 +561,7 @@ export class GameplayScreen implements Screen {
     if (!player) return;
     this.cameraPoints.length = 0;
     if (player.alive) this.cameraPoints.push(player.body.pos);
+    if (this.boss?.alive) this.cameraPoints.push(this.boss.body.pos);
 
     let bestA: Mob | null = null;
     let bestB: Mob | null = null;
@@ -548,6 +641,8 @@ export class GameplayScreen implements Screen {
     const player = this.player;
     if (!player || !this.debugPanel) return;
     const aliveMobs = this.countAliveMobs();
+    const boss = this.boss?.alive ? this.boss : null;
+    const bossText = boss ? `${boss.bossDef.id}:${(boss.hpFrac * 100).toFixed(0)}% ${boss.state}` : 'none';
     let states = '';
     let shown = 0;
     for (let i = 0; i < this.mobs.length && shown < 6; i += 1) {
@@ -561,12 +656,17 @@ export class GameplayScreen implements Screen {
       `P ${player.state} ${player.damage.toFixed(0)}% stocks:${player.stocks}\n` +
       `vel ${player.body.vel.x.toFixed(2)}, ${player.body.vel.y.toFixed(2)} grounded:${player.body.grounded}\n` +
       `wave ${this.waveSpawner?.currentWaveNumber ?? 0}/${this.waveSpawner?.totalWaves ?? 0} pending:${this.waveSpawner?.pendingSpawns ?? 0}\n` +
+      `boss ${bossText}\n` +
       `mobs ${aliveMobs}/${this.mobs.length} ${states}\n` +
       `loot gold:${this.goldEarned}\n` +
       `FPS ${this.fps.toFixed(0)} step ${(dt * 1000).toFixed(1)}ms`;
 
     this.updateBodyLine(0, player);
     let lineIndex = 1;
+    if (boss && lineIndex < this.debugBodyLines.length) {
+      this.updateBodyLine(lineIndex, boss);
+      lineIndex += 1;
+    }
     for (let i = 0; i < this.mobs.length && lineIndex < this.debugBodyLines.length; i += 1) {
       const mob = this.mobs[i]!;
       if (!mob.alive) continue;
