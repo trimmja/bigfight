@@ -92,7 +92,9 @@ export class ScriptedIntentSource implements IIntentSource {
     jumpPressed: false,
     jumpHeld: false,
     attackPressed: false,
+    attackHeld: false,
     weaponPressed: false,
+    weaponHeld: false,
     pausePressed: false,
     anyPressed: false,
   };
@@ -130,7 +132,9 @@ export class ScriptedIntentSource implements IIntentSource {
     s.jumpPressed = jumpHeld && !this.prevJumpHeld;
     s.jumpHeld = jumpHeld;
     s.attackPressed = attackHeld && !this.prevAttackHeld;
+    s.attackHeld = attackHeld;
     s.weaponPressed = weaponHeld && !this.prevWeaponHeld;
+    s.weaponHeld = weaponHeld;
     s.pausePressed = false;
     s.anyPressed = s.jumpPressed || s.attackPressed || s.weaponPressed;
     this.prevJumpHeld = jumpHeld;

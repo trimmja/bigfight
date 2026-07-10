@@ -1,4 +1,5 @@
 import type { Vec2 } from '../data/types';
+import type { StateIO } from '../net/snapshots';
 
 /** Mutable AABB physics body whose origin is the fighter's feet center. */
 export class Body {
@@ -25,6 +26,21 @@ export class Body {
   constructor(halfW: number, height: number) {
     this.halfW = halfW;
     this.height = height;
+  }
+
+  /** Rollback snapshots: write+read every mutable field (see net/snapshots). */
+  syncState(io: StateIO): void {
+    this.pos.x = io.f64(this.pos.x);
+    this.pos.y = io.f64(this.pos.y);
+    this.vel.x = io.f64(this.vel.x);
+    this.vel.y = io.f64(this.vel.y);
+    this.halfW = io.f64(this.halfW);
+    this.height = io.f64(this.height);
+    this.grounded = io.bool(this.grounded);
+    this.gravityScale = io.f64(this.gravityScale);
+    this.fastFalling = io.bool(this.fastFalling);
+    this.dropThroughTimer = io.f64(this.dropThroughTimer);
+    this.noclip = io.bool(this.noclip);
   }
 
   /** Left side of the AABB. */

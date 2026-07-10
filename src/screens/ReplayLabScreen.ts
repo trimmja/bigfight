@@ -1,5 +1,6 @@
 import type { Game } from '../Game';
 import { FIXTURES, runReplayCheck, type FixtureReport } from '../net/replay';
+import { runRollbackTest, type RollbackTestReport } from '../net/rollbackTest';
 import { button, el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
 
@@ -37,6 +38,9 @@ export class ReplayLabScreen implements Screen {
     const runButton = button('RUN DETERMINISM CHECK', () => this.run(game, runButton));
     root.appendChild(runButton);
 
+    const rollbackButton = button('RUN ROLLBACK GOLDEN TEST', () => this.runRollback(game, rollbackButton));
+    root.appendChild(rollbackButton);
+
     const output = document.createElement('pre');
     output.style.cssText =
       'color:#d9f6ff;font:13px/1.5 ui-monospace,Consolas,monospace;background:rgba(0,0,0,0.35);' +
@@ -48,13 +52,17 @@ export class ReplayLabScreen implements Screen {
     const w = window as unknown as {
       __replayCheck?: () => FixtureReport[];
       __replayResult?: FixtureReport[];
+      __rollbackCheck?: () => RollbackTestReport;
+      __rollbackResult?: RollbackTestReport;
     };
     w.__replayCheck = () => this.run(game, runButton);
+    w.__rollbackCheck = () => this.runRollback(game, rollbackButton);
 
     if (location.search.includes('ci')) {
       // CI mode: run after first paint, publish results for Playwright.
       setTimeout(() => {
         w.__replayResult = this.run(game, runButton);
+        w.__rollbackResult = this.runRollback(game, rollbackButton);
       }, 300);
     }
   }
@@ -68,6 +76,22 @@ export class ReplayLabScreen implements Screen {
   }
 
   update(_game: Game, _dt: number): void {}
+
+  private runRollback(game: Game, runButton: HTMLButtonElement): RollbackTestReport {
+    runButton.disabled = true;
+    if (this.output) this.output.textContent = 'running rollback golden test…';
+    const r = runRollbackTest(game);
+    const text = [
+      `${r.pass ? 'PASS' : 'FAIL'}  rollback golden test`,
+      `    reference ${r.referenceDigest}  peerA ${r.peerADigest}  peerB ${r.peerBDigest}`,
+      `    rollbacks A ${r.rollbacksA} / B ${r.rollbacksB}   resimmed A ${r.resimmedA} / B ${r.resimmedB}   desyncs ${r.desyncs}`,
+      r.detail ? `    ${r.detail}` : '',
+    ].join('\n');
+    if (this.output) this.output.textContent = text;
+    console.log(`[replaylab]\n${text}`);
+    runButton.disabled = false;
+    return r;
+  }
 
   private run(game: Game, runButton: HTMLButtonElement): FixtureReport[] {
     runButton.disabled = true;

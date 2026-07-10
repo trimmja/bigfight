@@ -5,6 +5,7 @@ import { events } from '../core/events';
 import { degToRad } from '../core/math';
 import { atan2, cos, hypot, sin } from '../core/simmath';
 import { simPhase } from '../net/simPhase';
+import { netIdOf, PROJECTILE_ID_BASE, restoreIdSet, type SimRegistry, type StateIO } from '../net/snapshots';
 import { Pool } from '../core/pool';
 import type { AttackDef, Faction, Facing, ProjectileDef } from '../data/types';
 import { aabbOverlap } from '../physics/collision';
@@ -47,6 +48,13 @@ const EPSILON = 0.0001;
 
 class ProjectileSlot implements FighterLike {
   readonly group = new THREE.Group();
+  /** Stable pool identity (net ids + active-list serialization). */
+  poolIndex = -1;
+  /**
+   * SIM-active flag. group.visible mirrors it for rendering but is view state
+   * (never mutated during rollback resim; reconcileView re-syncs).
+   */
+  activeSim = false;
   readonly body = {
     pos: { x: 0, y: 0 },
     vel: { x: 0, y: 0 },
@@ -89,6 +97,7 @@ class ProjectileSlot implements FighterLike {
   private readonly visuals: Record<ProjectileVisual, THREE.Group>;
 
   private visual: ProjectileVisual = 'bullet';
+  private colorHex = 0xffe94a;
   private radius = 0.2;
   private gravityScale = 0;
   private lifetime = 0;
@@ -201,15 +210,19 @@ class ProjectileSlot implements FighterLike {
     this.hitbox.teamId = teamId;
     this.hitbox.stopAfterHit = !this.piercing;
     this.visual = def.visual;
-    this.primaryMat.color.setHex(def.color, THREE.SRGBColorSpace);
-    this.setVisual(def.visual, def.color);
-    this.syncVisual(0);
-    this.group.visible = true;
+    this.colorHex = def.color;
+    this.activeSim = true;
+    if (!simPhase.resimulating) {
+      this.primaryMat.color.setHex(def.color, THREE.SRGBColorSpace);
+      this.setVisual(def.visual, def.color);
+      this.syncVisual(0);
+      this.group.visible = true;
+    }
     events.emit('shoot', { kind: def.visual, pos: { x, y } });
   }
 
   update(ctx: WorldCtx, dt: number, targets: readonly Fighter[]): boolean {
-    if (!this.group.visible) return false;
+    if (!this.activeSim) return false;
     if (this.exploding && this.explosionSubmitted) return false;
     if (this.hitConfirmed) {
       this.beginImpact(ctx);
@@ -311,7 +324,7 @@ class ProjectileSlot implements FighterLike {
   }
 
   submitHitbox(ctx: WorldCtx): void {
-    if (!this.group.visible) return;
+    if (!this.activeSim) return;
     if (this.exploding) {
       if (this.explodeRadius <= 0 || this.explosionSubmitted) return;
       this.hitbox.def = this.attackDef;
@@ -329,7 +342,7 @@ class ProjectileSlot implements FighterLike {
   }
 
   canBeDamaged(): boolean {
-    return this.group.visible && this.hp > 0 && !this.exploding;
+    return this.activeSim && this.hp > 0 && !this.exploding;
   }
 
   onHit(result: HitResult): void {
@@ -340,6 +353,78 @@ class ProjectileSlot implements FighterLike {
   }
 
   onDealtHit(_result: HitResult): void {}
+
+  /** Rollback snapshots — one method, both directions (see net/snapshots). */
+  syncState(io: StateIO, registry: SimRegistry): void {
+    this.activeSim = io.bool(this.activeSim);
+    this.faction = io.i32(this.faction === 'player' ? 0 : 1) === 0 ? 'player' : 'enemy';
+    this.teamId = io.i32(this.teamId);
+    this.slotIndex = io.i32(this.slotIndex);
+    this.facing = io.i32(this.facing) as Facing;
+    this.power = io.f64(this.power);
+    this.radius = io.f64(this.radius);
+    this.gravityScale = io.f64(this.gravityScale);
+    this.lifetime = io.f64(this.lifetime);
+    this.age = io.f64(this.age);
+    this.homingDeg = io.f64(this.homingDeg);
+    this.hp = io.f64(this.hp);
+    this.explodeRadius = io.f64(this.explodeRadius);
+    this.sticky = io.bool(this.sticky);
+    this.piercing = io.bool(this.piercing);
+    this.trailColor = io.i32(this.trailColor);
+    this.pullRadius = io.f64(this.pullRadius);
+    this.pullStrength = io.f64(this.pullStrength);
+    this.tickInterval = io.f64(this.tickInterval);
+    this.tickTimer = io.f64(this.tickTimer);
+    this.stuck = io.bool(this.stuck);
+    this.exploding = io.bool(this.exploding);
+    this.explosionSubmitted = io.bool(this.explosionSubmitted);
+    this.hitConfirmed = io.bool(this.hitConfirmed);
+    this.hitstopTimer = io.f64(this.hitstopTimer);
+    this.body.pos.x = io.f64(this.body.pos.x);
+    this.body.pos.y = io.f64(this.body.pos.y);
+    this.body.vel.x = io.f64(this.body.vel.x);
+    this.body.vel.y = io.f64(this.body.vel.y);
+    this.body.halfW = io.f64(this.body.halfW);
+    this.body.height = io.f64(this.body.height);
+    this.attackDef.damage = io.f64(this.attackDef.damage);
+    this.attackDef.baseKb = io.f64(this.attackDef.baseKb);
+    this.attackDef.kbGrowth = io.f64(this.attackDef.kbGrowth);
+    this.attackDef.angleDeg = io.f64(this.attackDef.angleDeg);
+    const freeze = io.f64(this.attackDef.freezeTime ?? -1);
+    if (io.reading) {
+      if (freeze >= 0) this.attackDef.freezeTime = freeze;
+      else delete this.attackDef.freezeTime;
+    }
+    const visualIdx = io.i32(VISUALS.indexOf(this.visual));
+    if (io.reading) this.visual = VISUALS[visualIdx] ?? 'bullet';
+    this.colorHex = io.i32(this.colorHex);
+    this.hurtbox.enabled = io.bool(this.hurtbox.enabled);
+    if (io.reading) this.hurtbox.faction = this.faction;
+    const hitIds = io.idList(() => {
+      const ids: number[] = [];
+      for (const obj of this.alreadyHit) {
+        const id = netIdOf(obj);
+        if (id >= 0) ids.push(id);
+      }
+      return ids;
+    });
+    if (io.reading) {
+      restoreIdSet(this.alreadyHit, hitIds, registry);
+      this.hitbox.faction = this.faction;
+      this.hitbox.teamId = this.teamId;
+      this.hitbox.stopAfterHit = !this.piercing;
+    }
+  }
+
+  /** Post-rollback view repair. */
+  reconcileView(): void {
+    this.group.visible = this.activeSim;
+    if (!this.activeSim) return;
+    this.primaryMat.color.setHex(this.colorHex, THREE.SRGBColorSpace);
+    this.setVisual(this.exploding ? 'shockwave' : this.visual, this.colorHex);
+    this.syncVisual(0);
+  }
 
   /** Sim-relevant scalars for replay digests / net snapshots. */
   digestInto(out: number[]): void {
@@ -365,7 +450,8 @@ class ProjectileSlot implements FighterLike {
   }
 
   deactivate(): void {
-    this.group.visible = false;
+    this.activeSim = false;
+    if (!simPhase.resimulating) this.group.visible = false;
     this.hurtbox.enabled = false;
     this.alreadyHit.clear();
     this.hp = 0;
@@ -687,9 +773,12 @@ export class ProjectileManager {
   private readonly all: readonly ProjectileSlot[];
 
   constructor(private readonly scene: THREE.Scene) {
+    let nextIndex = 0;
     this.pool = new Pool(
       () => {
         const projectile = new ProjectileSlot();
+        projectile.poolIndex = nextIndex;
+        nextIndex += 1;
         this.scene.add(projectile.group);
         return projectile;
       },
@@ -697,6 +786,48 @@ export class ProjectileManager {
       (projectile) => projectile.deactivate(),
     );
     this.all = this.pool.all;
+  }
+
+  /** Register every slot's net id (0x10000 | poolIndex) for ref restore. */
+  registerNetIds(registry: SimRegistry): void {
+    for (let i = 0; i < this.all.length; i += 1) {
+      registry.register(PROJECTILE_ID_BASE | this.all[i]!.poolIndex, this.all[i]!);
+    }
+  }
+
+  /**
+   * Rollback snapshots: the ACTIVE LIST (order = update order = sim state) as
+   * pool indices, then each active slot's fields. Restore rebuilds the list
+   * and force-deactivates slots that weren't active at the snapshot.
+   */
+  syncState(io: StateIO, registry: SimRegistry): void {
+    if (io.reading) {
+      const count = io.i32(0);
+      const activeIndices: number[] = [];
+      for (let i = 0; i < count; i += 1) activeIndices.push(io.i32(0));
+      const wasActive = new Set(this.active);
+      this.active.length = 0;
+      for (let i = 0; i < activeIndices.length; i += 1) {
+        const slot = this.all[activeIndices[i]!];
+        if (slot) {
+          this.active.push(slot);
+          wasActive.delete(slot);
+        }
+      }
+      for (const slot of this.active) slot.syncState(io, registry);
+      // Anything active NOW but not in the snapshot: hard-deactivate.
+      // (Acquisition scans activeSim flags, so no free-list to reconcile.)
+      for (const slot of wasActive) slot.deactivate();
+    } else {
+      io.i32(this.active.length);
+      for (let i = 0; i < this.active.length; i += 1) io.i32(this.active[i]!.poolIndex);
+      for (let i = 0; i < this.active.length; i += 1) this.active[i]!.syncState(io, registry);
+    }
+  }
+
+  /** Post-rollback view repair for every slot. */
+  reconcileView(): void {
+    for (let i = 0; i < this.all.length; i += 1) this.all[i]!.reconcileView();
   }
 
   fire(
@@ -710,7 +841,16 @@ export class ProjectileManager {
     attackDef: AttackDef,
     ownerSlot = -1,
   ): void {
-    const projectile = this.pool.obtain();
+    // Deterministic acquisition: first inactive slot in pool order — identical
+    // on every peer regardless of local release history (free-list order is
+    // NOT canonical after rollbacks; a state-derived scan is).
+    let projectile: ProjectileSlot | null = null;
+    for (let i = 0; i < this.all.length; i += 1) {
+      if (!this.all[i]!.activeSim) {
+        projectile = this.all[i]!;
+        break;
+      }
+    }
     if (!projectile) return;
     projectile.fire(def, x, y, facing, faction, teamId, attackerPower, attackDef, ownerSlot);
     this.active.push(projectile);
@@ -759,7 +899,7 @@ export class ProjectileManager {
     const projectile = this.active[index]!;
     const last = this.active.pop();
     if (last && index < this.active.length) this.active[index] = last;
-    this.pool.release(projectile);
+    projectile.deactivate();
   }
 }
 

@@ -25,7 +25,10 @@ export interface InputState {
   jumpPressed: boolean;
   jumpHeld: boolean;
   attackPressed: boolean;
+  /** Level-triggered twin of attackPressed — netcode transmits HELD states. */
+  attackHeld: boolean;
   weaponPressed: boolean;
+  weaponHeld: boolean;
   pausePressed: boolean;
   /** Any interaction this step (menus, audio unlock). */
   anyPressed: boolean;

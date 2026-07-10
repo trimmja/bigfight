@@ -2,6 +2,7 @@ import { ATTACK_TOKENS } from '../config';
 import type { SimRng } from '../core/rng';
 import { exp, hypot } from '../core/simmath';
 import { simPhase } from '../net/simPhase';
+import type { SimRegistry, StateIO } from '../net/snapshots';
 import type { WorldCtx } from '../entities/Entity';
 import type { Fighter } from '../entities/Fighter';
 import type { Mob } from '../entities/Mob';
@@ -26,6 +27,13 @@ export function resetMobAttackTokens(): void {
 export function getMobAttackTokens(): number {
   return activeAttackTokens;
 }
+
+/** Snapshot restore — never recount; the count is authoritative state. */
+export function setMobAttackTokens(count: number): void {
+  activeAttackTokens = count;
+}
+
+const BRAIN_STATES: readonly MobBrainState[] = ['idle', 'approach', 'windup', 'attack', 'recover'];
 
 const RETREAT_MIN = 0.45;
 const RETREAT_MAX = 0.75;
@@ -198,6 +206,28 @@ export class MobBrain {
     const currentDist = distSqTo(pos.x, pos.y, current);
     const nearestDist = distSqTo(pos.x, pos.y, nearest);
     if (nearestDist < currentDist * RETARGET_HYSTERESIS) this.target = nearest;
+  }
+
+  /** Rollback snapshots — mirrors digestInto's field set (see Fighter). */
+  syncState(io: StateIO, registry: SimRegistry): void {
+    this.state = BRAIN_STATES[io.i32(BRAIN_STATE_IDS[this.state])] ?? 'idle';
+    this.isBlocking = io.bool(this.isBlocking);
+    this.stateTimer = io.f64(this.stateTimer);
+    this.attackCooldown = io.f64(this.attackCooldown);
+    this.hasAttackToken = io.bool(this.hasAttackToken);
+    this.retreatDir = io.i32(this.retreatDir) as 1 | -1;
+    this.retreatTime = io.f64(this.retreatTime);
+    this.blockTimer = io.f64(this.blockTimer);
+    this.blockCheckCooldown = io.f64(this.blockCheckCooldown);
+    this.hopCooldown = io.f64(this.hopCooldown);
+    this.hopSeeded = io.bool(this.hopSeeded);
+    this.attackPulseSent = io.bool(this.attackPulseSent);
+    this.attackStarted = io.bool(this.attackStarted);
+    this.retargetTimer = io.f64(this.retargetTimer);
+    const targetId = io.i32(this.target ? this.target.id : -1);
+    if (io.reading) {
+      this.target = targetId >= 0 ? ((registry.resolve(targetId) as Fighter | null) ?? null) : null;
+    }
   }
 
   /** Sim-relevant brain scalars for replay digests / net snapshots. */

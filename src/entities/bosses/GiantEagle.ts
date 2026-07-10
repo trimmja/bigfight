@@ -351,7 +351,28 @@ export class GiantEagle extends Boss {
       this.perchesReady ? 1 : 0,
     );
   }
+
+  override syncState(io: Parameters<Boss['syncState']>[0], registry: Parameters<Boss['syncState']>[1]): void {
+    super.syncState(io, registry);
+    this.phase = PHASE_NAMES[io.i32(PHASE_IDS[this.phase])] ?? 'perch';
+    this.phaseTimer = io.f64(this.phaseTimer);
+    this.phaseDuration = io.f64(this.phaseDuration);
+    this.fanIndex = io.i32(this.fanIndex);
+    this.shotTimer = io.f64(this.shotTimer);
+    this.perchSide = io.i32(this.perchSide) as 1 | -1;
+    this.targetSide = io.i32(this.targetSide) as 1 | -1;
+    this.chainRemaining = io.i32(this.chainRemaining);
+    this.swoopLaneY = io.f64(this.swoopLaneY);
+    this.swoopFeetY = io.f64(this.swoopFeetY);
+    this.leftX = io.f64(this.leftX);
+    this.leftY = io.f64(this.leftY);
+    this.rightX = io.f64(this.rightX);
+    this.rightY = io.f64(this.rightY);
+    this.perchesReady = io.bool(this.perchesReady);
+  }
 }
+
+const PHASE_NAMES: readonly EaglePhase[] = ['perch', 'fan', 'screech', 'swoopWarn', 'swoop', 'rest'];
 
 function featherDef(angleDeg: number): ProjectileDef {
   return {

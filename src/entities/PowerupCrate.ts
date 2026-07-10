@@ -3,6 +3,7 @@ import { GRAVITY, POWERUP_DROP_CHANCE, POWERUP_DROP_INTERVAL } from '../config';
 import { events } from '../core/events';
 import type { SimRng } from '../core/rng';
 import { simPhase } from '../net/simPhase';
+import type { StateIO } from '../net/snapshots';
 import type { PowerupDef, PowerupId } from '../data/types';
 import { powerupById } from '../data/powerups';
 import { aabbOverlap } from '../physics/collision';
@@ -143,6 +144,30 @@ class PowerupSlot {
     );
   }
 
+  /** Rollback snapshots. */
+  syncState(io: StateIO, powerupIds: readonly PowerupId[]): void {
+    this.active = io.bool(this.active);
+    const idIdx = io.i32(powerupIds.indexOf(this.id));
+    if (io.reading && idIdx >= 0) this.id = powerupIds[idIdx] ?? this.id;
+    this.x = io.f64(this.x);
+    this.y = io.f64(this.y);
+    this.vy = io.f64(this.vy);
+    this.grounded = io.bool(this.grounded);
+    this.groundedTimer = io.f64(this.groundedTimer);
+    this.age = io.f64(this.age);
+  }
+
+  /** Post-rollback view repair. */
+  reconcileView(): void {
+    this.group.visible = this.active;
+    if (!this.active) return;
+    const def = powerupById(this.id);
+    this.colorMat.color.setHex(def.color, THREE.SRGBColorSpace);
+    this.glowMat.color.setHex(def.color, THREE.SRGBColorSpace);
+    this.glowMat.emissive.setHex(def.color);
+    this.group.position.set(this.x, this.y, 0.42);
+  }
+
   dispose(): void {
     this.group.removeFromParent();
     for (let i = 0; i < this.materials.length; i += 1) this.materials[i]!.dispose();
@@ -239,6 +264,17 @@ export class PowerupSpawner {
   digestInto(out: number[]): void {
     out.push(this.dropTimer);
     for (let i = 0; i < this.slots.length; i += 1) this.slots[i]!.digestInto(out);
+  }
+
+  /** Rollback snapshots (fixed 4 slots — in place, no lists). */
+  syncState(io: StateIO): void {
+    this.dropTimer = io.f64(this.dropTimer);
+    for (let i = 0; i < this.slots.length; i += 1) this.slots[i]!.syncState(io, this.unlockedIds);
+  }
+
+  /** Post-rollback view repair. */
+  reconcileView(): void {
+    for (let i = 0; i < this.slots.length; i += 1) this.slots[i]!.reconcileView();
   }
 
   private spawn(ctx: WorldCtx): void {
