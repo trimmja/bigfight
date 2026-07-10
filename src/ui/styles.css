@@ -1182,3 +1182,232 @@ html, body {
   .bf-hud-cluster { min-width: 70px; padding: 4px 8px 6px; }
   .bf-hud-cluster-damage { font-size: 20px; }
 }
+
+/* =========================================================================
+   ONLINE HUB — mode-first front door (mobile-first, AAA-menu feel)
+   ========================================================================= */
+.bf-hub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: clamp(8px, 2vh, 20px);
+  padding: max(10px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
+}
+.bf-hub-header { width: 100%; }
+
+/* your-fighter-name chip in the header */
+.bf-name-chip {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  padding: 5px 8px 5px 14px;
+  box-shadow: 0 4px 0 rgba(30, 42, 74, 0.28);
+  max-width: 62vw;
+}
+.bf-name-chip-icon { font-size: 18px; }
+.bf-name-chip-text {
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bf-name-chip-input {
+  width: 130px;
+  padding: 3px 8px;
+  font-size: 16px;
+}
+.bf-name-chip-dice {
+  border: none;
+  background: var(--neon-yellow);
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  font-size: 17px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(30, 42, 74, 0.28);
+  flex: none;
+}
+.bf-name-chip-dice:active { transform: translateY(3px); box-shadow: none; }
+
+.bf-hub-body {
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 2.2vh, 22px);
+  flex: 1;
+  justify-content: center;
+}
+.bf-hub-prompt {
+  font-weight: 800;
+  font-size: clamp(15px, 2.4vh, 22px);
+  letter-spacing: 0.04em;
+  color: var(--text);
+  opacity: 0.85;
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* the three mode cards — the hero of the screen */
+.bf-mode-cards {
+  display: flex;
+  gap: clamp(10px, 2vw, 18px);
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.bf-mode-card {
+  --mode: var(--neon-cyan);
+  position: relative;
+  flex: 1 1 180px;
+  max-width: 240px;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: clamp(12px, 2.4vh, 22px) 12px clamp(10px, 2vh, 18px);
+  background: #fff;
+  border: 3px solid #fff;
+  border-top: 8px solid var(--mode);
+  border-radius: 22px;
+  box-shadow: 0 6px 0 rgba(30, 42, 74, 0.28);
+  cursor: pointer;
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.14s, border-color 0.14s;
+  animation: bf-pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+.bf-mode-cards .bf-mode-card:nth-child(2) { animation-delay: 0.05s; }
+.bf-mode-cards .bf-mode-card:nth-child(3) { animation-delay: 0.1s; }
+.bf-mode-card:hover { transform: translateY(-3px); }
+.bf-mode-card:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(30, 42, 74, 0.28); }
+.bf-mode-card-on {
+  border-color: var(--mode);
+  transform: translateY(-6px);
+  box-shadow: 0 10px 0 rgba(30, 42, 74, 0.22), 0 0 0 4px color-mix(in srgb, var(--mode) 40%, transparent);
+}
+.bf-mode-card-on:active { transform: translateY(-2px); }
+.bf-mode-icon { font-size: clamp(34px, 6vh, 52px); line-height: 1; filter: drop-shadow(0 3px 0 rgba(30, 42, 74, 0.15)); }
+.bf-mode-name {
+  font-weight: 800;
+  font-size: clamp(14px, 2.1vh, 19px);
+  letter-spacing: 0.02em;
+  color: var(--mode);
+}
+.bf-mode-tag { font-weight: 700; font-size: clamp(11px, 1.5vh, 13px); color: var(--text); text-align: center; }
+.bf-mode-sub { font-weight: 700; font-size: 11px; color: var(--text); opacity: 0.55; }
+.bf-mode-check {
+  position: absolute;
+  top: -12px;
+  right: -8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--mode);
+  color: #fff;
+  font-weight: 900;
+  font-size: 17px;
+  display: grid;
+  place-items: center;
+  border: 3px solid #fff;
+  box-shadow: 0 3px 0 rgba(30, 42, 74, 0.28);
+  transform: scale(0);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.bf-mode-card-on .bf-mode-check { transform: scale(1); }
+
+.bf-hub-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+}
+.bf-hub-create {
+  background: var(--neon-green);
+  min-width: 220px;
+}
+.bf-hub-join {
+  background: #fff;
+  color: var(--text);
+  min-width: 200px;
+}
+
+/* ---- lobby controls: labeled groups + big mode pills ---- */
+.bf-ctrl-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.bf-ctrl-label {
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  opacity: 0.6;
+}
+.bf-ctrl-row {
+  display: flex;
+  gap: clamp(12px, 4vw, 40px);
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.bf-mode-pick { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.bf-mode-pill {
+  --mode: var(--neon-cyan);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 0 rgba(30, 42, 74, 0.24);
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.bf-mode-pill:active { transform: translateY(3px); box-shadow: none; }
+.bf-mode-pill:disabled { cursor: default; }
+.bf-mode-pill-icon { font-size: 18px; }
+.bf-mode-pill-name { font-weight: 800; font-size: 13px; letter-spacing: 0.02em; color: var(--text); }
+.bf-mode-pill-on {
+  border-color: var(--mode);
+  background: var(--mode);
+}
+.bf-mode-pill-on .bf-mode-pill-name { color: #fff; }
+
+/* landscape phone (short height) — keep the hero tight and gorgeous */
+@media (max-height: 500px) {
+  .bf-hub { gap: 6px; }
+  .bf-hub-body { gap: 8px; }
+  .bf-hub-prompt { font-size: 14px; }
+  .bf-mode-card { padding: 10px 10px 8px; border-radius: 18px; border-top-width: 6px; }
+  .bf-mode-icon { font-size: 34px; }
+  .bf-mode-name { font-size: 14px; }
+  .bf-mode-tag { font-size: 11px; }
+  .bf-mode-card-on { transform: translateY(-4px); }
+  .bf-hub-create, .bf-hub-join { min-width: 44vw; }
+  .bf-ctrl-row { gap: 14px; }
+  .bf-mode-pill { padding: 6px 12px; }
+  .bf-mode-pill-name { font-size: 12px; }
+}
+
+/* portrait — stack the cards, still beautiful (game nudges to landscape) */
+@media (orientation: portrait) {
+  .bf-mode-cards { flex-direction: column; align-items: stretch; }
+  .bf-mode-card { flex-basis: auto; max-width: 100%; flex-direction: row; justify-content: flex-start; gap: 14px; text-align: left; padding: 14px 18px; }
+  .bf-mode-card .bf-mode-icon { font-size: 40px; }
+  .bf-mode-card .bf-mode-tag, .bf-mode-card .bf-mode-sub { text-align: left; }
+  .bf-mode-name-wrap { align-items: flex-start; }
+  .bf-hub-actions { flex-direction: column; align-items: stretch; }
+  .bf-hub-create, .bf-hub-join { width: 100%; }
+}

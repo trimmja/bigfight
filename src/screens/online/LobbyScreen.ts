@@ -1,6 +1,5 @@
 import {
   VERSUS_STAGE_IDS,
-  type GameMode,
   type RoomPlayer,
   type RoomSettings,
   type RoomState,
@@ -14,15 +13,10 @@ import { displayNameFor, isProfane, sanitizeNickname } from '../../net/nicknames
 import { button, el, uiRoot } from '../../ui/dom';
 import { toast } from '../../ui/toasts';
 import type { Screen } from '../Screen';
+import { MODES } from './modes';
 
 /** Slot identity colors: P1 cyan / P2 pink / P3 yellow / P4 green. */
 export const SLOT_COLORS = ['#1a9fe8', '#ff5a8a', '#ffc93e', '#4ec95c'] as const;
-
-const MODE_LABELS: { mode: GameMode; label: string }[] = [
-  { mode: 'ffa', label: '🥊 FFA' },
-  { mode: 'teams', label: '🤝 2v2' },
-  { mode: 'coop', label: '🗺️ CO-OP' },
-];
 
 const MAX_LEVEL = 12;
 
@@ -285,26 +279,36 @@ export class LobbyScreen implements Screen {
     const s = room.settings;
     const prev = this.prevSettings;
 
-    // Mode segmented control.
-    const modeSeg = el('div', 'bf-seg', this.controlsWrap);
-    for (const { mode, label } of MODE_LABELS) {
-      const b = el('button', 'bf-seg-btn' + (s.mode === mode ? ' bf-seg-on' : ''), modeSeg);
+    // --- GAME MODE group: big icon buttons, not tiny pills ---
+    const modeGroup = el('div', 'bf-ctrl-group bf-ctrl-mode', this.controlsWrap);
+    el('div', 'bf-ctrl-label', modeGroup).textContent = 'GAME MODE';
+    const modeRow = el('div', 'bf-mode-pick', modeGroup);
+    for (const m of MODES) {
+      const b = el('button', 'bf-mode-pill' + (s.mode === m.id ? ' bf-mode-pill-on' : ''), modeRow);
       b.type = 'button';
-      b.textContent = label;
+      b.style.setProperty('--mode', m.color);
+      el('span', 'bf-mode-pill-icon', b).textContent = m.icon;
+      el('span', 'bf-mode-pill-name', b).textContent = m.short;
       b.disabled = !isHost;
       if (isHost) {
         b.addEventListener('click', () => {
-          if (s.mode === mode) return;
+          if (s.mode === m.id) return;
           events.emit('ui', { kind: 'move' });
-          this.client.setSettings({ mode, ...(mode === 'coop' && s.levelId === null ? { levelId: 1 } : {}) });
+          this.client.setSettings({
+            mode: m.id,
+            ...(m.id === 'coop' && s.levelId === null ? { levelId: 1 } : {}),
+          });
         });
       }
     }
-    if (!isHost && prev && prev.mode !== s.mode) wobble(modeSeg);
+    if (!isHost && prev && prev.mode !== s.mode) wobble(modeRow);
 
-    // Stocks stepper.
-    const stocksRow = el('div', 'bf-stepper', this.controlsWrap);
-    el('span', 'bf-stepper-label', stocksRow).textContent = s.mode === 'coop' ? '❤️ LIVES' : '❤️ STOCKS';
+    // --- LIVES + STAGE/LEVEL, grouped side by side ---
+    const settingsRow = el('div', 'bf-ctrl-row', this.controlsWrap);
+
+    const stocksGroup = el('div', 'bf-ctrl-group', settingsRow);
+    el('div', 'bf-ctrl-label', stocksGroup).textContent = s.mode === 'coop' ? '❤️ LIVES' : '❤️ STOCKS';
+    const stocksRow = el('div', 'bf-stepper', stocksGroup);
     const minus = el('button', 'bf-button bf-stepper-btn', stocksRow);
     minus.type = 'button';
     minus.textContent = '−';
@@ -327,7 +331,9 @@ export class LobbyScreen implements Screen {
     if (!isHost && prev && prev.stocks !== s.stocks) wobble(stocksRow);
 
     // Stage chips (versus) or level strip (co-op).
-    const stageRow = el('div', 'bf-chip-row', this.controlsWrap);
+    const stageGroup = el('div', 'bf-ctrl-group bf-ctrl-stage', settingsRow);
+    el('div', 'bf-ctrl-label', stageGroup).textContent = s.mode === 'coop' ? '🗺️ LEVEL' : '🏟️ STAGE';
+    const stageRow = el('div', 'bf-chip-row', stageGroup);
     if (s.mode === 'coop') {
       for (let lvl = 1; lvl <= MAX_LEVEL; lvl += 1) {
         const locked = lvl > room.maxLevelAllowed;
