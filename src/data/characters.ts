@@ -510,7 +510,7 @@ const BASE_CHARACTERS: readonly Omit<CharacterDef, 'abilities'>[] = [
       atk({ id: 'cometJab2', damage: 3, baseKb: 3.5, kbGrowth: 0.02, angleDeg: 25, windup: 0.08, active: 0.06, recover: 0.12, hitbox: { x: 0.9, y: 0.9, w: 1.2, h: 1.0 }, sfx: 'hitLight', poseId: 'jab2' }),
       atk({ id: 'cometFinisher', damage: 6, baseKb: 7, kbGrowth: 0.14, angleDeg: 45, windup: 0.12, active: 0.08, recover: 0.24, hitbox: { x: 1.0, y: 0.9, w: 1.45, h: 1.25 }, sfx: 'hitHeavy', poseId: 'finisher' }),
     ],
-    unlock: { type: 'starter' }, // TEST: Comet unlocked for phone testing (was level 4)
+    unlock: { type: 'level', level: 4 },
   },
 ];
 

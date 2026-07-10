@@ -49,16 +49,6 @@ export class TitleScreen implements Screen {
     word.innerHTML = '<span>BIG</span> <span class="bf-logo-fight">FIGHT</span>';
     el('div', 'bf-tap-hint', this.root).textContent = 'TAP TO FIGHT';
 
-    // TEST-BUILD MARKER: unmistakable badge so you know you're on the abilities
-    // build (port 5180), not the older multiplayer build. Remove before merge.
-    const badge = el('div', 'bf-build-badge', this.root);
-    badge.textContent = '⚡ SIGNATURE ABILITIES TEST BUILD ⚡';
-    badge.style.cssText =
-      'position:fixed;top:calc(var(--safe-t, 0px) + 8px);left:50%;transform:translateX(-50%);z-index:60;'
-      + 'background:linear-gradient(90deg,#ff8a3c,#ffd94a);color:#0a0a14;font-weight:900;'
-      + 'font-size:0.78rem;letter-spacing:0.05em;padding:0.34rem 0.85rem;border-radius:999px;'
-      + 'box-shadow:0 3px 10px rgba(0,0,0,0.35);white-space:nowrap;pointer-events:none;';
-
     const start = (): void => {
       if (this.started) return;
       this.started = true;
