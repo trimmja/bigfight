@@ -79,6 +79,8 @@ export class OnlineCharacterSelectScreen implements Screen {
   private selectedId = 'volt';
   private navigated = false;
   private slamPlayed = false;
+  /** Skip banner/lineup rebuild on ping-only snapshots (no flicker). */
+  private prevBannerSig = '';
 
   constructor(
     private readonly client: LobbyClient,
@@ -213,8 +215,16 @@ export class OnlineCharacterSelectScreen implements Screen {
       this.readyBtn.textContent = self.ready ? '✔ READY — TAP TO CHANGE' : 'READY!';
     }
 
-    // Banners + 3D lineup mirror everyone's live picks. Remote fighters
-    // render fully even when this device hasn't unlocked them.
+    // Banners + 3D lineup mirror everyone's live picks. Skip the rebuild on
+    // ping-only snapshots (server re-broadcasts ~1/s) so nothing flickers.
+    const sig = room.players
+      .map((p) => `${p.slot}:${p.playerId}:${p.nickname}:${p.characterId ?? '-'}:${p.ready ? 1 : 0}`)
+      .sort()
+      .join('|');
+    if (sig === this.prevBannerSig) return;
+    this.prevBannerSig = sig;
+
+    // Remote fighters render fully even when this device hasn't unlocked them.
     for (let slot = 0; slot < 4; slot += 1) {
       const banner = this.bannerEls[slot];
       const p = room.players.find((q) => q.slot === slot);

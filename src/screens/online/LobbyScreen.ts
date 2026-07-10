@@ -38,6 +38,11 @@ export class LobbyScreen implements Screen {
   private prevReady = new Map<number, boolean>();
   private sentAutoTeam = false;
   private navigated = false;
+  // Re-render slots/controls ONLY when their visible state changes. The server
+  // re-broadcasts the room ~1/s for ping updates; without this the slot cards
+  // rebuild every second and replay their pop-in animation (the "pulsing").
+  private prevSlotSig = '';
+  private prevControlSig = '';
 
   constructor(
     private readonly client: LobbyClient,
@@ -135,8 +140,21 @@ export class LobbyScreen implements Screen {
       this.sentAutoTeam = false;
     }
 
-    this.renderSlots(room);
-    this.renderControls(room);
+    // Only rebuild the slot cards when the roster/ready/team actually changes
+    // (NOT on ping-only snapshots) — otherwise the pop-in animation re-fires
+    // every second. Pings update in place so the dots stay live.
+    const slotSig = this.slotSignature(room);
+    if (slotSig !== this.prevSlotSig) {
+      this.prevSlotSig = slotSig;
+      this.renderSlots(room);
+    } else {
+      this.updatePingDots(room);
+    }
+    const controlSig = this.controlSignature(room);
+    if (controlSig !== this.prevControlSig) {
+      this.prevControlSig = controlSig;
+      this.renderControls(room);
+    }
 
     // Ready button mirrors my state.
     if (this.readyBtn && self) {
@@ -153,6 +171,37 @@ export class LobbyScreen implements Screen {
     this.prevSettings = { ...room.settings };
     this.prevReady.clear();
     for (const p of room.players) this.prevReady.set(p.slot, p.ready);
+  }
+
+  /** Everything that changes the slot CARDS — excludes rapidly-moving pings. */
+  private slotSignature(room: RoomState): string {
+    const parts = [room.code, room.hostId, room.settings.mode];
+    for (let slot = 0; slot < 4; slot += 1) {
+      const p = room.players.find((q) => q.slot === slot);
+      parts.push(
+        p ? `${p.playerId}|${p.nickname}|${p.ready ? 1 : 0}|${p.team ?? '-'}|${p.connected ? 1 : 0}` : 'empty',
+      );
+    }
+    return parts.join('~');
+  }
+
+  /** Everything the host-controls row renders (mode/stocks/stage/level). */
+  private controlSignature(room: RoomState): string {
+    const s = room.settings;
+    return `${this.client.isHost ? 'h' : 'g'}~${s.mode}~${s.stocks}~${s.stageId}~${s.levelId ?? '-'}~${room.maxLevelAllowed}`;
+  }
+
+  /** Ping-only snapshot: refresh the dots in place — no card rebuild, no pulse. */
+  private updatePingDots(room: RoomState): void {
+    if (!this.slotsRow) return;
+    for (const p of room.players) {
+      const card = this.slotsRow.querySelector(`.bf-slot[data-slot="${p.slot}"]`);
+      const dot = card?.querySelector('.bf-ping-dot');
+      if (!(dot instanceof HTMLElement)) continue;
+      const ping = this.pingFor(p);
+      dot.className = `bf-ping-dot ${ping.cls}${ping.p2p ? '' : ' bf-ping-hollow'}`;
+      dot.title = ping.ms === null ? 'measuring…' : `${ping.ms}ms`;
+    }
   }
 
   private renderSlots(room: RoomState): void {
@@ -176,6 +225,7 @@ export class LobbyScreen implements Screen {
     if (!this.slotsRow) return;
     const isSelf = p.playerId === this.client.selfId;
     const card = el('div', 'bf-slot bf-slot-filled', this.slotsRow);
+    card.dataset.slot = String(p.slot);
     card.style.setProperty('--slot', SLOT_COLORS[p.slot]!);
     if (!p.connected) card.classList.add('bf-slot-away');
 
