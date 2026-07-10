@@ -6,6 +6,12 @@ type SpawnQueueItem = { enemyId: string; pos: Vec2 };
 
 export class WaveSpawner {
   onAllWavesCleared: (() => void) | null = null;
+  /**
+   * DIRECT sim callback fired the step a wave clears (pickup vacuum etc.).
+   * Sim mutations must ride this, not the `waveCleared` event — the event is
+   * suppressed during rollback resim (audio/banner only).
+   */
+  onWaveCleared: (() => void) | null = null;
 
   private readonly queue: SpawnQueueItem[] = [];
   private waveIndex = 0;
@@ -44,6 +50,23 @@ export class WaveSpawner {
     this.liveMobCount = count;
   }
 
+  /** Sim-relevant scalars for replay digests / net snapshots. */
+  digestInto(out: number[]): void {
+    out.push(
+      this.waveIndex,
+      this.queueHead,
+      this.queue.length,
+      this.spawnPointIndex,
+      this.waveDelayTimer,
+      this.staggerTimer,
+      this.telegraphTimer,
+      this.telegraphItem ? 1 : 0,
+      this.liveMobCount,
+      this.waveActive ? 1 : 0,
+      this.allCleared ? 1 : 0,
+    );
+  }
+
   update(dt: number): void {
     if (this.allCleared) return;
 
@@ -73,6 +96,7 @@ export class WaveSpawner {
 
     if (this.waveActive) {
       if (this.liveMobCount > 0) return;
+      this.onWaveCleared?.();
       events.emit('waveCleared', { wave: this.waveIndex + 1, totalWaves: this.level.waves.length });
       this.waveIndex += 1;
       this.waveActive = false;

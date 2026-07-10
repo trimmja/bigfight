@@ -1,3 +1,4 @@
+import { simPhase } from '../../net/simPhase';
 import type { AttackDef, ProjectileDef } from '../../data/types';
 import type { WorldCtx } from '../Entity';
 import { Boss, type BossDefeatedCallback, type BossDropCallback, type BossRequestMinionCallback } from '../Boss';
@@ -78,6 +79,18 @@ const SHOCKWAVE: ProjectileDef = {
   radius: 0.42,
   visual: 'shockwave',
   color: 0xfff6df,
+};
+
+const PHASE_IDS: Record<SkeletonPhase, number> = {
+  stalk: 0,
+  slamTelegraph: 1,
+  slamActive: 2,
+  sweepTelegraph: 3,
+  sweepActive: 4,
+  jumpTelegraph: 5,
+  jumpAir: 6,
+  jumpLand: 7,
+  recover: 8,
 };
 
 const STALK_MIN = 0.85;
@@ -231,7 +244,7 @@ export class SkeletonKing extends Boss {
     this.phaseTimer = SLAM_ACTIVE;
     this.beginBossHit();
     this.shake(0.65);
-    ctx.particles.directional(
+    if (!simPhase.resimulating) ctx.particles.directional(
       this.body.pos.x + this.facing * 1.4,
       this.body.pos.y + 0.25,
       this.facing,
@@ -255,7 +268,7 @@ export class SkeletonKing extends Boss {
     this.phaseDuration = SWEEP_ACTIVE;
     this.phaseTimer = SWEEP_ACTIVE;
     this.beginBossHit();
-    ctx.particles.directional(
+    if (!simPhase.resimulating) ctx.particles.directional(
       this.body.pos.x + this.facing * 1.2,
       this.body.pos.y + this.body.height * 0.38,
       this.facing,
@@ -319,6 +332,19 @@ export class SkeletonKing extends Boss {
 
   private telegraphDuration(base: number): number {
     return this.isBelowHp(0.5) ? base * 0.75 : base;
+  }
+
+  override digestInto(out: number[]): void {
+    super.digestInto(out);
+    out.push(
+      PHASE_IDS[this.phase],
+      this.phaseTimer,
+      this.phaseDuration,
+      this.summonTimer,
+      this.jumpTargetX,
+      this.jumpAge,
+      this.shockwavesFired ? 1 : 0,
+    );
   }
 }
 

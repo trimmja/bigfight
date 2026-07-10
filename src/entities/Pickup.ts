@@ -4,6 +4,7 @@ import { events } from '../core/events';
 import { Pool } from '../core/pool';
 import type { SimRng } from '../core/rng';
 import { exp, hypot } from '../core/simmath';
+import { simPhase } from '../net/simPhase';
 import type { EnemyDef, MaterialId } from '../data/types';
 import { Body } from '../physics/Body';
 import { makeToonMaterial } from '../render/toon';
@@ -90,7 +91,7 @@ export class Pickup extends Entity {
 
   update(_ctx: WorldCtx, dt: number): void {
     if (!this.alive) return;
-    this.syncVisual(dt);
+    if (!simPhase.resimulating) this.syncVisual(dt);
   }
 
   updatePickup(dt: number, player: Fighter): boolean {
@@ -115,7 +116,7 @@ export class Pickup extends Entity {
     // Collect on contact — or when we'd tunnel PAST the player this step
     // (fast magnetized pickups used to overshoot and orbit forever).
     if (distSq <= COLLECT_RADIUS_SQ || (this.magnetized && dist <= speed * dt * 1.5)) {
-      this.syncVisual(dt);
+      if (!simPhase.resimulating) this.syncVisual(dt);
       return true;
     }
 
@@ -135,7 +136,7 @@ export class Pickup extends Entity {
     }
 
     this.wasGrounded = this.body.grounded;
-    this.syncVisual(dt);
+    if (!simPhase.resimulating) this.syncVisual(dt);
     return false;
   }
 
@@ -143,6 +144,21 @@ export class Pickup extends Entity {
     this.magnetized = true;
     this.body.noclip = true;
     this.body.gravityScale = 0;
+  }
+
+  /** Sim-relevant scalars for replay digests / net snapshots. */
+  digestInto(out: number[]): void {
+    out.push(
+      this.body.pos.x,
+      this.body.pos.y,
+      this.body.vel.x,
+      this.body.vel.y,
+      this.kind === 'gold' ? 0 : 1,
+      this.goldValue,
+      this.bouncesRemaining,
+      this.magnetized ? 1 : 0,
+      this.wasGrounded ? 1 : 0,
+    );
   }
 
   deactivate(): void {
@@ -192,6 +208,12 @@ export class PickupManager {
     private readonly scene: THREE.Scene,
     /** Sim rng (`drops` stream): gold variance + pop velocities are sim state. */
     private readonly rng: SimRng,
+    /**
+     * DIRECT sim-credit callback — the ONLY path that mutates match totals.
+     * (The `loot` event still fires for audio/UI but is suppressed during
+     * rollback resim; a suppressed event must never carry sim mutations.)
+     */
+    private readonly onLoot: (gold: number, material?: MaterialId) => void,
   ) {
     this.materials = {
       coin: makeToonMaterial(0xffd23e),
@@ -230,6 +252,7 @@ export class PickupManager {
     const pickup = this.pool.obtain();
     if (!pickup) {
       // Pool exhausted — loot must never be lost: bank it instantly.
+      this.onLoot(value);
       events.emit('loot', { gold: value });
       return;
     }
@@ -242,6 +265,7 @@ export class PickupManager {
   spawnMaterial(material: MaterialId, x: number, y: number): void {
     const pickup = this.pool.obtain();
     if (!pickup) {
+      this.onLoot(0, material);
       events.emit('loot', { gold: 0, material });
       return;
     }
@@ -272,8 +296,10 @@ export class PickupManager {
       pickup.update(ctx, dt);
       if (!pickup.updatePickup(dt, player)) continue;
       if (pickup.kind === 'gold') {
+        this.onLoot(pickup.goldValue);
         events.emit('loot', { gold: pickup.goldValue });
       } else if (pickup.materialId) {
+        this.onLoot(0, pickup.materialId);
         events.emit('loot', { gold: 0, material: pickup.materialId });
       }
       this.releaseAt(i);
@@ -293,8 +319,10 @@ export class PickupManager {
         continue;
       }
       if (pickup.kind === 'gold') {
+        this.onLoot(pickup.goldValue);
         events.emit('loot', { gold: pickup.goldValue });
       } else if (pickup.materialId) {
+        this.onLoot(0, pickup.materialId);
         events.emit('loot', { gold: 0, material: pickup.materialId });
       }
       this.releaseAt(i);
@@ -304,6 +332,14 @@ export class PickupManager {
   releaseAll(): void {
     this.active.length = 0;
     this.pool.releaseAll();
+  }
+
+  digestInto(out: number[]): void {
+    out.push(this.active.length);
+    for (let i = 0; i < this.active.length; i += 1) {
+      const pickup = this.active[i]!;
+      if (pickup.alive) pickup.digestInto(out);
+    }
   }
 
   dispose(): void {

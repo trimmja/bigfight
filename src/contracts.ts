@@ -31,6 +31,15 @@ export interface InputState {
   anyPressed: boolean;
 }
 
+/**
+ * Anything that can drive a Fighter's per-step intents: the live InputManager,
+ * a replay playback source, a scripted test bot, or (netplay) a remote peer's
+ * input stream. Player consumes THIS, never devices directly.
+ */
+export interface IIntentSource {
+  readonly state: InputState;
+}
+
 export interface IInput {
   readonly state: InputState;
   /** Snapshot + edge detection; call exactly once per fixed step. */

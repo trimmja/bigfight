@@ -4,6 +4,7 @@ import type { ActiveHitbox, FighterLike, HitResult, Hurtbox, Rect } from '../com
 import { events } from '../core/events';
 import { degToRad } from '../core/math';
 import { atan2, cos, hypot, sin } from '../core/simmath';
+import { simPhase } from '../net/simPhase';
 import { Pool } from '../core/pool';
 import type { AttackDef, Faction, Facing, ProjectileDef } from '../data/types';
 import { aabbOverlap } from '../physics/collision';
@@ -216,7 +217,7 @@ class ProjectileSlot implements FighterLike {
     }
     if (this.hitstopTimer > 0) {
       this.hitstopTimer = Math.max(0, this.hitstopTimer - dt);
-      this.syncVisual(dt);
+      if (!simPhase.resimulating) this.syncVisual(dt);
       return true;
     }
 
@@ -239,7 +240,7 @@ class ProjectileSlot implements FighterLike {
         }
         // Suction visual: sparks streaming into the core.
         this.smokeTimer -= dt;
-        if (this.smokeTimer <= 0 && this.trailColor > 0) {
+        if (this.smokeTimer <= 0 && this.trailColor > 0 && !simPhase.resimulating) {
           this.smokeTimer = 0.05;
           const a = Math.random() * Math.PI * 2; // det-ok: particle placement only
           const r = this.pullRadius > 0 ? this.pullRadius * 0.7 : 2;
@@ -256,7 +257,7 @@ class ProjectileSlot implements FighterLike {
       } else {
         this.checkStickyTrigger(ctx, targets);
       }
-      this.syncVisual(dt);
+      if (!simPhase.resimulating) this.syncVisual(dt);
       return true;
     }
 
@@ -277,7 +278,8 @@ class ProjectileSlot implements FighterLike {
     }
 
     const wantsTrail =
-      this.visual === 'rocket' || this.visual === 'flame' || this.visual === 'shockwave' || this.trailColor > 0;
+      !simPhase.resimulating &&
+      (this.visual === 'rocket' || this.visual === 'flame' || this.visual === 'shockwave' || this.trailColor > 0);
     if (wantsTrail) {
       this.smokeTimer -= dt;
       if (this.smokeTimer <= 0) {
@@ -300,7 +302,7 @@ class ProjectileSlot implements FighterLike {
       }
     }
 
-    this.syncVisual(dt);
+    if (!simPhase.resimulating) this.syncVisual(dt);
     return true;
   }
 
@@ -335,6 +337,29 @@ class ProjectileSlot implements FighterLike {
 
   onDealtHit(_result: HitResult): void {}
 
+  /** Sim-relevant scalars for replay digests / net snapshots. */
+  digestInto(out: number[]): void {
+    out.push(
+      this.body.pos.x,
+      this.body.pos.y,
+      this.body.vel.x,
+      this.body.vel.y,
+      this.teamId,
+      this.facing,
+      this.age,
+      this.lifetime,
+      this.hp,
+      this.radius,
+      this.stuck ? 1 : 0,
+      this.exploding ? 1 : 0,
+      this.explosionSubmitted ? 1 : 0,
+      this.hitConfirmed ? 1 : 0,
+      this.tickTimer,
+      this.hitstopTimer,
+      this.attackDef.damage,
+    );
+  }
+
   deactivate(): void {
     this.group.visible = false;
     this.hurtbox.enabled = false;
@@ -367,12 +392,14 @@ class ProjectileSlot implements FighterLike {
       this.body.halfW = this.explodeRadius;
       this.body.height = this.explodeRadius * 2;
       this.alreadyHit.clear();
-      this.showExplosionVisual();
+      if (!simPhase.resimulating) this.showExplosionVisual();
       events.emit('explosion', {
         pos: { x: this.body.pos.x, y: this.body.pos.y },
         radius: this.explodeRadius,
       });
-      ctx.particles.burst(this.body.pos.x, this.body.pos.y, this.primaryMat.color.getHex(), 32, 8);
+      if (!simPhase.resimulating) {
+        ctx.particles.burst(this.body.pos.x, this.body.pos.y, this.primaryMat.color.getHex(), 32, 8);
+      }
       return;
     }
     this.exploding = true;
@@ -710,6 +737,11 @@ export class ProjectileManager {
       const projectile = this.active[i]!;
       if (projectile.canBeDamaged()) out.push(projectile);
     }
+  }
+
+  digestInto(out: number[]): void {
+    out.push(this.active.length);
+    for (let i = 0; i < this.active.length; i += 1) this.active[i]!.digestInto(out);
   }
 
   dispose(): void {

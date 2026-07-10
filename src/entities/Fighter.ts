@@ -11,6 +11,7 @@ import type { ActiveHitbox, HitResult, Hurtbox, Rect } from '../combat/types';
 import { events } from '../core/events';
 import { clamp } from '../core/math';
 import type { AttackDef, CharacterDef, Faction, Facing, FighterStateName, Vec2, WeaponDef } from '../data/types';
+import { simPhase } from '../net/simPhase';
 import { Body } from '../physics/Body';
 import { FighterRig, type Rig } from '../rigs/FighterRig';
 import {
@@ -39,6 +40,21 @@ const HURTBOX_PAD_X = 0.02;
 const ATTACK_CHAIN_RESET = 0.4;
 const ATTACK_STOP_ACCEL = FRICTION_GROUND * 2.4;
 const POSE_DAMPING = 24;
+
+/** Stable numeric ids for FighterStateName — replay digests + net snapshots. */
+const STATE_IDS: Record<FighterStateName, number> = {
+  idle: 0,
+  run: 1,
+  jump: 2,
+  fall: 3,
+  attack: 4,
+  weaponAbility: 5,
+  hitstun: 6,
+  launched: 7,
+  landing: 8,
+  ko: 9,
+  respawning: 10,
+};
 
 export class Fighter extends Entity {
   readonly def: CharacterDef;
@@ -134,6 +150,46 @@ export class Fighter extends Entity {
     this.activeHitbox.teamId = teamId;
   }
 
+  /**
+   * Append every sim-relevant scalar (replay digests; the field list is the
+   * blueprint for net snapshots). Subclasses append AFTER calling super.
+   */
+  digestInto(out: number[]): void {
+    out.push(
+      this.alive ? 1 : 0,
+      this.body.pos.x,
+      this.body.pos.y,
+      this.body.vel.x,
+      this.body.vel.y,
+      this.body.grounded ? 1 : 0,
+      this.body.fastFalling ? 1 : 0,
+      this.body.dropThroughTimer,
+      this.body.noclip ? 1 : 0,
+      this.damage,
+      this.damageScale,
+      this.kbImmune ? 1 : 0,
+      this.attackMult,
+      this.shieldHits,
+      this.facing,
+      STATE_IDS[this.state],
+      this.stateTime,
+      this.jumpsUsed,
+      this.hitstopTimer,
+      this.invulnTimer,
+      this.comboIndex,
+      this.comboQueued ? 1 : 0,
+      this.currentAttack ? 1 : 0,
+      this.attackPhaseTime,
+      this.weaponCooldown,
+      this.currentAttackIsWeapon ? 1 : 0,
+      this.projectileFired ? 1 : 0,
+      this.slashWaveFired ? 1 : 0,
+      this.comboResetTimer,
+      this.freezeTimer,
+      this.teamId,
+    );
+  }
+
   get power(): number {
     return this.def.power;
   }
@@ -184,7 +240,7 @@ export class Fighter extends Entity {
       this.state = 'hitstun';
       this.stateTime = -this.freezeTimer;
       if (this.freezeTimer > 0) {
-        this.updateVisuals(ctx, dt);
+        if (!simPhase.resimulating) this.updateVisuals(ctx, dt);
         return;
       }
       this.state = this.body.grounded ? 'idle' : 'fall';
@@ -219,7 +275,7 @@ export class Fighter extends Entity {
         break;
     }
 
-    this.updateVisuals(ctx, dt);
+    if (!simPhase.resimulating) this.updateVisuals(ctx, dt);
   }
 
   afterPhysics(ctx: WorldCtx): void {
@@ -229,7 +285,9 @@ export class Fighter extends Entity {
     if (landed) {
       this.jumpsUsed = 0;
       this.body.fastFalling = false;
-      ctx.particles.burst(this.body.pos.x, this.body.pos.y + 0.08, this.def.palette.glow, 8, 3.5);
+      if (!simPhase.resimulating) {
+        ctx.particles.burst(this.body.pos.x, this.body.pos.y + 0.08, this.def.palette.glow, 8, 3.5);
+      }
       if (this.state === 'launched') {
         this.state = 'landing';
         this.stateTime = 0;
@@ -260,7 +318,7 @@ export class Fighter extends Entity {
     this.body.fastFalling = false;
     this.state = result.launched ? 'launched' : 'hitstun';
     this.stateTime = -result.hitstun;
-    this.rig.flashColor(0xffffff, 0.06);
+    if (!simPhase.resimulating) this.rig.flashColor(0xffffff, 0.06);
     this.hitFlashTimer = 0.06;
     if (result.kb <= LAUNCH_THRESHOLD) {
       this.trail?.setActive(false);
@@ -268,11 +326,11 @@ export class Fighter extends Entity {
   }
 
   onDealtHit(_result: HitResult): void {
-    this.rig.flashColor(this.def.palette.accent, 0.035);
+    if (!simPhase.resimulating) this.rig.flashColor(this.def.palette.accent, 0.035);
   }
 
   onShieldBlocked(): void {
-    this.rig.flashColor(0x8ff6ff, 0.08);
+    if (!simPhase.resimulating) this.rig.flashColor(0x8ff6ff, 0.08);
   }
 
   applyFreeze(seconds: number): void {
@@ -292,7 +350,7 @@ export class Fighter extends Entity {
     if (this.body.vel.y > 1) this.body.vel.y = 1;
     this.state = 'hitstun';
     this.stateTime = -this.freezeTimer;
-    this.rig.flashColor(0x9df3ff, seconds);
+    if (!simPhase.resimulating) this.rig.flashColor(0x9df3ff, seconds);
   }
 
   equipWeapon(weapon: WeaponDef, model: THREE.Group): void {
@@ -512,8 +570,10 @@ export class Fighter extends Entity {
 
   private updateLaunched(ctx: WorldCtx, dt: number): void {
     this.stateTime += dt;
-    this.ensureTrail(ctx);
-    this.trail?.push(this.body.pos.x, this.body.pos.y + this.body.height * 0.55, 0.08);
+    if (!simPhase.resimulating) {
+      this.ensureTrail(ctx);
+      this.trail?.push(this.body.pos.x, this.body.pos.y + this.body.height * 0.55, 0.08);
+    }
     this.applyAirMove(dt, AIR_CONTROL * TUMBLE_AIR_CONTROL);
   }
 

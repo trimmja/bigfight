@@ -9,13 +9,15 @@ import {
   RESPAWN_DELAY,
   TIMESTEP,
 } from '../config';
-import { resetMobAttackTokens } from '../ai/MobBrain';
+import { getMobAttackTokens, resetMobAttackTokens } from '../ai/MobBrain';
+import type { IIntentSource } from '../contracts';
 import { createSimRngSet, type SimRngSet } from '../core/rng';
+import { hashNumbers } from '../net/hash';
 import { WaveSpawner } from '../ai/WaveSpawner';
 import type { ActiveHitbox, FighterLike, Rect } from '../combat/types';
 import { HitResolver } from '../combat/HitResolver';
 import { characterById } from '../data/characters';
-import { bossById, enemyById } from '../data/enemies';
+import { bossById } from '../data/enemies';
 import { levelById } from '../data/levels';
 import { sidekickById } from '../data/sidekicks';
 import { stageById } from '../data/stages';
@@ -34,8 +36,10 @@ import { Boss } from '../entities/Boss';
 import { GiantEagle } from '../entities/bosses/GiantEagle';
 import { GiantGhost } from '../entities/bosses/GiantGhost';
 import { SkeletonKing } from '../entities/bosses/SkeletonKing';
+import { resetEntityIds } from '../entities/Entity';
 import { Fighter } from '../entities/Fighter';
 import { Mob } from '../entities/Mob';
+import { MobPool } from '../entities/MobPool';
 import { PickupManager } from '../entities/Pickup';
 import { Player } from '../entities/Player';
 import { PowerupSpawner } from '../entities/PowerupCrate';
@@ -67,6 +71,8 @@ export type GameplayScreenOptions = {
   weaponId?: string;
   /** Sim RNG seed. Netplay/replays pass a shared seed; solo may omit. */
   seed?: number;
+  /** Player intent source (default: live device input). Replays/net inject here. */
+  intentSource?: IIntentSource;
   onLevelEnd?: (result: LevelEndResult) => void;
   onPause?: () => void;
 };
@@ -74,6 +80,7 @@ export type GameplayScreenOptions = {
 const DEBUG_HITBOX_SLOTS = 8;
 const DEBUG_BODY_SLOTS = 18;
 const CLEAR_BEAT_SECONDS = 2.2;
+const EMPTY_MOBS: readonly Mob[] = [];
 
 export class GameplayScreen implements Screen {
   private readonly opts: GameplayScreenOptions;
@@ -94,11 +101,9 @@ export class GameplayScreen implements Screen {
   private powerupSpawner: PowerupSpawner | null = null;
   private sidekick: Sidekick | null = null;
   private boss: Boss | null = null;
+  private mobPool: MobPool | null = null;
   private hitUnsub: (() => void) | null = null;
-  private lootUnsub: (() => void) | null = null;
-  private waveUnsub: (() => void) | null = null;
 
-  private readonly mobs: Mob[] = [];
   private readonly physicsBodies: Body[] = [];
   private readonly liveFighters: Fighter[] = [];
   private readonly combatTargets: FighterLike[] = [];
@@ -131,8 +136,14 @@ export class GameplayScreen implements Screen {
     this.level = levelById(opts.levelId ?? 1);
   }
 
+  /** All pooled mobs, stable order (dead ones are `!alive`) — sim iterates this. */
+  private get mobs(): readonly Mob[] {
+    return this.mobPool ? this.mobPool.all : EMPTY_MOBS;
+  }
+
   enter(game: Game): void {
     resetMobAttackTokens();
+    resetEntityIds(); // deterministic entity ids: nothing constructs mid-match (MobPool)
     const stageDef = stageById(this.level.stageId);
     const playerDef = characterById(this.opts.characterId);
 
@@ -145,12 +156,18 @@ export class GameplayScreen implements Screen {
     this.cameraRig = new CameraRig(game.renderer.camera, () => game.save.settings.shake);
     this.hitResolver = new HitResolver();
     this.physics = new PhysicsWorld();
-    this.pickupManager = new PickupManager(game.renderer.scene, rng.drops);
+    this.mobPool = new MobPool(game.renderer.scene);
+    this.mobPool.prewarm(this.level);
+    this.pickupManager = new PickupManager(game.renderer.scene, rng.drops, (gold, material) => {
+      // Direct sim credit (rollback-safe) — the loot EVENT is audio/UI only.
+      this.goldEarned += gold;
+      if (material) this.materialsEarned[material] = (this.materialsEarned[material] ?? 0) + 1;
+    });
     const projectileManager = new ProjectileManager(game.renderer.scene);
     this.projectileManager = projectileManager;
     this.powerupSpawner = new PowerupSpawner(game.renderer.scene, unlockedPowerupIds(game.save), rng.drops);
 
-    this.player = new Player(playerDef, game.input);
+    this.player = new Player(playerDef, this.opts.intentSource ?? game.input);
     this.player.stocks = PLAYER_STOCKS;
     this.player.koReset(stageDef.playerSpawn);
     this.player.facing = 1;
@@ -201,16 +218,13 @@ export class GameplayScreen implements Screen {
       (pos) => this.telegraphSpawn(game, pos),
     );
     this.waveSpawner.onAllWavesCleared = () => this.handleAllWavesCleared(game);
+    // Direct sim callback (rollback-safe) — the waveCleared EVENT is audio/UI only.
+    this.waveSpawner.onWaveCleared = () => this.pickupManager?.vacuumAll();
 
     this.cameraRig.setBounds(stageDef.blast.left, stageDef.blast.right, stageDef.blast.bottom);
     this.hitUnsub = game.events.on('hit', ({ pos, damage, kb }) => {
       this.particles?.burst(pos.x, pos.y, COLOR_NEON_YELLOW, Math.min(28, 8 + damage * 3), 5 + kb * 0.22);
     });
-    this.lootUnsub = game.events.on('loot', ({ gold, material }) => {
-      this.goldEarned += gold;
-      if (material) this.materialsEarned[material] = (this.materialsEarned[material] ?? 0) + 1;
-    });
-    this.waveUnsub = game.events.on('waveCleared', () => this.pickupManager?.vacuumAll());
 
     if (DEBUG) this.createDebug(game);
     game.input.setTouchControlsVisible(true);
@@ -219,11 +233,7 @@ export class GameplayScreen implements Screen {
 
   exit(game: Game): void {
     this.hitUnsub?.();
-    this.lootUnsub?.();
-    this.waveUnsub?.();
     this.hitUnsub = null;
-    this.lootUnsub = null;
-    this.waveUnsub = null;
     this.hud?.dispose();
     this.hud = null;
     this.damageNumbers?.dispose();
@@ -233,8 +243,8 @@ export class GameplayScreen implements Screen {
     this.boss?.dispose();
     this.boss = null;
     this.player?.dispose();
-    for (let i = 0; i < this.mobs.length; i += 1) this.mobs[i]!.dispose();
-    this.mobs.length = 0;
+    this.mobPool?.dispose();
+    this.mobPool = null;
     this.projectileManager?.dispose();
     this.projectileManager = null;
     this.powerupSpawner?.dispose();
@@ -348,14 +358,12 @@ export class GameplayScreen implements Screen {
       }
     }
 
-    // Sweep dead mobs (KO'd last frame — drops/splits already handled) so long
-    // boss fights don't accumulate dead rigs in memory and loops.
-    for (let i = this.mobs.length - 1; i >= 0; i -= 1) {
+    // Sweep dead mobs (KO'd last frame — drops/splits already handled) back to
+    // the pool. Slots stay in `mobs` (stable order — netplay determinism);
+    // release is idempotent and hides the rig.
+    for (let i = 0; i < this.mobs.length; i += 1) {
       const mob = this.mobs[i]!;
-      if (!mob.alive && mob.hitstopTimer <= 0) {
-        mob.dispose();
-        this.mobs.splice(i, 1);
-      }
+      if (!mob.alive && mob.hitstopTimer <= 0) this.mobPool?.release(mob);
     }
 
     this.updateCamera(stage);
@@ -404,15 +412,14 @@ export class GameplayScreen implements Screen {
     }
   }
 
-  private spawnMob(game: Game, enemyId: string, pos: Vec2): Mob | null {
+  private spawnMob(_game: Game, enemyId: string, pos: Vec2): Mob | null {
     const player = this.player;
-    if (!player) return null;
-    const mob = new Mob(enemyById(enemyId));
+    const pool = this.mobPool;
+    if (!player || !pool) return null;
+    const mob = pool.obtain(enemyId);
     mob.setTarget(player);
     mob.koReset(pos);
     mob.facing = mob.body.pos.x < player.body.pos.x ? 1 : -1;
-    this.mobs.push(mob);
-    game.renderer.scene.add(mob.group);
     return mob;
   }
 
@@ -663,6 +670,65 @@ export class GameplayScreen implements Screen {
       if (this.mobs[i]!.alive) count += 1;
     }
     return count;
+  }
+
+  /**
+   * Labeled sim-state segments (replay verification + divergence bisecting).
+   * Every sim-relevant scalar in the match should appear here — the segment
+   * list doubles as the net-snapshot blueprint.
+   */
+  stateDump(): { label: string; values: number[] }[] {
+    const segments: { label: string; values: number[] }[] = [];
+    const push = (label: string, fill: (out: number[]) => void) => {
+      const values: number[] = [];
+      fill(values);
+      segments.push({ label, values });
+    };
+    if (this.player) push('player', (out) => this.player!.digestInto(out));
+    for (let i = 0; i < this.mobs.length; i += 1) {
+      const mob = this.mobs[i]!;
+      push(`mob${i}:${mob.enemyDef.id}`, (out) => mob.digestInto(out));
+    }
+    if (this.boss) push(`boss:${this.boss.bossId}`, (out) => this.boss!.digestInto(out));
+    push('projectiles', (out) => this.projectileManager?.digestInto(out));
+    push('pickups', (out) => this.pickupManager?.digestInto(out));
+    push('crates', (out) => this.powerupSpawner?.digestInto(out));
+    push('waves', (out) => this.waveSpawner?.digestInto(out));
+    push('match', (out) => {
+      out.push(
+        this.playerRespawnTimer,
+        this.goldEarned,
+        this.materialsEarned.boneShard ?? 0,
+        this.materialsEarned.slimeGoo ?? 0,
+        this.materialsEarned.ghostEssence ?? 0,
+        this.materialsEarned.feather ?? 0,
+        this.materialsEarned.energyCore ?? 0,
+        this.levelEnding ? 1 : 0,
+        this.levelWon ? 1 : 0,
+        this.levelEndTimer,
+        this.levelEndSent ? 1 : 0,
+        this.bossSpawnQueued ? 1 : 0,
+        this.bossSpawnTimer,
+        getMobAttackTokens(),
+      );
+      const rng = this.rng;
+      if (rng) {
+        out.push(...rng.ai.getState(), ...rng.drops.getState(), ...rng.spawn.getState(), ...rng.reserve.getState());
+      }
+    });
+    return segments;
+  }
+
+  /** xxHash32 over the full sim-state dump — one number per frame. */
+  stateDigest(): number {
+    const flat: number[] = [];
+    const segments = this.stateDump();
+    for (let i = 0; i < segments.length; i += 1) {
+      const seg = segments[i]!;
+      flat.push(seg.values.length);
+      for (let v = 0; v < seg.values.length; v += 1) flat.push(seg.values[v]!);
+    }
+    return hashNumbers(flat);
   }
 
   private createDebug(game: Game): void {
