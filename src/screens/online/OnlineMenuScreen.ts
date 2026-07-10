@@ -7,6 +7,7 @@ import { button, el, uiRoot } from '../../ui/dom';
 import { toast } from '../../ui/toasts';
 import type { Screen } from '../Screen';
 import { MODES } from './modes';
+import { RosterShowcase } from './RosterShowcase';
 
 /**
  * Online hub — mode-first, the way a AAA menu leads you: pick a big beautiful
@@ -22,6 +23,7 @@ export class OnlineMenuScreen implements Screen {
   private cardEls = new Map<GameMode, HTMLElement>();
   private selectedMode: GameMode = 'ffa';
   private busy = false;
+  private showcase: RosterShowcase | null = null;
 
   constructor(
     private readonly client: LobbyClient,
@@ -39,6 +41,10 @@ export class OnlineMenuScreen implements Screen {
       game.save.nickname = randomNickname();
       game.persist();
     }
+
+    // The whole roster musters in behind the UI, cinematic camera and all.
+    this.showcase = new RosterShowcase(game.renderer.scene, game.save);
+    this.showcase.start(game.renderer.camera);
 
     this.root = uiRoot('bf-online-screen bf-hub');
 
@@ -207,9 +213,11 @@ export class OnlineMenuScreen implements Screen {
       });
   }
 
-  exit(): void {
+  exit(game: Game): void {
     for (const un of this.unsubs) un();
     this.unsubs = [];
+    this.showcase?.dispose(game.renderer.camera);
+    this.showcase = null;
     this.nameChip = null;
     this.createBtn = null;
     this.cardEls.clear();
@@ -217,5 +225,7 @@ export class OnlineMenuScreen implements Screen {
     this.root = null;
   }
 
-  update(): void {}
+  update(game: Game, dt: number): void {
+    this.showcase?.update(game.renderer.camera, dt);
+  }
 }
