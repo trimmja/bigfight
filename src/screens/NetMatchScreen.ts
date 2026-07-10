@@ -5,7 +5,7 @@ import { NetIntentSource } from '../net/inputCodec';
 import { RollbackSession } from '../net/RollbackSession';
 import { simPhase } from '../net/simPhase';
 import type { NetTransport } from '../net/transport';
-import { GameplayScreen, type VersusEndResult } from './GameplayScreen';
+import { GameplayScreen, type LevelEndResult, type VersusEndResult } from './GameplayScreen';
 import type { Screen } from './Screen';
 
 export interface NetMatchScreenOptions {
@@ -15,6 +15,8 @@ export interface NetMatchScreenOptions {
   /** Wall-clock ms when frame 0 starts (server matchStart epoch + countdown). */
   startEpochMs: number;
   onMatchEnd: (result: VersusEndResult) => void;
+  /** Co-op online: campaign level finished (won or lost). */
+  onCoopLevelEnd?: (result: LevelEndResult) => void;
   onDisconnect?: (slot: number) => void;
 }
 
@@ -43,6 +45,7 @@ export class NetMatchScreen implements Screen {
       intentSources: sources,
       localSlot: this.opts.localSlot,
       onMatchEnd: (result) => this.opts.onMatchEnd(result),
+      ...(this.opts.onCoopLevelEnd ? { onLevelEnd: this.opts.onCoopLevelEnd } : {}),
       // No onPause: the sim never pauses online (ESC handled by overlay UI).
     });
     inner.enter(game);

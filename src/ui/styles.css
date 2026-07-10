@@ -657,7 +657,9 @@ html, body {
   color: var(--text);
 }
 .bf-key-back { background: var(--neon-pink); color: #ffffff; }
-.bf-key-go { grid-column: span 2; letter-spacing: 2px; }
+/* Fills the keypad's last row: 4 letters + ⌫ + GO!(3) = 8 columns exactly. */
+.bf-key-go { grid-column: span 3; letter-spacing: 2px; background: var(--neon-green); color: #ffffff; }
+.bf-key-go:disabled { background: #b8c4d4; }
 .bf-shake { animation: bf-shake 0.4s ease-in-out; }
 @keyframes bf-shake {
   20% { transform: translateX(-12px); }
@@ -1105,8 +1107,8 @@ html, body {
   .bf-online-hint { font-size: 12px; }
   .bf-join-body { gap: 10px; }
   .bf-code-box { width: 46px; height: 54px; font-size: 30px; border-radius: 14px; }
-  .bf-keypad { grid-template-columns: repeat(11, minmax(30px, 46px)); gap: 6px; }
-  .bf-key { padding: 8px 0; font-size: 15px; border-radius: 11px; }
+  .bf-keypad { grid-template-columns: repeat(8, minmax(30px, 46px)); gap: 6px; }
+  .bf-key { padding: 7px 0; font-size: 15px; border-radius: 11px; }
   .bf-slot { min-height: 88px; padding: 6px; gap: 2px; border-radius: 16px; }
   .bf-share-link { display: none; }
   .bf-share-code { letter-spacing: 3px; }
