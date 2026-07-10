@@ -207,10 +207,13 @@ export class JoinCodeScreen implements Screen {
         return;
       case 'versionMismatch':
         this.shake();
+        // ALWAYS show a loud, actionable panel — a silent freeze here reads as
+        // "the game is broken." Refreshing pulls the current build (the HTML
+        // shell is no-cache), so it fixes a stale joiner outright and tells a
+        // stale host to do the same.
         void updateAvailable().then((imStale) => {
           if (!this.root) return;
-          if (imStale) this.showUpdatePanel();
-          else toast(`Ask ${err.hostNickname ?? 'the host'} to tap their 🔄 UPDATE button!`);
+          this.showVersionPanel(imStale, err.hostNickname);
         });
         return;
       default:
@@ -219,18 +222,24 @@ export class JoinCodeScreen implements Screen {
     }
   }
 
-  /** We're the stale one: one tap updates, keeping ?join=CODE for the reload. */
-  private showUpdatePanel(): void {
+  /**
+   * Version mismatch panel — loud + actionable. `imStale` = I'm the older one
+   * (a refresh gets me in); otherwise the HOST is older (refresh won't join
+   * their room, but tells them what to do). Either way REFRESH is the fix, so
+   * it's always the primary button; ?join=CODE is preserved through the reload.
+   */
+  private showVersionPanel(imStale: boolean, hostNickname?: string): void {
     if (!this.root) return;
     const backdrop = el('div', 'bf-modal-backdrop', this.root);
     const panel = el('div', 'bf-panel', backdrop);
-    el('h1', 'bf-title', panel).textContent = 'NEW VERSION!';
-    el('p', 'bf-hint', panel).textContent =
-      'Your game is a little older than theirs. Grab the update and jump right back in!';
+    el('h1', 'bf-title', panel).textContent = imStale ? '🔄 TIME TO UPDATE!' : '👋 DIFFERENT VERSIONS';
+    el('p', 'bf-hint', panel).textContent = imStale
+      ? "Your game is a little older than your friend's. Refresh to get the latest and jump right in!"
+      : `You're on the newest version but ${hostNickname ?? 'the host'} isn't yet. Ask them to refresh their game, then try again!`;
     const code = this.entered;
     const col = el('div', 'bf-button-col', panel);
     button(
-      '🔄 UPDATE!',
+      '🔄 REFRESH NOW',
       () => {
         const url = new URL(location.href);
         url.searchParams.set('join', code);
@@ -240,7 +249,10 @@ export class JoinCodeScreen implements Screen {
       'bf-button bf-button-yellow bf-button-big',
       col,
     );
-    button('NOT NOW', () => backdrop.remove(), 'bf-button', col);
+    button('BACK', () => {
+      backdrop.remove();
+      this.callbacks.onBack();
+    }, 'bf-button', col);
   }
 
   exit(): void {

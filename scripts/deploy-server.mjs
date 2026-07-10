@@ -62,3 +62,9 @@ run('flyctl', [
   '--app', 'bigfight-online',
   '.',
 ]);
+
+// 4. Pin to EXACTLY ONE machine. Rooms live in-memory per machine, so a second
+// machine splits players (a joiner load-balances to the wrong instance and
+// can't find the room). A family-scale game only ever needs one. Deploys can
+// leave a stray second machine, so enforce count=1 every time.
+run('flyctl', ['scale', 'count', '1', '--app', 'bigfight-online', '-y']);
