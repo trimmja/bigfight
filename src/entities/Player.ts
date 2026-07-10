@@ -222,7 +222,7 @@ export class Player extends Fighter {
     const active = this.shieldHits > 0 && this.shieldTimer > 0 && this.alive;
     shield.visible = active;
     if (!active) return;
-    const pulse = 1 + Math.sin(this.shieldTimer * 9) * 0.035;
+    const pulse = 1 + Math.sin(this.shieldTimer * 9) * 0.035; // det-ok: view-only
     shield.scale.set(1.2 * pulse, 1.55 * pulse, 1.2 * pulse);
     shield.rotation.y += dt * 1.4;
   }
@@ -230,7 +230,7 @@ export class Player extends Fighter {
   private updateRagePulse(dt: number): void {
     if (this.rageTimer <= 0) return;
     this.ragePulseTime += dt;
-    if (Math.sin(this.ragePulseTime * 11) > 0.9) {
+    if (Math.sin(this.ragePulseTime * 11) > 0.9) { // det-ok: view-only flash
       this.rig.flashColor(0xff4f5e, 0.045);
     }
   }

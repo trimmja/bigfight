@@ -6,6 +6,7 @@ import {
 } from '../config';
 import { events } from '../core/events';
 import { clamp, degToRad } from '../core/math';
+import { atan2 } from '../core/simmath';
 import { aabbOverlap } from '../physics/collision';
 import { computeKnockback, hitstunFor, launchVelocity, resolveAngleDeg } from './knockback';
 import type { ActiveHitbox, FighterLike, Rect } from './types';
@@ -41,7 +42,7 @@ export class HitResolver {
       for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
         const victim = targets[targetIndex];
         if (victim === undefined) continue;
-        if (victim.faction === hitbox.faction) continue;
+        if (victim.teamId === hitbox.teamId) continue;
         if (victim.isInvulnerable) continue;
         if (!victim.hurtbox.enabled) continue;
         if (hitbox.alreadyHit.has(victim)) continue;
@@ -110,7 +111,7 @@ export class HitResolver {
         const result = {
           damage,
           kb: effectiveKb,
-          angleRad: Math.atan2(victim.body.vel.y, victim.body.vel.x) || degToRad(angleDeg),
+          angleRad: atan2(victim.body.vel.y, victim.body.vel.x) || degToRad(angleDeg),
           hitstun,
           launched,
         };

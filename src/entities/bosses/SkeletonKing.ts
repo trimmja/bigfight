@@ -302,8 +302,8 @@ export class SkeletonKing extends Boss {
     if (this.shockwavesFired) return;
     this.shockwavesFired = true;
     const y = this.body.pos.y + 0.32;
-    ctx.fireProjectile(SHOCKWAVE, SHOCKWAVE_ATTACK, this.body.pos.x - 0.55, y, -1, 'enemy', this.power);
-    ctx.fireProjectile(SHOCKWAVE, SHOCKWAVE_ATTACK, this.body.pos.x + 0.55, y, 1, 'enemy', this.power);
+    ctx.fireProjectile(SHOCKWAVE, SHOCKWAVE_ATTACK, this.body.pos.x - 0.55, y, -1, 'enemy', this.teamId, this.power);
+    ctx.fireProjectile(SHOCKWAVE, SHOCKWAVE_ATTACK, this.body.pos.x + 0.55, y, 1, 'enemy', this.teamId, this.power);
   }
 
   private enterRecover(): void {

@@ -7,7 +7,7 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit && node scripts/check-determinism.mjs"
   },
   "dependencies": {
     "three": "^0.185.1"

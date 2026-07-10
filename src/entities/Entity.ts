@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ActiveHitbox } from '../combat/types';
+import type { SimRngSet } from '../core/rng';
 import type { AttackDef, BlastZone, Faction, Facing, ProjectileDef, Vec2 } from '../data/types';
 import type { StageColliders } from '../physics/collision';
 import { Body } from '../physics/Body';
@@ -8,9 +9,16 @@ import type { Trails } from '../render/Trails';
 
 let nextEntityId = 1;
 
+/** Netplay: match start resets ids so entity identity is reproducible. */
+export function resetEntityIds(): void {
+  nextEntityId = 1;
+}
+
 export interface WorldCtx {
   particles: Particles;
   trails: Trails;
+  /** Deterministic per-system RNG streams — sim randomness ONLY (see core/rng.ts). */
+  rng: SimRngSet;
   stage: {
     colliders: StageColliders;
     blast: BlastZone;
@@ -25,6 +33,7 @@ export interface WorldCtx {
     y: number,
     facing: Facing,
     faction: Faction,
+    teamId: number,
     power: number,
   ): void;
 }

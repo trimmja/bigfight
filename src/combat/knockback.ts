@@ -8,6 +8,7 @@ import {
   SAKURAI_WEAK_DEG,
 } from '../config';
 import { clamp, degToRad } from '../core/math';
+import { cos, sin } from '../core/simmath';
 import type { AttackDef, Facing, Vec2 } from '../data/types';
 
 export function computeKnockback(
@@ -41,6 +42,6 @@ export function launchVelocity(
   const mirroredRad = facing === 1 ? baseRad : Math.PI - baseRad;
   const diRad = degToRad(DI_MAX_DEG * clamp(diY, -1, 1));
   const launchRad = mirroredRad + diRad;
-  out.x = Math.cos(launchRad) * kb;
-  out.y = Math.sin(launchRad) * kb;
+  out.x = cos(launchRad) * kb;
+  out.y = sin(launchRad) * kb;
 }

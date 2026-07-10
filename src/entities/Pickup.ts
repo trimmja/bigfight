@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { GOLD_DROP_VARIANCE, PICKUP_MAGNET_RADIUS, POOL_PICKUPS } from '../config';
 import { events } from '../core/events';
 import { Pool } from '../core/pool';
+import type { SimRng } from '../core/rng';
+import { exp, hypot } from '../core/simmath';
 import type { EnemyDef, MaterialId } from '../data/types';
 import { Body } from '../physics/Body';
 import { makeToonMaterial } from '../render/toon';
@@ -109,7 +111,7 @@ export class Pickup extends Entity {
     const distSq = dx * dx + dy * dy;
 
     const dist = Math.sqrt(Math.max(0.0001, distSq));
-    const speed = Math.hypot(this.body.vel.x, this.body.vel.y);
+    const speed = hypot(this.body.vel.x, this.body.vel.y);
     // Collect on contact — or when we'd tunnel PAST the player this step
     // (fast magnetized pickups used to overshoot and orbit forever).
     if (distSq <= COLLECT_RADIUS_SQ || (this.magnetized && dist <= speed * dt * 1.5)) {
@@ -127,7 +129,7 @@ export class Pickup extends Entity {
       // of accelerating — pure acceleration preserves tangential velocity,
       // which is exactly an orbit.
       const targetSpeed = Math.min(MAGNET_MAX_SPEED, 6 + speed + MAGNET_ACCEL * dt);
-      const k = 1 - Math.exp(-14 * dt);
+      const k = 1 - exp(-14 * dt);
       this.body.vel.x += (dx * targetSpeed - this.body.vel.x) * k;
       this.body.vel.y += (dy * targetSpeed - this.body.vel.y) * k;
     }
@@ -186,7 +188,11 @@ export class PickupManager {
   private readonly active: Pickup[] = [];
   private readonly all: readonly Pickup[];
 
-  constructor(private readonly scene: THREE.Scene) {
+  constructor(
+    private readonly scene: THREE.Scene,
+    /** Sim rng (`drops` stream): gold variance + pop velocities are sim state. */
+    private readonly rng: SimRng,
+  ) {
     this.materials = {
       coin: makeToonMaterial(0xffd23e),
       gems: {
@@ -210,7 +216,7 @@ export class PickupManager {
   }
 
   spawnDrops(def: EnemyDef, x: number, y: number): void {
-    const variance = 1 + (Math.random() * 2 - 1) * GOLD_DROP_VARIANCE;
+    const variance = 1 + (this.rng.next() * 2 - 1) * GOLD_DROP_VARIANCE;
     const gold = Math.max(1, Math.round(def.gold * variance));
     this.spawnGold(gold, x, y);
     for (let i = 0; i < MATERIAL_IDS.length; i += 1) {
@@ -227,8 +233,8 @@ export class PickupManager {
       events.emit('loot', { gold: value });
       return;
     }
-    const vx = (Math.random() * 2 - 1) * POP_X;
-    const vy = POP_Y_MIN + Math.random() * (POP_Y_MAX - POP_Y_MIN);
+    const vx = (this.rng.next() * 2 - 1) * POP_X;
+    const vy = POP_Y_MIN + this.rng.next() * (POP_Y_MAX - POP_Y_MIN);
     pickup.spawnGold(value, x, y, vx, vy);
     this.active.push(pickup);
   }
@@ -239,8 +245,8 @@ export class PickupManager {
       events.emit('loot', { gold: 0, material });
       return;
     }
-    const vx = (Math.random() * 2 - 1) * POP_X;
-    const vy = POP_Y_MIN + Math.random() * (POP_Y_MAX - POP_Y_MIN);
+    const vx = (this.rng.next() * 2 - 1) * POP_X;
+    const vy = POP_Y_MIN + this.rng.next() * (POP_Y_MAX - POP_Y_MIN);
     pickup.spawnMaterial(material, x, y, vx, vy);
     this.active.push(pickup);
   }

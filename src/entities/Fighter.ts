@@ -43,6 +43,8 @@ const POSE_DAMPING = 24;
 export class Fighter extends Entity {
   readonly def: CharacterDef;
   readonly faction: Faction;
+  /** Combat gate (see combat/types.ts). Set once at match setup via setTeam. */
+  teamId: number;
   readonly rig: Rig;
   readonly hurtbox: Hurtbox;
   readonly intents: FighterIntent = {
@@ -108,6 +110,7 @@ export class Fighter extends Entity {
     super(body, rig.root);
     this.def = def;
     this.faction = faction;
+    this.teamId = faction === 'player' ? 1 : 0;
     this.rig = rig;
     this.hurtbox = {
       owner: this,
@@ -119,9 +122,16 @@ export class Fighter extends Entity {
       attacker: this,
       def: def.combo[0],
       faction,
+      teamId: this.teamId,
       alreadyHit: this.alreadyHit,
       worldRect: () => this.readAttackBox(),
     };
+  }
+
+  /** Assign the combat team (FFA slots / 2v2 teams). Call at match setup only. */
+  setTeam(teamId: number): void {
+    this.teamId = teamId;
+    this.activeHitbox.teamId = teamId;
   }
 
   get power(): number {
@@ -466,6 +476,7 @@ export class Fighter extends Entity {
         spawnY,
         this.facing,
         this.faction,
+        this.teamId,
         this.power,
       );
       if (wave.bothDirections) {
@@ -476,6 +487,7 @@ export class Fighter extends Entity {
           spawnY,
           (this.facing * -1) as Facing,
           this.faction,
+          this.teamId,
           this.power,
         );
       }
@@ -631,7 +643,7 @@ export class Fighter extends Entity {
     // Attacks blend twice as fast — punches must SNAP; smoothing is for
     // locomotion.
     const rate = this.state === 'attack' || this.state === 'weaponAbility' ? POSE_DAMPING * 2.2 : POSE_DAMPING;
-    const blend = 1 - Math.exp(-rate * dt);
+    const blend = 1 - Math.exp(-rate * dt); // det-ok: view-only pose blending
     const t = this.stateTime;
     const pose = this.selectPose(t);
     this.syncGroupToBody();
@@ -703,6 +715,7 @@ export class Fighter extends Entity {
       spawnY,
       this.facing,
       this.faction,
+      this.teamId,
       this.power * this.attackMult,
     );
   }

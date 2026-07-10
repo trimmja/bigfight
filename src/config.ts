@@ -40,6 +40,8 @@ export const SAKURAI_KB_CUTOFF = 12;
 export const PLAYER_STOCKS = 3;
 export const RESPAWN_DELAY = 1.2;
 export const RESPAWN_INVULN = 2.5;
+/** Upward blast-line KO faster than this = Star KO (background fly + scream). */
+export const STAR_KO_MIN_VY = 18;
 
 // ---- AI ----
 /** Max mobs in windup/attack simultaneously (crowd fairness). */

@@ -1,4 +1,6 @@
 import { ATTACK_TOKENS } from '../config';
+import type { SimRng } from '../core/rng';
+import { exp, hypot } from '../core/simmath';
 import type { WorldCtx } from '../entities/Entity';
 import type { Fighter } from '../entities/Fighter';
 import type { Mob } from '../entities/Mob';
@@ -33,9 +35,13 @@ export class MobBrain {
   private retreatTime = 0;
   private blockTimer = 0;
   private blockCheckCooldown = 0;
-  private hopCooldown = Math.random() * HOP_COOLDOWN;
+  private hopCooldown = 0;
+  /** Hop timing seeds lazily from the sim rng on the first brain tick. */
+  private hopSeeded = false;
   private attackPulseSent = false;
   private attackStarted = false;
+  /** Stashed from ctx each update — sim decisions draw from the `ai` stream. */
+  private rng: SimRng | null = null;
 
   constructor(private readonly mob: Mob) {}
 
@@ -51,13 +57,19 @@ export class MobBrain {
     this.retreatTime = 0;
     this.blockTimer = 0;
     this.blockCheckCooldown = 0;
-    this.hopCooldown = Math.random() * HOP_COOLDOWN;
+    this.hopCooldown = 0;
+    this.hopSeeded = false;
     this.attackPulseSent = false;
     this.attackStarted = false;
     this.setBlocking(false);
   }
 
   update(ctx: WorldCtx, dt: number): void {
+    this.rng = ctx.rng.ai;
+    if (!this.hopSeeded) {
+      this.hopSeeded = true;
+      this.hopCooldown = this.rng.next() * HOP_COOLDOWN;
+    }
     const mob = this.mob;
     const def = mob.enemyDef;
     const target = this.target;
@@ -247,7 +259,7 @@ export class MobBrain {
       target?.state === 'attack'
       && distSq <= CAPTAIN_BLOCK_RANGE * CAPTAIN_BLOCK_RANGE
       && Math.sign(dx || this.mob.facing) === this.mob.facing
-      && Math.random() < 0.3
+      && (this.rng?.next() ?? 0) < 0.3
     ) {
       this.blockTimer = CAPTAIN_BLOCK_TIME;
       this.mob.rig.flashColor(STEEL_BLUE, CAPTAIN_BLOCK_TIME);
@@ -275,10 +287,10 @@ export class MobBrain {
   private enterRecover(): void {
     this.enterState('recover');
     this.attackCooldown = this.mob.enemyDef.brain.attackCooldown;
-    if (Math.random() < this.mob.enemyDef.brain.retreatChance) {
+    if ((this.rng?.next() ?? 1) < this.mob.enemyDef.brain.retreatChance) {
       const targetX = this.target?.body.pos.x ?? this.mob.body.pos.x;
       this.retreatDir = this.mob.body.pos.x < targetX ? -1 : 1;
-      this.retreatTime = RETREAT_MIN + Math.random() * (RETREAT_MAX - RETREAT_MIN);
+      this.retreatTime = RETREAT_MIN + (this.rng?.next() ?? 0.5) * (RETREAT_MAX - RETREAT_MIN);
     } else {
       this.retreatTime = 0;
     }
@@ -302,7 +314,7 @@ export class MobBrain {
     const body = this.mob.body;
     let dx = targetX - body.pos.x;
     let dy = targetY - (body.pos.y + body.height * 0.5);
-    const len = Math.hypot(dx, dy);
+    const len = hypot(dx, dy);
     if (len > 0.001) {
       dx /= len;
       dy /= len;
@@ -324,7 +336,7 @@ function moveToward(current: number, target: number, maxDelta: number): number {
 }
 
 function dampNumber(current: number, target: number, lambda: number, dt: number): number {
-  return lerpNumber(current, target, 1 - Math.exp(-lambda * dt));
+  return lerpNumber(current, target, 1 - exp(-lambda * dt));
 }
 
 function lerpNumber(a: number, b: number, t: number): number {
