@@ -1,4 +1,5 @@
 import type { MaterialId, PowerupId, Vec2 } from '../data/types';
+import type { AnnouncerId } from '../audio/announcer';
 
 /**
  * Global game events (frozen contract). Payloads are plain data so audio/UI/
@@ -25,6 +26,7 @@ export interface GameEvents {
   ui: { kind: 'move' | 'confirm' | 'back' | 'buy' | 'error' | 'unlock' };
   /** Music mood change request. */
   music: { mood: 'menu' | 'battle' | 'boss' | 'victory' | 'defeat' | 'off' };
+  announce: { id: AnnouncerId };
   screenShake: { amount: number };
 }
 

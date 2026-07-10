@@ -5,6 +5,7 @@ import {
   COLOR_NEON_PINK,
   COLOR_NEON_YELLOW,
   DEBUG,
+  MATCH_COUNTDOWN_FRAMES,
   PLAYER_STOCKS,
   RESPAWN_DELAY,
   TIMESTEP,
@@ -156,6 +157,8 @@ export class GameplayScreen implements Screen {
   private levelEndSent = false;
   private bossSpawnQueued = false;
   private bossSpawnTimer = 0;
+  /** View-only countdown cue index; the authoritative timer is matchState.frame. */
+  private countStage = 0;
   private fps = 60;
   private lastRenderMs = performance.now(); // det-ok: render FPS display only
 
@@ -435,6 +438,14 @@ export class GameplayScreen implements Screen {
     }
 
     this.matchState.frame += 1;
+
+    // Every mode starts on the same deterministic 3-2-1-GO freeze. In
+    // netplay the frame gate is rollback-safe; campaign gets the same intro.
+    if (this.matchState.frame <= MATCH_COUNTDOWN_FRAMES) {
+      if (!simPhase.resimulating) this.updateViewTail(game, dt, stage);
+      return;
+    }
+
     hitResolver.beginStep();
     this.debugSubmittedHitboxes.length = 0;
     this.updateRespawns(ctx, dt);
@@ -512,18 +523,37 @@ export class GameplayScreen implements Screen {
       if (!mob.alive && mob.hitstopTimer <= 0) this.mobPool?.release(mob);
     }
 
-    if (!simPhase.resimulating) {
-      this.updateCamera(stage);
-      particles.update(dt);
-      trails.update(dt);
-      this.damageNumbers?.update(dt);
-      const local = this.localPlayer;
-      if (local) this.hud?.set(local.damage, local.stocks);
-      if (DEBUG) this.updateDebug(dt);
-      // Navigation/persist callbacks never fire mid-resim; the 2.2s end beat
-      // vastly exceeds the rollback window, so the deferral can't diverge.
-      this.updateLevelEnd(game, dt);
-    }
+    if (!simPhase.resimulating) this.updateViewTail(game, dt, stage);
+  }
+
+  /** Everything after deterministic simulation: camera, HUD, audio cues, flow. */
+  private updateViewTail(game: Game, dt: number, stage: BuiltStage): void {
+    this.updateCamera(stage);
+    this.particles?.update(dt);
+    this.trails?.update(dt);
+    this.damageNumbers?.update(dt);
+    this.updateCountdownView(game);
+    const local = this.localPlayer;
+    if (local) this.hud?.set(local.damage, local.stocks);
+    if (DEBUG) this.updateDebug(dt);
+    // Navigation/persist callbacks never fire mid-resim; the 2.2s end beat
+    // vastly exceeds the rollback window, so the deferral can't diverge.
+    this.updateLevelEnd(game, dt);
+  }
+
+  private updateCountdownView(game: Game): void {
+    if (this.countStage >= 4) return;
+    const stages: { at: number; text: string; voice: 'ann_3' | 'ann_2' | 'ann_1' | 'ann_go' }[] = [
+      { at: 6, text: '3', voice: 'ann_3' },
+      { at: 60, text: '2', voice: 'ann_2' },
+      { at: 114, text: '1', voice: 'ann_1' },
+      { at: MATCH_COUNTDOWN_FRAMES, text: 'GO!', voice: 'ann_go' },
+    ];
+    const next = stages[this.countStage];
+    if (!next || this.matchState.frame < next.at) return;
+    this.countStage += 1;
+    this.hud?.banner(next.text, this.countStage === 4 ? 700 : 850);
+    game.events.emit('announce', { id: next.voice });
   }
 
   // --- rollback snapshot surface (driven by net/RollbackSession) ---
@@ -870,6 +900,8 @@ export class GameplayScreen implements Screen {
     this.levelWon = true;
     this.levelEndTimer = CLEAR_BEAT_SECONDS;
     this.pickupManager?.vacuumAll();
+    this.hud?.banner('VICTORY!', 1800);
+    game.events.emit('announce', { id: 'ann_victory' });
     game.events.emit('levelCleared', { levelId: this.level.id });
     game.events.emit('music', { mood: 'victory' });
   }

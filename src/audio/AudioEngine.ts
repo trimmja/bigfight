@@ -3,6 +3,7 @@ import type { GameEvents } from '../core/events';
 import { events } from '../core/events';
 import { Music } from './music';
 import { Sfx } from './sfx';
+import { getAnnouncerBuffer, type AnnouncerId } from './announcer';
 
 type Mood = GameEvents['music']['mood'];
 type SfxPriority = 'normal' | 'ui';
@@ -22,6 +23,9 @@ export class AudioEngine implements IAudio {
   private master: GainNode | null = null;
   private sfx: Sfx | null = null;
   private music: Music | null = null;
+  private voiceBus: GainNode | null = null;
+  private voiceSource: AudioBufferSourceNode | null = null;
+  private voiceRequest = 0;
   private _muted = false;
   private unlockComplete = false;
   private activeSfxVoices = 0;
@@ -126,6 +130,9 @@ export class AudioEngine implements IAudio {
     events.on('music', ({ mood }) => {
       this.setMood(mood);
     });
+    events.on('announce', ({ id }) => {
+      this.playAnnouncer(id);
+    });
     events.on('levelCleared', () => {
       this.setMood('victory');
     });
@@ -154,6 +161,30 @@ export class AudioEngine implements IAudio {
     this.music.setMood(mood);
   }
 
+  private playAnnouncer(id: AnnouncerId): void {
+    const ctx = this.ctx;
+    const bus = this.voiceBus;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const request = ++this.voiceRequest;
+    void getAnnouncerBuffer(ctx, id).then((buffer) => {
+      if (request !== this.voiceRequest || ctx.state !== 'running') return;
+      try {
+        this.voiceSource?.stop();
+      } catch {
+        // A completed source may already be stopped.
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(bus);
+      source.onended = () => {
+        if (this.voiceSource === source) this.voiceSource = null;
+        source.disconnect();
+      };
+      this.voiceSource = source;
+      source.start();
+    }).catch(() => undefined);
+  }
+
   private ensureContext(): AudioContext | null {
     if (this.ctx) return this.ctx;
     if (typeof window === 'undefined') return null;
@@ -166,19 +197,23 @@ export class AudioEngine implements IAudio {
     const master = ctx.createGain();
     const sfxBus = ctx.createGain();
     const musicBus = ctx.createGain();
+    const voiceBus = ctx.createGain();
 
     master.gain.value = this._muted ? 0 : 1;
     sfxBus.gain.value = 0.9;
     musicBus.gain.value = 0.55;
+    voiceBus.gain.value = 0.95;
 
     sfxBus.connect(master);
     musicBus.connect(master);
+    voiceBus.connect(master);
     master.connect(ctx.destination);
 
     this.ctx = ctx;
     this.master = master;
     this.sfx = new Sfx(ctx, sfxBus);
     this.music = new Music(ctx, musicBus);
+    this.voiceBus = voiceBus;
 
     return ctx;
   }

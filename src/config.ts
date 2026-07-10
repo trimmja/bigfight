@@ -7,6 +7,8 @@
 export const TIMESTEP = 1 / 60;
 export const MAX_FRAME_DELTA = 0.1;
 export const MAX_STEPS_PER_FRAME = 5;
+/** Shared 3-2-1-GO freeze at the start of campaign and online matches. */
+export const MATCH_COUNTDOWN_FRAMES = 168;
 
 // ---- movement / physics (world units: fighter ≈ 1.8u tall) ----
 export const GRAVITY = -38;
