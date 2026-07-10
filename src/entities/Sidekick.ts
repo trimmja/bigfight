@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { atan2, sin } from '../core/simmath';
+import type { StateIO } from '../net/snapshots';
 import type { AttackDef, ProjectileDef, SidekickDef } from '../data/types';
 import { Body } from '../physics/Body';
 import { attachGlow } from '../render/GlowSprites';
@@ -85,6 +86,19 @@ export class Sidekick extends Entity {
   dispose(): void {
     this.group.removeFromParent();
     for (let i = 0; i < this.materials.length; i += 1) this.materials[i]!.dispose();
+  }
+
+  /** Rollback snapshots (hover position feeds projectile spawns — sim state). */
+  syncState(io: StateIO): void {
+    this.body.syncState(io);
+    this.fireTimer = io.f64(this.fireTimer);
+    this.animTime = io.f64(this.animTime);
+    this.recoil = io.f64(this.recoil);
+  }
+
+  /** Sim-relevant scalars for replay digests. */
+  digestInto(out: number[]): void {
+    out.push(this.body.pos.x, this.body.pos.y, this.body.vel.x, this.body.vel.y, this.fireTimer, this.animTime, this.recoil);
   }
 
   private updateHover(dt: number): void {

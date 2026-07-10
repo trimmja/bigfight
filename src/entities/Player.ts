@@ -3,6 +3,8 @@ import { HEAL_ORB_AMOUNT, PLAYER_STOCKS, RAGE_MULT, RESPAWN_INVULN, SHIELD_HITS 
 import type { IIntentSource } from '../contracts';
 import type { AttackDef, CharacterDef, PowerupDef, WeaponDef } from '../data/types';
 import { simPhase } from '../net/simPhase';
+import type { SimRegistry, StateIO } from '../net/snapshots';
+import { WEAPONS } from '../data/weapons';
 import { buildCharacterRig } from '../rigs/characterBuilders';
 import { buildWeaponModel } from '../rigs/weaponBuilders';
 import { makeToonMaterial } from '../render/toon';
@@ -103,9 +105,16 @@ export class Player extends Fighter {
   private restoreWeapon: WeaponDef | null = null;
   private shieldMesh: THREE.Mesh | null = null;
   private shieldMaterial: THREE.MeshToonMaterial | null = null;
+  /** Which weapon the HELD MODEL currently shows (view state, for reconcile). */
+  private viewWeaponId: string | null = null;
 
   constructor(def: CharacterDef, private readonly input: IIntentSource) {
     super(def, 'player', buildCharacterRig(def));
+  }
+
+  override equipWeapon(weapon: WeaponDef, model: THREE.Group): void {
+    super.equipWeapon(weapon, model);
+    this.viewWeaponId = weapon.id;
   }
 
   override update(ctx: WorldCtx, dt: number): void {
@@ -166,6 +175,38 @@ export class Player extends Fighter {
       this.restoreWeapon ? 1 : 0,
       this.autoSwingMove ? 1 : 0,
     );
+  }
+
+  override syncState(io: StateIO, registry: SimRegistry): void {
+    super.syncState(io, registry);
+    this.stocks = io.i32(this.stocks);
+    this.shieldTimer = io.f64(this.shieldTimer);
+    this.hammerTimer = io.f64(this.hammerTimer);
+    this.rageTimer = io.f64(this.rageTimer);
+    this.temporaryWeaponTimer = io.f64(this.temporaryWeaponTimer);
+    const equippedCode = io.i32(weaponCodeOf(this.weaponDef));
+    if (io.reading) this.setEquippedWeaponSim(weaponForCode(equippedCode));
+    const restoreCode = io.i32(weaponCodeOf(this.restoreWeapon));
+    if (io.reading) this.restoreWeapon = weaponForCode(restoreCode);
+  }
+
+  override reconcileView(): void {
+    super.reconcileView();
+    // Held model must match the restored equipped weapon (cooldown untouched).
+    const desired = this.weaponDef;
+    if (desired && this.viewWeaponId !== desired.id) {
+      const cooldown = this.weaponCooldown;
+      this.equipWeapon(desired, buildWeaponModel(desired));
+      this.weaponCooldown = cooldown;
+    }
+    // Hammer-mode override model follows the restored timer.
+    if (this.hammerTimer > 0) this.startHammerMode(this.hammerTimer);
+    else if (this.autoSwingMove === false && this.hammerTimer === 0) this.setWeaponModelOverride(null);
+  }
+
+  protected override attackForCode(code: number): AttackDef | null {
+    if (code === 4) return HAMMER_SWING; // custom attack = giant-hammer swing
+    return super.attackForCode(code);
   }
 
   applyPowerup(def: PowerupDef): void {
@@ -292,4 +333,20 @@ export class Player extends Fighter {
     this.shieldMesh = null;
     this.shieldMaterial = null;
   }
+}
+
+/** Weapon wire codes: -1 none · -2 the powerup freeze ray · else WEAPONS index. */
+function weaponCodeOf(weapon: WeaponDef | null): number {
+  if (!weapon) return -1;
+  if (weapon.id === FREEZE_RAY_WEAPON.id) return -2;
+  for (let i = 0; i < WEAPONS.length; i += 1) {
+    if (WEAPONS[i]!.id === weapon.id) return i;
+  }
+  return -1;
+}
+
+function weaponForCode(code: number): WeaponDef | null {
+  if (code === -2) return FREEZE_RAY_WEAPON;
+  if (code < 0) return null;
+  return WEAPONS[code] ?? null;
 }

@@ -12,7 +12,9 @@ export class InputManager implements IInput {
     jumpPressed: false,
     jumpHeld: false,
     attackPressed: false,
+    attackHeld: false,
     weaponPressed: false,
+    weaponHeld: false,
     pausePressed: false,
     anyPressed: false,
   };
@@ -52,7 +54,9 @@ export class InputManager implements IInput {
     this.state.jumpPressed = jumpPressed;
     this.state.jumpHeld = jumpHeld;
     this.state.attackPressed = attackPressed;
+    this.state.attackHeld = attackHeld;
     this.state.weaponPressed = weaponPressed;
+    this.state.weaponHeld = weaponHeld;
     this.state.pausePressed = pausePressed;
     this.state.anyPressed = jumpPressed
       || attackPressed

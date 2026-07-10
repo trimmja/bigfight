@@ -347,7 +347,30 @@ export class SkeletonKing extends Boss {
       this.shockwavesFired ? 1 : 0,
     );
   }
+
+  override syncState(io: Parameters<Boss['syncState']>[0], registry: Parameters<Boss['syncState']>[1]): void {
+    super.syncState(io, registry);
+    this.phase = PHASE_NAMES[io.i32(PHASE_IDS[this.phase])] ?? 'stalk';
+    this.phaseTimer = io.f64(this.phaseTimer);
+    this.phaseDuration = io.f64(this.phaseDuration);
+    this.summonTimer = io.f64(this.summonTimer);
+    this.jumpTargetX = io.f64(this.jumpTargetX);
+    this.jumpAge = io.f64(this.jumpAge);
+    this.shockwavesFired = io.bool(this.shockwavesFired);
+  }
 }
+
+const PHASE_NAMES: readonly SkeletonPhase[] = [
+  'stalk',
+  'slamTelegraph',
+  'slamActive',
+  'sweepTelegraph',
+  'sweepActive',
+  'jumpTelegraph',
+  'jumpAir',
+  'jumpLand',
+  'recover',
+];
 
 function clampNumber(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v;

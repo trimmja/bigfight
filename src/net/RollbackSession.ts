@@ -1,0 +1,405 @@
+import { TIMESTEP } from '../config';
+import type { InputState } from '../contracts';
+import { events } from '../core/events';
+import type { Game } from '../Game';
+import type { GameplayScreen } from '../screens/GameplayScreen';
+import { xxHash32 } from './hash';
+import { encodeInput, INPUT_BYTES, NetIntentSource } from './inputCodec';
+import { simPhase } from './simPhase';
+import { StateIO } from './snapshots';
+import type { NetTransport, PeerSlot } from './transport';
+
+/**
+ * GGPO-style rollback session.
+ *
+ * Drives an (unmodified) GameplayScreen through injected NetIntentSources:
+ * each sim frame decodes every slot's input (real if received, repeat-last
+ * prediction otherwise), steps the screen once, and snapshots BEFORE the step.
+ * A late input that contradicts a prediction restores the snapshot at that
+ * frame, resims silently (simPhase.resimulating + event suppression), and
+ * reconciles visuals once.
+ *
+ * Wire (game channel):  0x01 inputs [slot, startFrame u32, count u8, n×3B]
+ *                       0x03 hash   [slot, frame u32, hash u32]
+ * Packets carry the last REDUNDANT_FRAMES frames — loss needs no retransmit.
+ */
+
+const ROLLBACK_WINDOW = 8;
+const SNAPSHOT_RING = ROLLBACK_WINDOW + 6;
+const INPUT_RING = 1024; // frames of input history (~17s — far beyond any rollback)
+const REDUNDANT_FRAMES = 10;
+const HASH_INTERVAL = 20;
+
+const MSG_INPUTS = 0x01;
+const MSG_HASH = 0x03;
+
+export interface RollbackStats {
+  frame: number;
+  confirmedFrame: number;
+  rollbacks: number;
+  resimmedFrames: number;
+  desyncs: number;
+  stalledFrames: number;
+}
+
+export interface RollbackSessionOptions {
+  game: Game;
+  screen: GameplayScreen;
+  transport: NetTransport;
+  localSlot: number;
+  playerCount: number;
+  /** Per-slot sources — the SAME objects passed to the GameplayScreen. */
+  sources: NetIntentSource[];
+  /** Local input sampler (default: live device input). Tests inject bots. */
+  sampleLocalInput?: () => InputState;
+  inputDelay?: number;
+}
+
+export class RollbackSession {
+  /** Next frame to simulate. */
+  frame = 0;
+
+  private readonly game: Game;
+  private readonly screen: GameplayScreen;
+  private readonly transport: NetTransport;
+  private readonly localSlot: number;
+  private readonly playerCount: number;
+  private readonly sources: NetIntentSource[];
+  private readonly sampleLocal: () => InputState;
+  private readonly inputDelay: number;
+
+  /** Per-slot input rings: bytes actually USED per frame (+known flag). */
+  private readonly inputBytes: Uint8Array[];
+  private readonly inputKnown: Uint8Array[];
+  private readonly lastKnownFrame: number[];
+  private nextLocalFrame: number;
+
+  private readonly snapshots: StateIO[] = [];
+  private readonly snapshotFrames: number[] = [];
+
+  private rollbackTo = -1;
+  private lastHashedFrame = -1;
+  private readonly pendingHashes = new Map<number, { slot: number; hash: number }[]>();
+
+  readonly stats: RollbackStats = {
+    frame: 0,
+    confirmedFrame: -1,
+    rollbacks: 0,
+    resimmedFrames: 0,
+    desyncs: 0,
+    stalledFrames: 0,
+  };
+
+  constructor(opts: RollbackSessionOptions) {
+    this.game = opts.game;
+    this.screen = opts.screen;
+    this.transport = opts.transport;
+    this.localSlot = opts.localSlot;
+    this.playerCount = opts.playerCount;
+    this.sources = opts.sources;
+    this.sampleLocal = opts.sampleLocalInput ?? (() => opts.game.input.state);
+    this.inputDelay = opts.inputDelay ?? 2;
+    this.nextLocalFrame = 0;
+
+    this.inputBytes = [];
+    this.inputKnown = [];
+    this.lastKnownFrame = [];
+    for (let slot = 0; slot < this.playerCount; slot += 1) {
+      this.inputBytes.push(new Uint8Array(INPUT_RING * INPUT_BYTES));
+      this.inputKnown.push(new Uint8Array(INPUT_RING));
+      this.lastKnownFrame.push(-1);
+    }
+    for (let i = 0; i < SNAPSHOT_RING; i += 1) {
+      this.snapshots.push(new StateIO());
+      this.snapshotFrames.push(-1);
+    }
+
+    this.transport.onMessage((from, _channel, data) => this.onMessage(from, data));
+    // Neutral inputs cover the delay gap at match start (all peers agree).
+    const neutral = new Uint8Array(INPUT_BYTES); // buttons 0, axes 0
+    for (let f = 0; f < this.inputDelay; f += 1) this.writeRing(this.localSlot, f, neutral, 0, true);
+    this.nextLocalFrame = this.inputDelay;
+    this.broadcastInputs();
+  }
+
+  /** Min contiguous frame received from EVERY slot (local included). */
+  get confirmedFrame(): number {
+    let min = Number.POSITIVE_INFINITY;
+    for (let slot = 0; slot < this.playerCount; slot += 1) {
+      if (this.lastKnownFrame[slot]! < min) min = this.lastKnownFrame[slot]!;
+    }
+    return min === Number.POSITIVE_INFINITY ? -1 : min;
+  }
+
+  /**
+   * One pump per local fixed step: ingest packets, sample+send local input,
+   * roll back if needed, then advance up to `maxSteps` sim frames.
+   */
+  pump(maxSteps = 1): void {
+    // 1. Sample local input for frame (now + delay), bounded by the window.
+    if (this.nextLocalFrame < this.frame + this.inputDelay + 2) {
+      const bytes = new Uint8Array(INPUT_BYTES);
+      encodeInput(this.sampleLocal(), bytes, 0);
+      this.writeRing(this.localSlot, this.nextLocalFrame, bytes, 0, true);
+      this.nextLocalFrame += 1;
+      this.broadcastInputs();
+    }
+
+    // 2. Apply any pending rollback (packets arrive via onMessage).
+    this.applyRollbackIfNeeded();
+
+    // 3. Advance.
+    let steps = 0;
+    while (steps < maxSteps && this.canSimulate(this.frame)) {
+      this.stepFrame(this.frame);
+      this.frame += 1;
+      steps += 1;
+    }
+    if (steps === 0) this.stats.stalledFrames += 1;
+
+    // 4. Confirmed-frame hashes (host compares).
+    this.exchangeHashes();
+
+    this.stats.frame = this.frame;
+    this.stats.confirmedFrame = this.confirmedFrame;
+  }
+
+  /**
+   * Ingest + correct WITHOUT advancing: rebroadcasts local inputs (loss
+   * recovery) and applies any pending rollback. Used when pacing says "don't
+   * step" and by the golden test's drain phase.
+   */
+  flush(): void {
+    this.broadcastInputs();
+    this.applyRollbackIfNeeded();
+  }
+
+  private canSimulate(frame: number): boolean {
+    if (frame >= this.nextLocalFrame) return false; // local input not sampled yet
+    return frame <= this.confirmedFrame + ROLLBACK_WINDOW;
+  }
+
+  private stepFrame(frame: number): void {
+    // Snapshot the state BEFORE simulating this frame.
+    const ring = frame % SNAPSHOT_RING;
+    this.screen.writeSnapshot(this.snapshots[ring]!);
+    this.snapshotFrames[ring] = frame;
+
+    for (let slot = 0; slot < this.playerCount; slot += 1) {
+      const idx = frame % INPUT_RING;
+      if (this.inputKnown[slot]![idx] !== 1 || !this.ringFrameMatches(slot, frame)) {
+        // Predict: repeat the last known input (or neutral).
+        this.predictInto(slot, frame);
+      }
+      this.sources[slot]!.applyFrame(this.inputBytes[slot]!, idx * INPUT_BYTES);
+    }
+    this.screen.update(this.game, TIMESTEP);
+  }
+
+  private predictInto(slot: number, frame: number): void {
+    const last = this.lastKnownFrame[slot]!;
+    const src = last >= 0 ? this.readRing(slot, last) : null;
+    const idx = (frame % INPUT_RING) * INPUT_BYTES;
+    const bytes = this.inputBytes[slot]!;
+    if (src) {
+      bytes[idx] = src[0]!;
+      bytes[idx + 1] = src[1]!;
+      bytes[idx + 2] = src[2]!;
+    } else {
+      bytes[idx] = 0;
+      bytes[idx + 1] = 0;
+      bytes[idx + 2] = 0;
+    }
+    this.inputKnown[slot]![frame % INPUT_RING] = 0;
+  }
+
+  private applyRollbackIfNeeded(): void {
+    if (this.rollbackTo < 0 || this.rollbackTo >= this.frame) {
+      this.rollbackTo = -1;
+      return;
+    }
+    const to = this.rollbackTo;
+    this.rollbackTo = -1;
+    const ring = to % SNAPSHOT_RING;
+    if (this.snapshotFrames[ring] !== to) {
+      // Snapshot evicted (shouldn't happen inside the window) — hard fault.
+      console.error(`rollback: snapshot for frame ${to} evicted (have ${this.snapshotFrames[ring]})`);
+      this.stats.desyncs += 1;
+      return;
+    }
+
+    this.stats.rollbacks += 1;
+    this.screen.readSnapshot(this.snapshots[ring]!);
+
+    // Re-prime edge derivation from the frame before the rollback point.
+    for (let slot = 0; slot < this.playerCount; slot += 1) {
+      if (to > 0) {
+        const prev = this.readRing(slot, to - 1);
+        this.sources[slot]!.primeFromButtons(prev[0]!);
+      } else {
+        this.sources[slot]!.reset();
+      }
+    }
+
+    const savedFrame = this.frame;
+    simPhase.resimulating = true;
+    events.setSuppressed(true);
+    try {
+      for (let f = to; f < savedFrame; f += 1) {
+        this.stepFrame(f);
+        this.stats.resimmedFrames += 1;
+      }
+    } finally {
+      simPhase.resimulating = false;
+      events.setSuppressed(false);
+    }
+    this.screen.reconcileView();
+  }
+
+  // --- wire ---
+
+  private broadcastInputs(): void {
+    const newest = this.nextLocalFrame - 1;
+    const oldest = Math.max(0, newest - REDUNDANT_FRAMES + 1);
+    const count = newest - oldest + 1;
+    const packet = new Uint8Array(1 + 1 + 4 + 1 + count * INPUT_BYTES);
+    packet[0] = MSG_INPUTS;
+    packet[1] = this.localSlot;
+    writeU32(packet, 2, oldest);
+    packet[6] = count;
+    for (let i = 0; i < count; i += 1) {
+      const src = this.readRing(this.localSlot, oldest + i);
+      packet.set(src, 7 + i * INPUT_BYTES);
+    }
+    this.transport.broadcast('game', packet);
+  }
+
+  private onMessage(_from: PeerSlot, data: Uint8Array): void {
+    if (data.length < 1) return;
+    if (data[0] === MSG_INPUTS) {
+      const slot = data[1]!;
+      if (slot === this.localSlot || slot >= this.playerCount) return;
+      const startFrame = readU32(data, 2);
+      const count = data[6]!;
+      for (let i = 0; i < count; i += 1) {
+        const frame = startFrame + i;
+        this.ingestInput(slot, frame, data, 7 + i * INPUT_BYTES);
+      }
+    } else if (data[0] === MSG_HASH) {
+      this.onHashMessage(data);
+    }
+  }
+
+  private ingestInput(slot: number, frame: number, data: Uint8Array, offset: number): void {
+    if (frame <= this.lastKnownFrame[slot]! && this.inputKnown[slot]![frame % INPUT_RING] === 1) {
+      return; // already have it
+    }
+    if (frame < this.frame) {
+      // Late input for an already-simulated frame — did we mispredict?
+      const idx = (frame % INPUT_RING) * INPUT_BYTES;
+      const used = this.inputBytes[slot]!;
+      const differs =
+        used[idx] !== data[offset] || used[idx + 1] !== data[offset + 1] || used[idx + 2] !== data[offset + 2];
+      if (differs && (this.rollbackTo < 0 || frame < this.rollbackTo)) {
+        this.rollbackTo = frame;
+      }
+    }
+    this.writeRing(slot, frame, data, offset, true);
+    // Advance the contiguous-known watermark (bounded by the newest frame in
+    // this packet era — flags past it may belong to lapped ancient frames).
+    let watermark = this.lastKnownFrame[slot]!;
+    while (watermark + 1 <= frame && this.inputKnown[slot]![(watermark + 1) % INPUT_RING] === 1) {
+      watermark += 1;
+    }
+    this.lastKnownFrame[slot] = watermark;
+  }
+
+  private exchangeHashes(): void {
+    const confirmed = this.confirmedFrame;
+    const next = this.lastHashedFrame + HASH_INTERVAL;
+    if (confirmed < next || next >= this.frame || next < 0) return;
+    const ring = next % SNAPSHOT_RING;
+    if (this.snapshotFrames[ring] !== next) return; // evicted — skip this one
+    this.lastHashedFrame = next;
+    const io = this.snapshots[ring]!;
+    const hash = xxHash32(new Uint8Array(io.buffer, 0, io.length));
+    if (this.localSlot === 0) {
+      this.recordHash(next, 0, hash);
+    } else {
+      const packet = new Uint8Array(10);
+      packet[0] = MSG_HASH;
+      packet[1] = this.localSlot;
+      writeU32(packet, 2, next);
+      writeU32(packet, 6, hash);
+      this.transport.send(0 as PeerSlot, 'game', packet);
+    }
+  }
+
+  private onHashMessage(data: Uint8Array): void {
+    if (this.localSlot !== 0) return; // host compares
+    const slot = data[1]!;
+    const frame = readU32(data, 2);
+    const hash = readU32(data, 6);
+    this.recordHash(frame, slot, hash);
+  }
+
+  private recordHash(frame: number, slot: number, hash: number): void {
+    let list = this.pendingHashes.get(frame);
+    if (!list) {
+      list = [];
+      this.pendingHashes.set(frame, list);
+    }
+    list.push({ slot, hash });
+    if (list.length >= this.playerCount) {
+      const first = list[0]!.hash;
+      for (const entry of list) {
+        if (entry.hash !== first) {
+          this.stats.desyncs += 1;
+          console.error(`DESYNC at frame ${frame}: slot ${entry.slot} hash ${entry.hash.toString(16)} vs ${first.toString(16)}`);
+          break;
+        }
+      }
+      this.pendingHashes.delete(frame);
+    }
+    // GC stale entries (peers that never reported).
+    for (const key of this.pendingHashes.keys()) {
+      if (key < frame - HASH_INTERVAL * 6) this.pendingHashes.delete(key);
+    }
+  }
+
+  // --- ring helpers ---
+
+  private writeRing(slot: number, frame: number, data: Uint8Array, offset: number, known: boolean): void {
+    const idx = (frame % INPUT_RING) * INPUT_BYTES;
+    const bytes = this.inputBytes[slot]!;
+    bytes[idx] = data[offset]!;
+    bytes[idx + 1] = data[offset + 1]!;
+    bytes[idx + 2] = data[offset + 2]!;
+    this.inputKnown[slot]![frame % INPUT_RING] = known ? 1 : 0;
+    if (known && frame === this.lastKnownFrame[slot]! + 1) {
+      this.lastKnownFrame[slot] = frame;
+    }
+  }
+
+  private readRing(slot: number, frame: number): Uint8Array {
+    const idx = (frame % INPUT_RING) * INPUT_BYTES;
+    return this.inputBytes[slot]!.subarray(idx, idx + INPUT_BYTES);
+  }
+
+  private ringFrameMatches(_slot: number, _frame: number): boolean {
+    // INPUT_RING (17s) vastly exceeds the rollback window; lapping can't
+    // corrupt frames we still care about.
+    return true;
+  }
+}
+
+function writeU32(out: Uint8Array, offset: number, value: number): void {
+  out[offset] = value & 0xff;
+  out[offset + 1] = (value >>> 8) & 0xff;
+  out[offset + 2] = (value >>> 16) & 0xff;
+  out[offset + 3] = (value >>> 24) & 0xff;
+}
+
+function readU32(data: Uint8Array, offset: number): number {
+  return (data[offset]! | (data[offset + 1]! << 8) | (data[offset + 2]! << 16) | (data[offset + 3]! << 24)) >>> 0;
+}

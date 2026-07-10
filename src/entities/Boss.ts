@@ -4,6 +4,7 @@ import { events } from '../core/events';
 import { clamp } from '../core/math';
 import { hypot } from '../core/simmath';
 import { simPhase } from '../net/simPhase';
+import { netIdOf, restoreIdSet, type SimRegistry, type StateIO } from '../net/snapshots';
 import { bossById } from '../data/enemies';
 import type { AttackDef, BossDef, BossId, CharacterDef, Vec2 } from '../data/types';
 import { buildBossRig, type BossRig } from '../rigs/bossBuilders';
@@ -215,6 +216,42 @@ export abstract class Boss extends Fighter {
       this.minions.length,
       this.targetRotation,
     );
+  }
+
+  override syncState(io: StateIO, registry: SimRegistry): void {
+    super.syncState(io, registry);
+    this.intangible = io.bool(this.intangible);
+    this.defeated = io.bool(this.defeated);
+    this.pendingDefeat = io.bool(this.pendingDefeat);
+    this.lastHpFrac = io.f64(this.lastHpFrac);
+    this.preserveVelocityFrame = io.bool(this.preserveVelocityFrame);
+    this.preservedVelX = io.f64(this.preservedVelX);
+    this.preservedVelY = io.f64(this.preservedVelY);
+    this.targetRotation = io.i32(this.targetRotation);
+    const hitIds = io.idList(() => {
+      const ids: number[] = [];
+      for (const obj of this.bossHitAlready) {
+        const id = netIdOf(obj);
+        if (id >= 0) ids.push(id);
+      }
+      return ids;
+    });
+    if (io.reading) restoreIdSet(this.bossHitAlready, hitIds, registry);
+    // Minions: (mobId) pairs — refs re-resolve through the registry.
+    if (io.reading) {
+      const count = io.i32(0);
+      this.minions.length = 0;
+      for (let i = 0; i < count; i += 1) {
+        const mobId = io.i32(0);
+        const mob = registry.resolve(mobId) as (BossMinionRef & { enemyDef?: { id: string } }) | null;
+        if (mob) this.minions.push({ enemyId: mob.enemyDef?.id ?? '', ref: mob });
+      }
+    } else {
+      io.i32(this.minions.length);
+      for (let i = 0; i < this.minions.length; i += 1) {
+        io.i32(netIdOf(this.minions[i]!.ref as object));
+      }
+    }
   }
 
   protected telegraphFlash(color: number, seconds: number): void {

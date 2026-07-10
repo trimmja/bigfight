@@ -5,6 +5,7 @@ import { Pool } from '../core/pool';
 import type { SimRng } from '../core/rng';
 import { exp, hypot } from '../core/simmath';
 import { simPhase } from '../net/simPhase';
+import type { SimRegistry, StateIO } from '../net/snapshots';
 import type { EnemyDef, MaterialId } from '../data/types';
 import { Body } from '../physics/Body';
 import { makeToonMaterial } from '../render/toon';
@@ -46,6 +47,8 @@ export class Pickup extends Entity {
   kind: PickupKind = 'gold';
   goldValue = 0;
   materialId: MaterialId | null = null;
+  /** Stable pool identity (active-list serialization). */
+  poolIndex = -1;
 
   private readonly coin: THREE.Mesh;
   private readonly gem: THREE.Mesh;
@@ -171,6 +174,34 @@ export class Pickup extends Entity {
     this.body.gravityScale = 0;
   }
 
+  /** Rollback snapshots. */
+  syncState(io: StateIO, registry: SimRegistry): void {
+    this.alive = io.bool(this.alive);
+    const kindCode = io.i32(this.kind === 'gold' ? 0 : 1);
+    if (io.reading) this.kind = kindCode === 0 ? 'gold' : 'material';
+    this.goldValue = io.f64(this.goldValue);
+    const matIdx = io.i32(this.materialId ? MATERIAL_IDS.indexOf(this.materialId) : -1);
+    if (io.reading) this.materialId = matIdx >= 0 ? (MATERIAL_IDS[matIdx] ?? null) : null;
+    this.bouncesRemaining = io.i32(this.bouncesRemaining);
+    this.wasGrounded = io.bool(this.wasGrounded);
+    this.magnetized = io.bool(this.magnetized);
+    const targetId = io.i32(this.magnetTarget ? this.magnetTarget.id : -1);
+    if (io.reading) {
+      this.magnetTarget = targetId >= 0 ? ((registry.resolve(targetId) as Fighter | null) ?? null) : null;
+    }
+    this.body.syncState(io);
+  }
+
+  /** Post-rollback view repair. */
+  reconcileView(): void {
+    this.group.visible = this.alive;
+    if (!this.alive) return;
+    this.coin.visible = this.kind === 'gold';
+    this.gem.visible = this.kind === 'material';
+    if (this.materialId) this.gem.material = this.materials.gems[this.materialId];
+    this.group.position.set(this.body.pos.x, this.body.pos.y + this.body.height * 0.5, 0.18);
+  }
+
   /** Sim-relevant scalars for replay digests / net snapshots. */
   digestInto(out: number[]): void {
     out.push(
@@ -252,9 +283,12 @@ export class PickupManager {
         energyCore: makeToonMaterial(MATERIAL_COLORS.energyCore),
       },
     };
+    let nextIndex = 0;
     this.pool = new Pool(
       () => {
         const pickup = new Pickup(this.materials);
+        pickup.poolIndex = nextIndex;
+        nextIndex += 1;
         this.scene.add(pickup.group);
         return pickup;
       },
@@ -262,6 +296,46 @@ export class PickupManager {
       (pickup) => pickup.deactivate(),
     );
     this.all = this.pool.all;
+  }
+
+  /**
+   * Rollback snapshots: active list (pool indices, in order) + per-slot state.
+   * Mirrors ProjectileManager.syncState — see there for the free-list dance.
+   */
+  syncState(io: StateIO, registry: SimRegistry): void {
+    if (io.reading) {
+      const count = io.i32(0);
+      const activeIndices: number[] = [];
+      for (let i = 0; i < count; i += 1) activeIndices.push(io.i32(0));
+      const wasActive = new Set(this.active);
+      this.active.length = 0;
+      for (let i = 0; i < activeIndices.length; i += 1) {
+        const slot = this.all[activeIndices[i]!];
+        if (slot) {
+          this.active.push(slot);
+          wasActive.delete(slot);
+        }
+      }
+      for (const slot of this.active) slot.syncState(io, registry);
+      for (const slot of wasActive) slot.deactivate();
+    } else {
+      io.i32(this.active.length);
+      for (let i = 0; i < this.active.length; i += 1) io.i32(this.active[i]!.poolIndex);
+      for (let i = 0; i < this.active.length; i += 1) this.active[i]!.syncState(io, registry);
+    }
+  }
+
+  /** Deterministic acquisition: first dead slot in pool order (see Projectile). */
+  private obtainSlot(): Pickup | null {
+    for (let i = 0; i < this.all.length; i += 1) {
+      if (!this.all[i]!.alive) return this.all[i]!;
+    }
+    return null;
+  }
+
+  /** Post-rollback view repair for every slot. */
+  reconcileView(): void {
+    for (let i = 0; i < this.all.length; i += 1) this.all[i]!.reconcileView();
   }
 
   spawnDrops(def: EnemyDef, x: number, y: number): void {
@@ -276,7 +350,7 @@ export class PickupManager {
   }
 
   spawnGold(value: number, x: number, y: number): void {
-    const pickup = this.pool.obtain();
+    const pickup = this.obtainSlot();
     if (!pickup) {
       // Pool exhausted — loot must never be lost: bank it instantly.
       this.onLoot(value);
@@ -290,7 +364,7 @@ export class PickupManager {
   }
 
   spawnMaterial(material: MaterialId, x: number, y: number): void {
-    const pickup = this.pool.obtain();
+    const pickup = this.obtainSlot();
     if (!pickup) {
       this.onLoot(0, material);
       events.emit('loot', { gold: 0, material });
@@ -384,6 +458,6 @@ export class PickupManager {
     const pickup = this.active[index]!;
     const last = this.active.pop();
     if (last && index < this.active.length) this.active[index] = last;
-    this.pool.release(pickup);
+    pickup.deactivate();
   }
 }

@@ -1,6 +1,8 @@
 import { SPAWN_STAGGER, SPAWN_TELEGRAPH } from '../config';
 import { events } from '../core/events';
+import { ENEMIES } from '../data/enemies';
 import type { LevelDef, Vec2 } from '../data/types';
+import type { StateIO } from '../net/snapshots';
 
 type SpawnQueueItem = { enemyId: string; pos: Vec2 };
 
@@ -48,6 +50,52 @@ export class WaveSpawner {
 
   setLiveMobCount(count: number): void {
     this.liveMobCount = count;
+  }
+
+  /** Rollback snapshots. */
+  syncState(io: StateIO): void {
+    this.waveIndex = io.i32(this.waveIndex);
+    this.queueHead = io.i32(this.queueHead);
+    this.spawnPointIndex = io.i32(this.spawnPointIndex);
+    this.waveDelayTimer = io.f64(this.waveDelayTimer);
+    this.staggerTimer = io.f64(this.staggerTimer);
+    this.telegraphTimer = io.f64(this.telegraphTimer);
+    this.liveMobCount = io.i32(this.liveMobCount);
+    this.waveActive = io.bool(this.waveActive);
+    this.allCleared = io.bool(this.allCleared);
+    if (io.reading) {
+      const count = io.i32(0);
+      this.queue.length = 0;
+      for (let i = 0; i < count; i += 1) {
+        const idIdx = io.i32(0);
+        const x = io.f64(0);
+        const y = io.f64(0);
+        this.queue.push({ enemyId: ENEMIES[idIdx]?.id ?? 'skeleton', pos: { x, y } });
+      }
+      const hasTelegraph = io.bool(false);
+      if (hasTelegraph) {
+        const idIdx = io.i32(0);
+        const x = io.f64(0);
+        const y = io.f64(0);
+        this.telegraphItem = { enemyId: ENEMIES[idIdx]?.id ?? 'skeleton', pos: { x, y } };
+      } else {
+        this.telegraphItem = null;
+      }
+    } else {
+      io.i32(this.queue.length);
+      for (let i = 0; i < this.queue.length; i += 1) {
+        const item = this.queue[i]!;
+        io.i32(enemyIndexOf(item.enemyId));
+        io.f64(item.pos.x);
+        io.f64(item.pos.y);
+      }
+      io.bool(this.telegraphItem !== null);
+      if (this.telegraphItem) {
+        io.i32(enemyIndexOf(this.telegraphItem.enemyId));
+        io.f64(this.telegraphItem.pos.x);
+        io.f64(this.telegraphItem.pos.y);
+      }
+    }
   }
 
   /** Sim-relevant scalars for replay digests / net snapshots. */
@@ -143,4 +191,11 @@ export class WaveSpawner {
     this.spawnPointIndex += 1;
     return point;
   }
+}
+
+function enemyIndexOf(enemyId: string): number {
+  for (let i = 0; i < ENEMIES.length; i += 1) {
+    if (ENEMIES[i]!.id === enemyId) return i;
+  }
+  return 0;
 }

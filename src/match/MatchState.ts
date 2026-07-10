@@ -1,3 +1,5 @@
+import type { StateIO } from '../net/snapshots';
+
 /**
  * ALL multiplayer sim state, as plain scalars — snapshot/rollback-friendly by
  * construction. Nothing here references THREE or DOM; view layers derive from
@@ -52,6 +54,34 @@ export function createMatchState(playerCount: number, stocks: number): MatchStat
     });
   }
   return { frame: 0, slots, finalZoomTimer: 0, ended: false, placements: [] };
+}
+
+/** Rollback snapshots — one function, both directions (see net/snapshots). */
+export function syncMatchState(state: MatchState, io: StateIO): void {
+  state.frame = io.i32(state.frame);
+  state.finalZoomTimer = io.f64(state.finalZoomTimer);
+  state.ended = io.bool(state.ended);
+  if (io.reading) {
+    const count = io.i32(0);
+    state.placements.length = 0;
+    for (let i = 0; i < count; i += 1) state.placements.push(io.i32(0));
+  } else {
+    io.i32(state.placements.length);
+    for (const p of state.placements) io.i32(p);
+  }
+  for (const slot of state.slots) {
+    slot.stocks = io.i32(slot.stocks);
+    slot.eliminated = io.bool(slot.eliminated);
+    slot.eliminationFrame = io.i32(slot.eliminationFrame);
+    slot.kos = io.i32(slot.kos);
+    slot.lastHitBySlot = io.i32(slot.lastHitBySlot);
+    slot.lastHitTimer = io.f64(slot.lastHitTimer);
+    slot.respawnPhase = io.i32(slot.respawnPhase) as SlotState['respawnPhase'];
+    slot.respawnTimer = io.f64(slot.respawnTimer);
+    slot.cloudX = io.f64(slot.cloudX);
+    slot.cloudY = io.f64(slot.cloudY);
+    slot.rideTime = io.f64(slot.rideTime);
+  }
 }
 
 /** Append every scalar (replay digests / net snapshots). */

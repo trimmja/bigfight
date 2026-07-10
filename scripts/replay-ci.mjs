@@ -46,6 +46,19 @@ try {
       console.error(`  first divergence: frame ${r.firstDivergence}\n${r.divergenceDetail}`);
     }
   }
+
+  const rollback = await page.waitForFunction(() => window.__rollbackResult, null, {
+    timeout: 180_000,
+    polling: 500,
+  });
+  const rb = await rollback.jsonValue();
+  console.log(
+    `${rb.pass ? 'PASS' : 'FAIL'}  rollback-golden  ref=${rb.referenceDigest} A=${rb.peerADigest} B=${rb.peerBDigest} rollbacks=${rb.rollbacksA}/${rb.rollbacksB} resim=${rb.resimmedA}/${rb.resimmedB} desyncs=${rb.desyncs}`,
+  );
+  if (!rb.pass) {
+    failed = true;
+    console.error(`  ${rb.detail}`);
+  }
 } catch (err) {
   failed = true;
   console.error('replay-ci error:', err);

@@ -71,6 +71,11 @@ export class Mob extends Fighter {
     this.brain.digestInto(out);
   }
 
+  override syncState(io: Parameters<Fighter['syncState']>[0], registry: Parameters<Fighter['syncState']>[1]): void {
+    super.syncState(io, registry);
+    this.brain.syncState(io, registry);
+  }
+
   private applyMobBodyFlags(): void {
     const canFly = this.enemyDef.brain.canFly === true;
     this.body.gravityScale = canFly ? 0 : this.enemyDef.gravityScale;

@@ -10,13 +10,15 @@ import {
   STAR_KO_MIN_VY,
   TIMESTEP,
 } from '../config';
-import { getMobAttackTokens, resetMobAttackTokens } from '../ai/MobBrain';
+import { getMobAttackTokens, resetMobAttackTokens, setMobAttackTokens } from '../ai/MobBrain';
 import type { IIntentSource } from '../contracts';
-import { createSimRngSet, type SimRngSet } from '../core/rng';
+import { createSimRngSet, type SimRng, type SimRngSet } from '../core/rng';
 import { ALL_POWERUP_IDS, isVersus, type MatchConfig } from '../match/MatchConfig';
-import { createMatchState, digestMatchState, type MatchState } from '../match/MatchState';
+import { createMatchState, digestMatchState, syncMatchState, type MatchState } from '../match/MatchState';
 import { computePlacements, evaluateFfaEnd, evaluateTeamsEnd, versusGoldFor } from '../match/rules';
 import { hashNumbers } from '../net/hash';
+import { simPhase } from '../net/simPhase';
+import { SimRegistry, type StateIO } from '../net/snapshots';
 import { WaveSpawner } from '../ai/WaveSpawner';
 import type { ActiveHitbox, FighterLike, Rect } from '../combat/types';
 import { HitResolver } from '../combat/HitResolver';
@@ -142,6 +144,10 @@ export class GameplayScreen implements Screen {
   private readonly materialsEarned: Partial<Record<MaterialId, number>> = {};
 
   private rng: SimRngSet | null = null;
+  /** Net-id → object map for snapshot ref restore (rollback). */
+  private readonly registry = new SimRegistry();
+  /** Game handle for restore-time lazy construction (boss across rollback). */
+  private enterGame: Game | null = null;
   private goldEarned = 0;
   private levelEnding = false;
   private levelWon = false;
@@ -196,6 +202,7 @@ export class GameplayScreen implements Screen {
   }
 
   enter(game: Game): void {
+    this.enterGame = game;
     resetMobAttackTokens();
     resetEntityIds(); // deterministic entity ids: nothing constructs mid-match (MobPool)
     const match = this.match;
@@ -325,6 +332,16 @@ export class GameplayScreen implements Screen {
       this.particles?.burst(pos.x, pos.y, COLOR_NEON_YELLOW, Math.min(28, 8 + damage * 3), 5 + kb * 0.22);
     });
 
+    // Register every snapshot-referenceable object's net id (rollback).
+    this.registry.clear();
+    for (let i = 0; i < this.players.length; i += 1) {
+      this.registry.register(this.players[i]!.id, this.players[i]!);
+    }
+    for (let i = 0; i < this.mobs.length; i += 1) {
+      this.registry.register(this.mobs[i]!.id, this.mobs[i]!);
+    }
+    projectileManager.registerNetIds(this.registry);
+
     if (DEBUG) this.createDebug(game);
     game.input.setTouchControlsVisible(true);
     game.events.emit('music', { mood: 'battle' });
@@ -366,6 +383,7 @@ export class GameplayScreen implements Screen {
     this.destroyDebug();
     game.input.setTouchControlsVisible(false);
     this.stage = null;
+    this.enterGame = null;
     this.particles = null;
     this.trails = null;
     this.cameraRig = null;
@@ -485,14 +503,81 @@ export class GameplayScreen implements Screen {
       if (!mob.alive && mob.hitstopTimer <= 0) this.mobPool?.release(mob);
     }
 
-    this.updateCamera(stage);
-    particles.update(dt);
-    trails.update(dt);
-    this.damageNumbers?.update(dt);
-    const local = this.localPlayer;
-    if (local) this.hud?.set(local.damage, local.stocks);
-    if (DEBUG) this.updateDebug(dt);
-    this.updateLevelEnd(game, dt);
+    if (!simPhase.resimulating) {
+      this.updateCamera(stage);
+      particles.update(dt);
+      trails.update(dt);
+      this.damageNumbers?.update(dt);
+      const local = this.localPlayer;
+      if (local) this.hud?.set(local.damage, local.stocks);
+      if (DEBUG) this.updateDebug(dt);
+      // Navigation/persist callbacks never fire mid-resim; the 2.2s end beat
+      // vastly exceeds the rollback window, so the deferral can't diverge.
+      this.updateLevelEnd(game, dt);
+    }
+  }
+
+  // --- rollback snapshot surface (driven by net/RollbackSession) ---
+
+  writeSnapshot(io: StateIO): void {
+    io.beginWrite();
+    this.syncSnapshot(io);
+  }
+
+  readSnapshot(io: StateIO): void {
+    io.beginRead();
+    this.syncSnapshot(io);
+  }
+
+  private syncSnapshot(io: StateIO): void {
+    const registry = this.registry;
+    syncMatchState(this.matchState, io);
+    this.goldEarned = io.f64(this.goldEarned);
+    this.materialsEarned.boneShard = io.f64(this.materialsEarned.boneShard ?? 0);
+    this.materialsEarned.slimeGoo = io.f64(this.materialsEarned.slimeGoo ?? 0);
+    this.materialsEarned.ghostEssence = io.f64(this.materialsEarned.ghostEssence ?? 0);
+    this.materialsEarned.feather = io.f64(this.materialsEarned.feather ?? 0);
+    this.materialsEarned.energyCore = io.f64(this.materialsEarned.energyCore ?? 0);
+    this.levelEnding = io.bool(this.levelEnding);
+    this.levelWon = io.bool(this.levelWon);
+    this.levelEndTimer = io.f64(this.levelEndTimer);
+    this.levelEndSent = io.bool(this.levelEndSent);
+    this.bossSpawnQueued = io.bool(this.bossSpawnQueued);
+    this.bossSpawnTimer = io.f64(this.bossSpawnTimer);
+    const tokens = io.i32(getMobAttackTokens());
+    if (io.reading) setMobAttackTokens(tokens);
+    if (this.rng) {
+      syncRng(this.rng.ai, io);
+      syncRng(this.rng.drops, io);
+      syncRng(this.rng.spawn, io);
+      syncRng(this.rng.reserve, io);
+    }
+    for (let i = 0; i < this.players.length; i += 1) this.players[i]!.syncState(io, registry);
+    for (let i = 0; i < this.sidekicks.length; i += 1) this.sidekicks[i]?.syncState(io);
+    for (let i = 0; i < this.mobs.length; i += 1) this.mobs[i]!.syncState(io, registry);
+    // Boss existence: -1 none, else its data index (spawned lazily on restore).
+    const bossCode = io.i32(this.boss ? 1 : -1);
+    if (io.reading && bossCode >= 0 && !this.boss && this.enterGame) {
+      this.spawnBoss(this.enterGame);
+    }
+    if (io.reading && bossCode < 0 && this.boss) {
+      this.boss.alive = false; // rolled back before the boss existed
+    }
+    if (this.boss && bossCode >= 0) this.boss.syncState(io, registry);
+    this.projectileManager?.syncState(io, registry);
+    this.pickupManager?.syncState(io, registry);
+    this.powerupSpawner?.syncState(io);
+    this.waveSpawner?.syncState(io);
+  }
+
+  /** Post-rollback view repair — sync all visuals to the restored sim state. */
+  reconcileView(): void {
+    for (let i = 0; i < this.players.length; i += 1) this.players[i]!.reconcileView();
+    for (let i = 0; i < this.mobs.length; i += 1) this.mobs[i]!.reconcileView();
+    this.boss?.reconcileView();
+    this.projectileManager?.reconcileView();
+    this.pickupManager?.reconcileView();
+    this.powerupSpawner?.reconcileView();
   }
 
   render(_game: Game, _alpha: number): void {
@@ -582,6 +667,7 @@ export class GameplayScreen implements Screen {
     boss.koReset({ x: 0, y: spawn.y });
     boss.facing = target && boss.body.pos.x < target.body.pos.x ? 1 : -1;
     this.boss = boss;
+    this.registry.register(boss.id, boss);
     game.renderer.scene.add(boss.group);
     game.events.emit('bossSpawned', { name: def.name, title: def.title });
     game.events.emit('bossHp', { frac: 1 });
@@ -1136,6 +1222,16 @@ function updateLineBox(line: THREE.LineSegments, rect: Rect, z: number): void {
   pos[23] = z;
   attr.needsUpdate = true;
   line.visible = true;
+}
+
+/** SimRng snapshot plumbing: 4 int32 state words per stream. */
+function syncRng(rng: SimRng, io: StateIO): void {
+  const state = rng.getState();
+  const a = io.i32(state[0]);
+  const b = io.i32(state[1]);
+  const c = io.i32(state[2]);
+  const d = io.i32(state[3]);
+  if (io.reading) rng.setState(a, b, c, d);
 }
 
 /** Solid for body-blocking: on their feet and physically present. */

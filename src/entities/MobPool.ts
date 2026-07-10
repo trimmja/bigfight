@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { enemyById } from '../data/enemies';
 import type { LevelDef } from '../data/types';
+import { simPhase } from '../net/simPhase';
 import { Mob } from './Mob';
 
 /**
@@ -9,6 +10,10 @@ import { Mob } from './Mob';
  * touches the scene graph mid-match. That makes spawn/despawn a pure flag flip,
  * which rollback can replay for free, and keeps entity ids deterministic
  * (nothing constructs mid-match → resetEntityIds() at enter reproduces ids).
+ *
+ * ACQUISITION IS STATE-DERIVED (first reusable slot of the type in creation
+ * order), never free-list based — free-list order isn't canonical across
+ * peers after rollbacks; a scan over deterministic state is.
  *
  * Sizing: waves are sequential and only advance at liveMobCount === 0, so the
  * per-id concurrent cap is the max single-wave count, plus split children
@@ -25,9 +30,6 @@ const BOSS_MINIONS: Readonly<Record<string, Readonly<Record<string, number>>>> =
 export class MobPool {
   /** All pooled mobs in stable creation order — the sim iterates THIS. */
   readonly all: Mob[] = [];
-
-  private readonly freeByType = new Map<string, Mob[]>();
-  private readonly freeSet = new Set<Mob>();
 
   constructor(private readonly scene: THREE.Scene) {}
 
@@ -64,38 +66,33 @@ export class MobPool {
   prewarm(level: LevelDef): void {
     const caps = MobPool.planFor(level);
     for (const [enemyId, cap] of caps) {
-      for (let i = 0; i < cap; i += 1) this.markFree(this.construct(enemyId));
+      for (let i = 0; i < cap; i += 1) this.construct(enemyId);
     }
   }
 
   /**
-   * Take a mob of this type. Falls back to constructing (with a warning) if
-   * the plan under-counted — spawns must NEVER be silently lost, or the wave
-   * counter would deadlock.
+   * Take a mob of this type: first reusable slot in creation order (dead and
+   * out of hitstop — mirrors the sweep's release criteria, so acquisition is
+   * a pure function of sim state). Falls back to constructing (warn) if the
+   * plan under-counted — spawns must NEVER be lost or waves would deadlock.
    */
   obtain(enemyId: string): Mob {
-    const free = this.freeByType.get(enemyId);
-    const mob = free?.pop();
-    if (mob) {
-      this.freeSet.delete(mob);
-      return mob;
+    for (let i = 0; i < this.all.length; i += 1) {
+      const mob = this.all[i]!;
+      if (mob.enemyDef.id === enemyId && !mob.alive && mob.hitstopTimer <= 0) return mob;
     }
     console.warn(`MobPool: cap miss for '${enemyId}' — constructing mid-match (plan bug?)`);
     return this.construct(enemyId);
   }
 
-  /** Return a dead mob to its pool (idempotent). Hides the rig. */
+  /** Hide a dead mob's rig (view bookkeeping — sim truth is the alive flag). */
   release(mob: Mob): void {
-    if (this.freeSet.has(mob)) return;
-    mob.group.visible = false;
-    this.markFree(mob);
+    if (!simPhase.resimulating) mob.group.visible = false;
   }
 
   dispose(): void {
     for (const mob of this.all) mob.dispose();
     this.all.length = 0;
-    this.freeByType.clear();
-    this.freeSet.clear();
   }
 
   private construct(enemyId: string): Mob {
@@ -105,15 +102,5 @@ export class MobPool {
     this.scene.add(mob.group);
     this.all.push(mob);
     return mob;
-  }
-
-  private markFree(mob: Mob): void {
-    this.freeSet.add(mob);
-    let free = this.freeByType.get(mob.enemyDef.id);
-    if (!free) {
-      free = [];
-      this.freeByType.set(mob.enemyDef.id, free);
-    }
-    free.push(mob);
   }
 }

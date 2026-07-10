@@ -322,7 +322,31 @@ export class GiantGhost extends Boss {
       this.beamDir,
     );
   }
+
+  override syncState(io: Parameters<Boss['syncState']>[0], registry: Parameters<Boss['syncState']>[1]): void {
+    super.syncState(io, registry);
+    this.phase = PHASE_NAMES[io.i32(PHASE_IDS[this.phase])] ?? 'hover';
+    this.phaseTimer = io.f64(this.phaseTimer);
+    this.phaseDuration = io.f64(this.phaseDuration);
+    this.hoverTime = io.f64(this.hoverTime);
+    this.volleyCount = io.i32(this.volleyCount);
+    this.volleyIndex = io.i32(this.volleyIndex);
+    this.volleyCycle = io.i32(this.volleyCycle);
+    this.shotTimer = io.f64(this.shotTimer);
+    this.beamLaneY = io.f64(this.beamLaneY);
+    this.beamDir = io.i32(this.beamDir) as 1 | -1;
+  }
 }
+
+const PHASE_NAMES: readonly GhostPhase[] = [
+  'hover',
+  'volley',
+  'beamWarn',
+  'beamFire',
+  'descend',
+  'vulnerable',
+  'rise',
+];
 
 function orbDef(angleDeg: number): ProjectileDef {
   return {

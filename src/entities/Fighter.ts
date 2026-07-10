@@ -12,6 +12,7 @@ import { events } from '../core/events';
 import { clamp } from '../core/math';
 import type { AttackDef, CharacterDef, Faction, Facing, FighterStateName, Vec2, WeaponDef } from '../data/types';
 import { simPhase } from '../net/simPhase';
+import { netIdOf, restoreIdSet, type SimRegistry, type StateIO } from '../net/snapshots';
 import { Body } from '../physics/Body';
 import { FighterRig, type Rig } from '../rigs/FighterRig';
 import {
@@ -55,6 +56,24 @@ const STATE_IDS: Record<FighterStateName, number> = {
   ko: 9,
   respawning: 10,
 };
+const STATE_NAMES: readonly FighterStateName[] = [
+  'idle',
+  'run',
+  'jump',
+  'fall',
+  'attack',
+  'weaponAbility',
+  'hitstun',
+  'launched',
+  'landing',
+  'ko',
+  'respawning',
+];
+
+/** currentAttack wire codes: -1 none · 0-2 combo · 3 weapon ability · 4 custom. */
+const ATTACK_CODE_NONE = -1;
+const ATTACK_CODE_WEAPON = 3;
+const ATTACK_CODE_CUSTOM = 4;
 
 export class Fighter extends Entity {
   readonly def: CharacterDef;
@@ -150,6 +169,78 @@ export class Fighter extends Entity {
   setTeam(teamId: number): void {
     this.teamId = teamId;
     this.activeHitbox.teamId = teamId;
+  }
+
+  /**
+   * Rollback snapshots: one method both writes and reads (StateIO echoes on
+   * write, substitutes on read) — field-order bugs are impossible. Subclasses
+   * extend AFTER super. View side effects are re-applied by reconcileView().
+   */
+  syncState(io: StateIO, registry: SimRegistry): void {
+    this.alive = io.bool(this.alive);
+    this.body.syncState(io);
+    this.damage = io.f64(this.damage);
+    this.damageScale = io.f64(this.damageScale);
+    this.kbImmune = io.bool(this.kbImmune);
+    this.attackMult = io.f64(this.attackMult);
+    this.shieldHits = io.i32(this.shieldHits);
+    this.facing = io.i32(this.facing) as Facing;
+    this.state = STATE_NAMES[io.i32(STATE_IDS[this.state])] ?? 'idle';
+    this.stateTime = io.f64(this.stateTime);
+    this.jumpsUsed = io.i32(this.jumpsUsed);
+    this.hitstopTimer = io.f64(this.hitstopTimer);
+    this.invulnTimer = io.f64(this.invulnTimer);
+    this.comboIndex = io.i32(this.comboIndex);
+    this.comboQueued = io.bool(this.comboQueued);
+    const attackCode = io.i32(this.encodeAttack());
+    if (io.reading) this.currentAttack = this.attackForCode(attackCode);
+    this.currentAttackIsWeapon = io.bool(this.currentAttackIsWeapon);
+    this.attackPhaseTime = io.f64(this.attackPhaseTime);
+    this.weaponCooldown = io.f64(this.weaponCooldown);
+    this.projectileFired = io.bool(this.projectileFired);
+    this.slashWaveFired = io.bool(this.slashWaveFired);
+    this.comboResetTimer = io.f64(this.comboResetTimer);
+    this.freezeTimer = io.f64(this.freezeTimer);
+    this.autoSwingMove = io.bool(this.autoSwingMove);
+    this.wasGroundedForStep = io.bool(this.wasGroundedForStep);
+    const hitIds = io.idList(() => {
+      const ids: number[] = [];
+      for (const obj of this.alreadyHit) {
+        const id = netIdOf(obj);
+        if (id >= 0) ids.push(id);
+      }
+      return ids;
+    });
+    if (io.reading) restoreIdSet(this.alreadyHit, hitIds, registry);
+  }
+
+  /** Post-rollback view repair: visibility + transform snap (pose follows). */
+  reconcileView(): void {
+    this.group.visible = this.alive;
+    this.syncGroupToBody();
+  }
+
+  private encodeAttack(): number {
+    const attack = this.currentAttack;
+    if (!attack) return ATTACK_CODE_NONE;
+    for (let i = 0; i < this.def.combo.length; i += 1) {
+      if (this.def.combo[i] === attack) return i;
+    }
+    if (this.equippedWeapon && attack === this.equippedWeapon.ability) return ATTACK_CODE_WEAPON;
+    return ATTACK_CODE_CUSTOM;
+  }
+
+  /** Custom attacks (code 4) resolve in subclasses (Player: giant hammer). */
+  protected attackForCode(code: number): AttackDef | null {
+    if (code === ATTACK_CODE_NONE) return null;
+    if (code >= 0 && code < this.def.combo.length) return this.def.combo[code] ?? null;
+    if (code === ATTACK_CODE_WEAPON) return this.equippedWeapon?.ability ?? null;
+    return this.def.combo[0] ?? null;
+  }
+
+  /** Sim-only weapon assignment (rollback restore — no model work here). */
+  protected setEquippedWeaponSim(weapon: WeaponDef | null): void {
+    this.equippedWeapon = weapon;
   }
 
   /**
