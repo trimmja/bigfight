@@ -125,7 +125,8 @@ export class SkeletonKing extends Boss {
   protected override pattern(ctx: WorldCtx, dt: number): void {
     this.updateSummons(dt);
     this.phaseTimer = Math.max(0, this.phaseTimer - dt);
-    const dx = ctx.playerPos.x - this.body.pos.x;
+    const targetPos = this.nearestPlayerPos(ctx);
+    const dx = targetPos.x - this.body.pos.x;
     if (Math.abs(dx) > 0.08) this.facing = dx >= 0 ? 1 : -1;
 
     switch (this.phase) {
@@ -165,7 +166,7 @@ export class SkeletonKing extends Boss {
           1.45,
         );
         if (this.phaseTimer === 0) {
-          if (this.isBelowHp(0.5)) this.enterJumpTelegraph(ctx.playerPos.x);
+          if (this.isBelowHp(0.5)) this.enterJumpTelegraph(this.nearestPlayerPos(ctx).x);
           else this.enterRecover();
         }
         break;

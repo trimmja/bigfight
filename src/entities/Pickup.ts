@@ -52,6 +52,8 @@ export class Pickup extends Entity {
   private bouncesRemaining = 1;
   private wasGrounded = false;
   private magnetized = false;
+  /** Once magnetized, locked to ONE player until collected (no mid-flight jitter). */
+  private magnetTarget: Fighter | null = null;
 
   constructor(private readonly materials: PickupMaterials) {
     const body = new Body(0.18, 0.34);
@@ -94,7 +96,7 @@ export class Pickup extends Entity {
     if (!simPhase.resimulating) this.syncVisual(dt);
   }
 
-  updatePickup(dt: number, player: Fighter): boolean {
+  updatePickup(dt: number, players: readonly Fighter[]): boolean {
     if (!this.alive) return false;
 
     if (!this.magnetized && this.body.grounded && !this.wasGrounded && this.bouncesRemaining > 0) {
@@ -102,6 +104,28 @@ export class Pickup extends Entity {
       this.body.vel.x *= 0.55;
       this.body.grounded = false;
       this.bouncesRemaining -= 1;
+    }
+
+    // Fly to the locked target while it's alive; otherwise the nearest player.
+    let player = this.magnetTarget?.alive === true ? this.magnetTarget : null;
+    if (!player) {
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < players.length; i += 1) {
+        const candidate = players[i]!;
+        if (!candidate.alive) continue;
+        const cdx = candidate.body.pos.x - this.body.pos.x;
+        const cdy = candidate.body.pos.y - this.body.pos.y;
+        const d = cdx * cdx + cdy * cdy;
+        if (d < bestDist) {
+          bestDist = d;
+          player = candidate;
+        }
+      }
+    }
+    if (!player) {
+      this.wasGrounded = this.body.grounded;
+      if (!simPhase.resimulating) this.syncVisual(dt);
+      return false;
     }
 
     const targetX = player.body.pos.x;
@@ -122,6 +146,7 @@ export class Pickup extends Entity {
 
     if (this.magnetized || distSq <= MAGNET_RADIUS_SQ) {
       this.magnetized = true;
+      this.magnetTarget = player;
       this.body.noclip = true;
       this.body.gravityScale = 0;
       dx /= dist;
@@ -158,6 +183,7 @@ export class Pickup extends Entity {
       this.bouncesRemaining,
       this.magnetized ? 1 : 0,
       this.wasGrounded ? 1 : 0,
+      this.magnetTarget ? this.magnetTarget.id : -1,
     );
   }
 
@@ -173,6 +199,7 @@ export class Pickup extends Entity {
     this.body.grounded = false;
     this.wasGrounded = false;
     this.magnetized = false;
+    this.magnetTarget = null;
   }
 
   private activate(x: number, y: number, vx: number, vy: number): void {
@@ -290,11 +317,11 @@ export class PickupManager {
     }
   }
 
-  update(ctx: WorldCtx, dt: number, player: Fighter): void {
+  update(ctx: WorldCtx, dt: number, players: readonly Fighter[]): void {
     for (let i = this.active.length - 1; i >= 0; i -= 1) {
       const pickup = this.active[i]!;
       pickup.update(ctx, dt);
-      if (!pickup.updatePickup(dt, player)) continue;
+      if (!pickup.updatePickup(dt, players)) continue;
       if (pickup.kind === 'gold') {
         this.onLoot(pickup.goldValue);
         events.emit('loot', { gold: pickup.goldValue });

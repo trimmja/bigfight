@@ -67,6 +67,8 @@ export abstract class Boss extends Fighter {
   private preserveVelocityFrame = false;
   private preservedVelX = 0;
   private preservedVelY = 0;
+  /** Multi-player fairness: round-robin cursor for rotation-targeting bosses. */
+  private targetRotation = 0;
 
   protected constructor(
     bossId: BossId,
@@ -169,6 +171,37 @@ export abstract class Boss extends Fighter {
 
   protected abstract pattern(ctx: WorldCtx, dt: number): void;
 
+  // --- multi-player target policies (all collapse to the lone player solo) ---
+
+  /** Nearest-per-decision targeting (grounded chasers: SkeletonKing). */
+  protected nearestPlayerPos(ctx: WorldCtx): Vec2 {
+    return ctx.nearestAlivePlayer(this.body.pos.x, this.body.pos.y)?.body.pos ?? this.body.pos;
+  }
+
+  /** Advance the round-robin cursor — call once per attack CYCLE, not per frame. */
+  protected advanceTargetRotation(): void {
+    this.targetRotation += 1;
+  }
+
+  /**
+   * Round-robin targeting (pressure spreads across players: GiantGhost
+   * volleys/descents, GiantEagle swoop lanes) — no camping one kid.
+   */
+  protected rotationPlayerPos(ctx: WorldCtx): Vec2 {
+    const players = ctx.players;
+    let alive = 0;
+    for (let i = 0; i < players.length; i += 1) if (players[i]!.alive) alive += 1;
+    if (alive === 0) return this.body.pos;
+    let pick = this.targetRotation % alive;
+    for (let i = 0; i < players.length; i += 1) {
+      const player = players[i]!;
+      if (!player.alive) continue;
+      if (pick === 0) return player.body.pos;
+      pick -= 1;
+    }
+    return this.body.pos;
+  }
+
   override digestInto(out: number[]): void {
     super.digestInto(out);
     out.push(
@@ -180,6 +213,7 @@ export abstract class Boss extends Fighter {
       this.preservedVelX,
       this.preservedVelY,
       this.minions.length,
+      this.targetRotation,
     );
   }
 

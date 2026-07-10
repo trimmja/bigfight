@@ -29,6 +29,9 @@ export function getMobAttackTokens(): number {
 
 const RETREAT_MIN = 0.45;
 const RETREAT_MAX = 0.75;
+const RETARGET_INTERVAL = 1.0;
+/** Switch targets only when the challenger is <0.8× the distance (squared). */
+const RETARGET_HYSTERESIS = 0.64;
 const CAPTAIN_BLOCK_RANGE = 2.5;
 const CAPTAIN_BLOCK_TIME = 0.8;
 const HOP_COOLDOWN = 0.72;
@@ -42,6 +45,7 @@ export class MobBrain {
   isBlocking = false;
 
   private target: Fighter | null = null;
+  private retargetTimer = 0;
   private stateTimer = 0;
   private attackCooldown = 0;
   private hasAttackToken = false;
@@ -66,6 +70,7 @@ export class MobBrain {
   reset(): void {
     this.releaseAttackToken();
     this.state = 'idle';
+    this.retargetTimer = 0;
     this.stateTimer = 0;
     this.attackCooldown = 0;
     this.retreatTime = 0;
@@ -84,11 +89,12 @@ export class MobBrain {
       this.hopSeeded = true;
       this.hopCooldown = this.rng.next() * HOP_COOLDOWN;
     }
+    this.retarget(ctx, dt);
     const mob = this.mob;
     const def = mob.enemyDef;
     const target = this.target;
-    const targetPos = target?.body.pos ?? ctx.playerPos;
-    const targetAlive = target?.alive ?? true;
+    const targetPos = target?.body.pos ?? mob.body.pos;
+    const targetAlive = target?.alive ?? false;
     const dx = targetPos.x - mob.body.pos.x;
     const dy = targetPos.y - mob.body.pos.y;
     const distSq = dx * dx + dy * dy;
@@ -168,9 +174,37 @@ export class MobBrain {
     activeAttackTokens = Math.max(0, activeAttackTokens - 1);
   }
 
+  /**
+   * Multi-player targeting: chase the nearest alive human, re-evaluated once
+   * a second with 20% hysteresis (switch only when meaningfully closer) so
+   * mobs don't ping-pong between two kids standing apart. Deterministic.
+   */
+  private retarget(ctx: WorldCtx, dt: number): void {
+    if (this.retargetTimer > 0) this.retargetTimer = Math.max(0, this.retargetTimer - dt);
+    const current = this.target;
+    if (current?.alive === true && this.retargetTimer > 0) return;
+    this.retargetTimer = RETARGET_INTERVAL;
+
+    const pos = this.mob.body.pos;
+    const nearest = ctx.nearestAlivePlayer(pos.x, pos.y);
+    if (!nearest) {
+      this.target = null;
+      return;
+    }
+    if (current?.alive !== true || current === nearest) {
+      this.target = nearest;
+      return;
+    }
+    const currentDist = distSqTo(pos.x, pos.y, current);
+    const nearestDist = distSqTo(pos.x, pos.y, nearest);
+    if (nearestDist < currentDist * RETARGET_HYSTERESIS) this.target = nearest;
+  }
+
   /** Sim-relevant brain scalars for replay digests / net snapshots. */
   digestInto(out: number[]): void {
     out.push(
+      this.retargetTimer,
+      this.target ? this.target.id : -1,
       BRAIN_STATE_IDS[this.state],
       this.isBlocking ? 1 : 0,
       this.stateTimer,
@@ -374,4 +408,10 @@ function dampNumber(current: number, target: number, lambda: number, dt: number)
 
 function lerpNumber(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function distSqTo(x: number, y: number, fighter: Fighter): number {
+  const dx = fighter.body.pos.x - x;
+  const dy = fighter.body.pos.y - y;
+  return dx * dx + dy * dy;
 }

@@ -234,11 +234,12 @@ export class GiantEagle extends Boss {
 
   private enterSwoopWarn(ctx: WorldCtx, duration: number): void {
     this.phase = 'swoopWarn';
+    this.advanceTargetRotation(); // each swoop hunts the next player's lane
     this.phaseDuration = duration;
     this.phaseTimer = duration;
     this.targetSide = this.perchSide === 1 ? -1 : 1;
     if (this.chainRemaining <= 0) this.chainRemaining = 1;
-    this.swoopLaneY = clampNumber(ctx.playerPos.y + 1.15, 1.3, 7.8);
+    this.swoopLaneY = clampNumber(this.rotationPlayerPos(ctx).y + 1.15, 1.3, 7.8);
     this.swoopFeetY = Math.max(0.35, this.swoopLaneY - this.body.height * 0.48);
     this.telegraphFlash(0xff3048, duration);
   }

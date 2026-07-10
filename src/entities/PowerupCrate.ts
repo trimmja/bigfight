@@ -90,7 +90,7 @@ class PowerupSlot {
     this.syncVisual();
   }
 
-  update(ctx: WorldCtx, dt: number, player: Player): boolean {
+  update(ctx: WorldCtx, dt: number, players: readonly Player[]): boolean {
     if (!this.active) return false;
     this.age += dt;
     if (!this.grounded) {
@@ -105,7 +105,10 @@ class PowerupSlot {
       if (this.groundedTimer >= GROUNDED_DESPAWN) return false;
     }
 
-    if (this.touches(player)) {
+    // First alive toucher in slot order wins — crate races are a feature.
+    for (let i = 0; i < players.length; i += 1) {
+      const player = players[i]!;
+      if (!this.touches(player)) continue;
       const def = powerupById(this.id);
       events.emit('powerup', { id: this.id, pos: { x: this.x, y: this.y } });
       if (!simPhase.resimulating) ctx.particles.burst(this.x, this.y, def.color, 34, 7);
@@ -212,11 +215,11 @@ export class PowerupSpawner {
     }
   }
 
-  update(ctx: WorldCtx, dt: number, player: Player): void {
+  update(ctx: WorldCtx, dt: number, players: readonly Player[]): void {
     for (let i = 0; i < this.slots.length; i += 1) {
       const slot = this.slots[i]!;
       if (!slot.active) continue;
-      if (slot.update(ctx, dt, player)) continue;
+      if (slot.update(ctx, dt, players)) continue;
       slot.deactivate();
     }
 

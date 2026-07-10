@@ -57,6 +57,8 @@ class ProjectileSlot implements FighterLike {
 
   faction: Faction = 'player';
   teamId = 1;
+  /** Firing player's match slot (-1 = not a player) — KO attribution. */
+  slotIndex = -1;
   facing: Facing = 1;
   power = 1;
   weight = 100;
@@ -154,10 +156,12 @@ class ProjectileSlot implements FighterLike {
     teamId: number,
     attackerPower: number,
     attackDef: AttackDef,
+    ownerSlot = -1,
   ): void {
     this.copyAttack(attackDef);
     this.faction = faction;
     this.teamId = teamId;
+    this.slotIndex = ownerSlot;
     this.facing = facing;
     this.power = attackerPower;
     this.radius = def.radius;
@@ -704,10 +708,11 @@ export class ProjectileManager {
     teamId: number,
     attackerPower: number,
     attackDef: AttackDef,
+    ownerSlot = -1,
   ): void {
     const projectile = this.pool.obtain();
     if (!projectile) return;
-    projectile.fire(def, x, y, facing, faction, teamId, attackerPower, attackDef);
+    projectile.fire(def, x, y, facing, faction, teamId, attackerPower, attackDef, ownerSlot);
     this.active.push(projectile);
   }
 
