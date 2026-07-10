@@ -64,7 +64,9 @@ function show(): void {
   wrap.add(rig.root);
   wrap.rotation.y = -Math.PI / 2 + 0.2;
   attackQueue = [];
-  label.textContent = OPTION_LABELS[option];
+  label.textContent = chr === 'comet'
+    ? 'COMET CONCEPT · SPACE CADET · SIGNATURE PREVIEW: METEOR DIVE'
+    : OPTION_LABELS[option];
 }
 show();
 
@@ -99,11 +101,15 @@ syncChrButton();
 // kaze/shade spin finishers, grim/titan slams, nova uppercut).
 const HIT2: Record<CharId, string> = {
   volt: 'jab2', kaze: 'kick', grim: 'jab2', ace: 'jab2',
-  blaze: 'kick', nova: 'jab2', shade: 'kick', titan: 'jab2',
+  blaze: 'kick', nova: 'jab2', shade: 'kick', titan: 'jab2', comet: 'jab2',
 };
 const FINISHERS: Record<CharId, string> = {
   volt: 'finisher', kaze: 'spin', grim: 'slam', ace: 'finisher',
-  blaze: 'finisher', nova: 'uppercut', shade: 'spin', titan: 'slam',
+  blaze: 'finisher', nova: 'uppercut', shade: 'spin', titan: 'slam', comet: 'finisher',
+};
+const SIGNATURES: Record<CharId, string> = {
+  volt: 'uppercut', kaze: 'shoot', grim: 'slam', ace: 'shoot',
+  blaze: 'uppercut', nova: 'uppercut', shade: 'spin', titan: 'slam', comet: 'cometMeteor',
 };
 document.getElementById('jab')!.addEventListener('click', () => {
   attackQueue = [
@@ -115,6 +121,10 @@ document.getElementById('jab')!.addEventListener('click', () => {
 });
 document.getElementById('weapon')!.addEventListener('click', () => {
   attackQueue = [{ poseId: chr === 'grim' || chr === 'titan' ? 'slam' : 'slash', duration: 0.6 }];
+  attackPhase = 0;
+});
+document.getElementById('signature')!.addEventListener('click', () => {
+  attackQueue = [{ poseId: SIGNATURES[chr], duration: chr === 'comet' ? 0.8 : 0.65 }];
   attackPhase = 0;
 });
 document.getElementById('run')!.addEventListener('click', function (this: HTMLElement) {
@@ -131,10 +141,11 @@ document.getElementById('spinBtn')!.addEventListener('click', function (this: HT
 // ---------------------------------------------------------------------------
 let last = performance.now();
 // Manual stepping for design review from an occluded window (rAF pauses).
-(window as unknown as { lab: { step: (n?: number) => void; pick: (o: OptionId, c: CharId) => void; attack: () => void } }).lab = {
+(window as unknown as { lab: { step: (n?: number) => void; pick: (o: OptionId, c: CharId) => void; attack: () => void; signature: () => void } }).lab = {
   step: (n = 1) => { for (let i = 0; i < n; i += 1) tick(1 / 60); renderer.render(scene, camera); },
   pick: (o, c) => { option = o; chr = c; show(); },
   attack: () => document.getElementById('jab')!.click(),
+  signature: () => document.getElementById('signature')!.click(),
 };
 
 function tick(dt: number): void {
@@ -150,7 +161,9 @@ function tick(dt: number): void {
       attackPhase = 0;
       pose = poseFightStance(t);
     } else {
-      pose = poseAttack(current.poseId, attackPhase);
+      pose = current.poseId === 'cometMeteor'
+        ? poseCometMeteor(attackPhase)
+        : poseAttack(current.poseId, attackPhase);
     }
   } else if (running) {
     pose = poseRun(t, 0.9);
@@ -173,3 +186,36 @@ function frame(now: number): void {
   renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);
+
+/** Review-only Meteor Dive animation; this does not add an ability to the game. */
+function poseCometMeteor(phase: number): Pose {
+  if (phase < 0.32) {
+    const gather = phase / 0.32;
+    return {
+      torso: { z: 0.25 * gather },
+      head: { z: 0.18 * gather },
+      armL: { z: 2.15 * gather, x: 0.24 * gather },
+      armR: { z: 2.15 * gather, x: -0.24 * gather },
+      foreArmL: { z: 0.35 * gather },
+      foreArmR: { z: 0.35 * gather },
+      legL: { z: 0.3 * gather },
+      legR: { z: 0.3 * gather },
+      shinL: { z: -0.45 * gather },
+      shinR: { z: -0.45 * gather },
+    };
+  }
+  const dive = Math.min(1, (phase - 0.32) / 0.22);
+  return {
+    root: { z: -0.12 * dive },
+    torso: { z: 0.25 - 0.34 * dive },
+    head: { z: 0.18 - 0.48 * dive },
+    armL: { z: 2.15 + 0.55 * dive, x: 0.24 - 0.08 * dive },
+    armR: { z: 2.15 + 0.55 * dive, x: -0.24 + 0.08 * dive },
+    foreArmL: { z: 0.35 - 0.25 * dive },
+    foreArmR: { z: 0.35 - 0.25 * dive },
+    legL: { z: 0.3 - 0.44 * dive },
+    legR: { z: 0.3 - 0.44 * dive },
+    shinL: { z: -0.45 + 0.53 * dive },
+    shinR: { z: -0.45 + 0.53 * dive },
+  };
+}
