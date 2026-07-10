@@ -33,6 +33,12 @@ export class CameraRig {
   private shake = 0;
   private readonly shakeUnsub: () => void;
 
+  // Final-Zoom punch-in: bias framing toward a hit point, pull the camera in.
+  private punchTimer = 0;
+  private punchDuration = 1;
+  private punchX = 0;
+  private punchY = 0;
+
   constructor(
     camera: THREE.PerspectiveCamera,
     private readonly shakeEnabled: () => boolean = () => true,
@@ -56,6 +62,14 @@ export class CameraRig {
   /** Unsubscribes from the event bus — call when the owning screen exits. */
   dispose(): void {
     this.shakeUnsub();
+  }
+
+  /** Killing-blow drama: zoom toward (x, y) for `seconds` (view-only). */
+  punchIn(x: number, y: number, seconds: number): void {
+    this.punchTimer = seconds;
+    this.punchDuration = seconds;
+    this.punchX = x;
+    this.punchY = y;
   }
 
   /** Clamp the framed view so it never drifts off-stage / below the floor. */
@@ -120,11 +134,20 @@ export class CameraRig {
     this.targetX = tx;
     this.targetY = ty;
     this.targetZ = dist;
+
+    // Punch-in overrides: lean hard toward the hit and dive under min dist.
+    if (this.punchTimer > 0) {
+      const strength = clamp(this.punchTimer / this.punchDuration, 0, 1);
+      this.targetX = this.targetX + (this.punchX - this.targetX) * 0.65 * strength;
+      this.targetY = this.targetY + (this.punchY + 1 - this.targetY) * 0.65 * strength;
+      this.targetZ = this.targetZ + (CAM_MIN_DIST * 0.72 - this.targetZ) * strength;
+    }
   }
 
   /** Smooth toward the target and apply the current shake offset. */
   update(dt: number): void {
-    this.baseX = damp(this.baseX, this.targetX, CAM_SMOOTHING, dt);
+    if (this.punchTimer > 0) this.punchTimer = Math.max(0, this.punchTimer - dt);
+    this.baseX = damp(this.baseX, this.targetX, this.punchTimer > 0 ? CAM_SMOOTHING * 3 : CAM_SMOOTHING, dt);
     this.baseY = damp(this.baseY, this.targetY, CAM_SMOOTHING, dt);
     this.baseZ = damp(this.baseZ, this.targetZ, CAM_SMOOTHING, dt);
 

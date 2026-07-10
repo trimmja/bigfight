@@ -414,5 +414,7 @@ export interface SaveData {
   equippedSidekick: string | null;
   /** Highest beaten level, 0–12. Level N is playable iff N <= levelsBeaten + 1. */
   levelsBeaten: number;
+  /** Online fighter name ('' until first online visit; A-Za-z0-9, ≤12 chars). */
+  nickname: string;
   settings: SaveSettings;
 }

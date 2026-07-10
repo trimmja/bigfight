@@ -179,6 +179,13 @@ export class Fighter extends Entity {
   syncState(io: StateIO, registry: SimRegistry): void {
     this.alive = io.bool(this.alive);
     this.body.syncState(io);
+    // Intents are read EARLY in the frame (respawn-cloud drop checks, DI) —
+    // before this frame's refresh — so the previous frame's values are state.
+    this.intents.moveX = io.f64(this.intents.moveX);
+    this.intents.moveY = io.f64(this.intents.moveY);
+    this.intents.jumpPressed = io.bool(this.intents.jumpPressed);
+    this.intents.attackPressed = io.bool(this.intents.attackPressed);
+    this.intents.weaponPressed = io.bool(this.intents.weaponPressed);
     this.damage = io.f64(this.damage);
     this.damageScale = io.f64(this.damageScale);
     this.kbImmune = io.bool(this.kbImmune);

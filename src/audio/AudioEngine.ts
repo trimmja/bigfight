@@ -3,6 +3,7 @@ import type { GameEvents } from '../core/events';
 import { events } from '../core/events';
 import { Music } from './music';
 import { Sfx } from './sfx';
+import { getVoiceBuffer, VOICE_DATA, type VoiceId } from './voicepack';
 
 type Mood = GameEvents['music']['mood'];
 type SfxPriority = 'normal' | 'ui';
@@ -22,6 +23,8 @@ export class AudioEngine implements IAudio {
   private master: GainNode | null = null;
   private sfx: Sfx | null = null;
   private music: Music | null = null;
+  /** ElevenLabs voice lines get their own bus — never crowded out by SFX. */
+  private voiceBus: GainNode | null = null;
   private _muted = false;
   private unlockComplete = false;
   private activeSfxVoices = 0;
@@ -95,8 +98,14 @@ export class AudioEngine implements IAudio {
     events.on('hit', ({ damage }) => {
       this.playSfx('normal', (sfx) => sfx.hit(damage));
     });
-    events.on('ko', () => {
+    events.on('ko', ({ kind, characterId }) => {
       this.playSfx('normal', (sfx) => sfx.ko());
+      // Star KO = the character's ElevenLabs falling scream (players only —
+      // mob ids simply aren't in the pack, so the lookup no-ops).
+      if (kind === 'star') this.playVoice(`scream_${characterId}` as VoiceId);
+    });
+    events.on('announce', ({ id }) => {
+      this.playVoice(id as VoiceId);
     });
     events.on('jump', () => {
       this.playSfx('normal', (sfx) => sfx.jump());
@@ -134,6 +143,23 @@ export class AudioEngine implements IAudio {
     });
   }
 
+  /** Fire-and-forget voice line (decoded lazily + cached in the voicepack). */
+  private playVoice(id: VoiceId): void {
+    const ctx = this.ctx;
+    const voiceBus = this.voiceBus;
+    if (!ctx || !voiceBus || ctx.state !== 'running') return;
+    if (!(id in VOICE_DATA)) return; // unknown id (e.g. a mob star KO) — silent
+    void getVoiceBuffer(ctx, id)
+      .then((buffer) => {
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(voiceBus);
+        source.onended = () => source.disconnect();
+        source.start();
+      })
+      .catch(() => undefined);
+  }
+
   private playSfx(priority: SfxPriority, play: (sfx: Sfx) => number): void {
     const ctx = this.ctx;
     const sfx = this.sfx;
@@ -166,17 +192,21 @@ export class AudioEngine implements IAudio {
     const master = ctx.createGain();
     const sfxBus = ctx.createGain();
     const musicBus = ctx.createGain();
+    const voiceBus = ctx.createGain();
 
     master.gain.value = this._muted ? 0 : 1;
     sfxBus.gain.value = 0.9;
     musicBus.gain.value = 0.55;
+    voiceBus.gain.value = 1.0; // announcer/screams sit on top of the mix
 
     sfxBus.connect(master);
     musicBus.connect(master);
+    voiceBus.connect(master);
     master.connect(ctx.destination);
 
     this.ctx = ctx;
     this.master = master;
+    this.voiceBus = voiceBus;
     this.sfx = new Sfx(ctx, sfxBus);
     this.music = new Music(ctx, musicBus);
 

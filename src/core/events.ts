@@ -35,6 +35,8 @@ export interface GameEvents {
   bossHp: { frac: number };
   /** UI blips. */
   ui: { kind: 'move' | 'confirm' | 'back' | 'buy' | 'error' | 'unlock' };
+  /** ElevenLabs voice line by VoiceId (audio/voicepack.ts) — announcer + screams. */
+  announce: { id: string };
   /** Music mood change request. */
   music: { mood: 'menu' | 'battle' | 'boss' | 'victory' | 'defeat' | 'off' };
   screenShake: { amount: number };

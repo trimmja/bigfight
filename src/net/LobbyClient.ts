@@ -406,7 +406,9 @@ export class LobbyClient {
 
   /** Binary passthrough — build frames with shared/protocol encodeRelayFrame. */
   sendRelayFrame(bytes: Uint8Array): void {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(bytes);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(bytes as Uint8Array<ArrayBuffer>);
+    }
   }
 
   // ---------------------------------------------------------------- cleanup

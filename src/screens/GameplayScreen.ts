@@ -1,14 +1,22 @@
 import * as THREE from 'three';
 import {
+  CLOUD_DESCENT_TIME,
+  CLOUD_INVULN_MAX,
+  CLOUD_INVULN_MIN,
+  CLOUD_MAX_RIDE,
   COLOR_NEON_CYAN,
   COLOR_NEON_GREEN,
   COLOR_NEON_PINK,
   COLOR_NEON_YELLOW,
   DEBUG,
+  FINAL_ZOOM_SCALE,
+  FINAL_ZOOM_TIME,
+  GRAVITY,
   PLAYER_STOCKS,
   RESPAWN_DELAY,
   STAR_KO_MIN_VY,
   TIMESTEP,
+  VERSUS_COUNTDOWN_FRAMES,
 } from '../config';
 import { getMobAttackTokens, resetMobAttackTokens, setMobAttackTokens } from '../ai/MobBrain';
 import type { IIntentSource } from '../contracts';
@@ -37,6 +45,9 @@ import { Body } from '../physics/Body';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { CameraRig } from '../render/CameraRig';
 import { Particles } from '../render/Particles';
+import { RespawnCloudView } from '../render/RespawnCloudView';
+import { SlotMarkers } from '../render/slotMarkers';
+import { StarKoEffect } from '../render/StarKoEffect';
 import { Trails } from '../render/Trails';
 import { Boss } from '../entities/Boss';
 import { GiantEagle } from '../entities/bosses/GiantEagle';
@@ -106,6 +117,13 @@ const DEBUG_HITBOX_SLOTS = 8;
 const DEBUG_BODY_SLOTS = 18;
 const CLEAR_BEAT_SECONDS = 2.2;
 const EMPTY_MOBS: readonly Mob[] = [];
+/** P1-P4 identity colors (matches --slot CSS custom properties). */
+export const SLOT_COLORS: readonly number[] = [
+  COLOR_NEON_CYAN,
+  COLOR_NEON_PINK,
+  COLOR_NEON_YELLOW,
+  COLOR_NEON_GREEN,
+];
 
 export class GameplayScreen implements Screen {
   private readonly opts: GameplayScreenOptions;
@@ -148,6 +166,14 @@ export class GameplayScreen implements Screen {
   private readonly registry = new SimRegistry();
   /** Game handle for restore-time lazy construction (boss across rollback). */
   private enterGame: Game | null = null;
+  // Cinematic view layers (multiplayer polish — all view-only).
+  private starKo: StarKoEffect | null = null;
+  private cloudView: RespawnCloudView | null = null;
+  private slotMarkers: SlotMarkers | null = null;
+  private koUnsub: (() => void) | null = null;
+  private viewTime = 0;
+  /** Versus 3-2-1-GO stage: 0 none → 4 done (view-only pacing). */
+  private countStage = 0;
   private goldEarned = 0;
   private levelEnding = false;
   private levelWon = false;
@@ -201,6 +227,11 @@ export class GameplayScreen implements Screen {
     return this.players[this.localSlot] ?? null;
   }
 
+  /** Smash revival cloud in every multiplayer mode; solo keeps the classic respawn. */
+  private get useCloud(): boolean {
+    return this.players.length > 1 || isVersus(this.match.mode);
+  }
+
   enter(game: Game): void {
     this.enterGame = game;
     resetMobAttackTokens();
@@ -223,6 +254,16 @@ export class GameplayScreen implements Screen {
       if (!slot) return;
       slot.lastHitBySlot = attackerSlot;
       slot.lastHitTimer = 4;
+    };
+    // Final Zoom: a launch that will KO gets the killing-blow slow-mo.
+    this.hitResolver.onLaunched = (victim, kb) => {
+      if (!isVersus(match.mode) || kb < 24 || this.matchState.finalZoomTimer > 0) return;
+      if (!this.launchWillKo(victim.body.pos.x, victim.body.pos.y, victim.body.vel.x, victim.body.vel.y)) return;
+      this.matchState.finalZoomTimer = FINAL_ZOOM_TIME; // sim state → rollback-safe
+      if (!simPhase.resimulating) {
+        this.cameraRig?.punchIn(victim.body.pos.x, victim.body.pos.y + 0.9, FINAL_ZOOM_TIME + 0.3);
+        game.events.emit('screenShake', { amount: 0.9 });
+      }
     };
     this.physics = new PhysicsWorld();
     this.mobPool = new MobPool(game.renderer.scene);
@@ -342,6 +383,29 @@ export class GameplayScreen implements Screen {
     }
     projectileManager.registerNetIds(this.registry);
 
+    // Multiplayer view layers: star-KO cinematic, respawn clouds, P1-P4 markers.
+    this.viewTime = 0;
+    this.countStage = 0;
+    this.starKo = new StarKoEffect(game.renderer.scene, this.particles);
+    if (this.useCloud) {
+      this.cloudView = new RespawnCloudView(game.renderer.scene, SLOT_COLORS, this.players.length);
+    }
+    if (this.players.length > 1) {
+      this.slotMarkers = new SlotMarkers(game.renderer.scene, this.players, SLOT_COLORS);
+    }
+    this.koUnsub = game.events.on('ko', ({ slot, kind }) => {
+      if (kind !== 'star' || slot === null) return;
+      const fighter = this.players[slot];
+      if (fighter) {
+        this.starKo?.launch(
+          fighter.group,
+          fighter.body.pos.x,
+          fighter.body.pos.y,
+          fighter.def.palette.glow,
+        );
+      }
+    });
+
     if (DEBUG) this.createDebug(game);
     game.input.setTouchControlsVisible(true);
     game.events.emit('music', { mood: 'battle' });
@@ -359,6 +423,14 @@ export class GameplayScreen implements Screen {
   exit(game: Game): void {
     this.hitUnsub?.();
     this.hitUnsub = null;
+    this.koUnsub?.();
+    this.koUnsub = null;
+    this.starKo?.dispose();
+    this.starKo = null;
+    this.cloudView?.dispose();
+    this.cloudView = null;
+    this.slotMarkers?.dispose();
+    this.slotMarkers = null;
     this.hud?.dispose();
     this.hud = null;
     this.damageNumbers?.dispose();
@@ -426,6 +498,20 @@ export class GameplayScreen implements Screen {
     }
 
     this.matchState.frame += 1;
+
+    // Versus pre-match freeze: fighters hold their spawns through 3-2-1-GO.
+    // Frame-count gated → identical on every peer; nothing else steps.
+    if (isVersus(this.match.mode) && this.matchState.frame <= VERSUS_COUNTDOWN_FRAMES) {
+      if (!simPhase.resimulating) this.updateViewTail(game, dt, stage);
+      return;
+    }
+
+    // Final Zoom: killing-blow slow-mo — the timescale IS sim state.
+    if (this.matchState.finalZoomTimer > 0) {
+      this.matchState.finalZoomTimer = Math.max(0, this.matchState.finalZoomTimer - dt);
+      dt = dt * FINAL_ZOOM_SCALE;
+    }
+
     hitResolver.beginStep();
     this.debugSubmittedHitboxes.length = 0;
     this.updateRespawns(ctx, dt);
@@ -503,18 +589,67 @@ export class GameplayScreen implements Screen {
       if (!mob.alive && mob.hitstopTimer <= 0) this.mobPool?.release(mob);
     }
 
-    if (!simPhase.resimulating) {
-      this.updateCamera(stage);
-      particles.update(dt);
-      trails.update(dt);
-      this.damageNumbers?.update(dt);
+    if (!simPhase.resimulating) this.updateViewTail(game, dt, stage);
+  }
+
+  /** Everything after the sim: camera, particles, HUD, cinematics, end flow. */
+  private updateViewTail(game: Game, dt: number, stage: BuiltStage): void {
+    this.viewTime += dt;
+    this.updateCamera(stage);
+    this.particles?.update(dt);
+    this.trails?.update(dt);
+    this.damageNumbers?.update(dt);
+    this.starKo?.update(dt);
+    this.cloudView?.update(this.matchState.slots, this.viewTime);
+    this.slotMarkers?.update(dt);
+    this.updateCountdownView(game);
+    if (this.players.length > 1) {
+      this.hud?.setPlayers(this.buildHudViews());
+    } else {
       const local = this.localPlayer;
       if (local) this.hud?.set(local.damage, local.stocks);
-      if (DEBUG) this.updateDebug(dt);
-      // Navigation/persist callbacks never fire mid-resim; the 2.2s end beat
-      // vastly exceeds the rollback window, so the deferral can't diverge.
-      this.updateLevelEnd(game, dt);
     }
+    if (DEBUG) this.updateDebug(dt);
+    // Navigation/persist callbacks never fire mid-resim; the 2.2s end beat
+    // vastly exceeds the rollback window, so the deferral can't diverge.
+    this.updateLevelEnd(game, dt);
+  }
+
+  /** Versus 3-2-1-GO — banner + announcer keyed off the sim frame counter. */
+  private updateCountdownView(game: Game): void {
+    if (!isVersus(this.match.mode) || this.countStage >= 4) return;
+    const frame = this.matchState.frame;
+    const stages: { at: number; text: string; voice: string }[] = [
+      { at: 6, text: '3', voice: 'ann_3' },
+      { at: 60, text: '2', voice: 'ann_2' },
+      { at: 114, text: '1', voice: 'ann_1' },
+      { at: VERSUS_COUNTDOWN_FRAMES, text: 'GO!', voice: 'ann_go' },
+    ];
+    const next = stages[this.countStage];
+    if (next && frame >= next.at) {
+      this.countStage += 1;
+      this.hud?.banner(next.text, this.countStage === 4 ? 700 : 850);
+      game.events.emit('announce', { id: next.voice });
+    }
+  }
+
+  private buildHudViews(): import('../ui/hud').PlayerHudView[] {
+    const views: import('../ui/hud').PlayerHudView[] = [];
+    for (let i = 0; i < this.players.length; i += 1) {
+      const player = this.players[i]!;
+      const slot = this.matchState.slots[i]!;
+      views.push({
+        slot: i,
+        color: SLOT_COLORS[i] ?? 0xffffff,
+        name: this.match.players[i]?.nickname || player.def.name.toUpperCase(),
+        characterName: player.def.name.toUpperCase(),
+        damage: player.damage,
+        stocks: player.stocks,
+        eliminated: slot.eliminated,
+        isLocal: i === this.localSlot,
+      });
+    }
+    return views;
   }
 
   // --- rollback snapshot surface (driven by net/RollbackSession) ---
@@ -721,15 +856,95 @@ export class GameplayScreen implements Screen {
 
   private updateRespawns(ctx: WorldCtx, dt: number): void {
     if (this.levelEnding) return;
+    const blast = ctx.stage.blast;
+    const respawnPoint = ctx.stage.respawnPoint;
     for (let i = 0; i < this.players.length; i += 1) {
       const player = this.players[i]!;
       const slot = this.matchState.slots[i]!;
-      if (player.alive || slot.respawnTimer <= 0 || slot.eliminated) continue;
-      slot.respawnTimer = Math.max(0, slot.respawnTimer - dt);
-      if (slot.respawnTimer === 0 && player.stocks > 0) {
-        player.respawn(ctx, this.respawnOffsetX(i));
+      if (slot.eliminated) continue;
+
+      switch (slot.respawnPhase) {
+        case 0:
+          break;
+        case 1: {
+          // Waiting off-screen after the KO.
+          slot.respawnTimer = Math.max(0, slot.respawnTimer - dt);
+          if (slot.respawnTimer > 0 || player.stocks <= 0) break;
+          if (!this.useCloud) {
+            // Classic solo respawn — byte-identical to the original game.
+            player.respawn(ctx, this.respawnOffsetX(i));
+            slot.respawnPhase = 0;
+            break;
+          }
+          // Cloud entrance: drop in from above the blast ceiling.
+          slot.respawnPhase = 2;
+          slot.cloudX = respawnPoint.x + this.respawnOffsetX(i);
+          slot.cloudY = blast.top - 1.5;
+          slot.rideTime = 0;
+          player.koReset({ x: slot.cloudX, y: slot.cloudY });
+          player.damage = 0;
+          player.state = 'respawning';
+          player.body.noclip = true;
+          player.invulnTimer = 999; // intangible for the whole ride
+          break;
+        }
+        case 2: {
+          // Descending to the hover point.
+          const descentSpeed = (blast.top - 1.5 - respawnPoint.y) / CLOUD_DESCENT_TIME;
+          slot.cloudY = Math.max(respawnPoint.y, slot.cloudY - descentSpeed * dt);
+          this.pinToCloud(player, slot);
+          if (slot.cloudY <= respawnPoint.y) {
+            slot.respawnPhase = 3;
+            slot.rideTime = 0;
+          }
+          break;
+        }
+        case 3: {
+          // Riding: drop early by moving/jumping/pressing down; auto at 5s.
+          slot.rideTime += dt;
+          this.pinToCloud(player, slot);
+          const intents = player.intents;
+          const wantsOff =
+            Math.abs(intents.moveX) > 0.5 || intents.moveY < -0.5 || intents.jumpPressed;
+          if (wantsOff || slot.rideTime >= CLOUD_MAX_RIDE) {
+            slot.respawnPhase = 0;
+            player.state = 'fall';
+            player.stateTime = 0;
+            player.body.noclip = false;
+            // Camping the cloud shrinks your invincibility (Smash rules).
+            player.invulnTimer = Math.max(
+              CLOUD_INVULN_MIN,
+              CLOUD_INVULN_MAX - slot.rideTime * 0.2,
+            );
+          }
+          break;
+        }
       }
     }
+  }
+
+  private pinToCloud(player: Player, slot: { cloudX: number; cloudY: number }): void {
+    player.body.pos.x = slot.cloudX;
+    player.body.pos.y = slot.cloudY;
+    player.body.vel.x = 0;
+    player.body.vel.y = 0;
+  }
+
+  /** Cheap ballistic look-ahead: will this launch cross a blast line? */
+  private launchWillKo(x: number, y: number, vx: number, vy: number): boolean {
+    const blast = this.stage?.def.blast;
+    if (!blast) return false;
+    let px = x;
+    let py = y;
+    let pvy = vy;
+    const step = 1 / 60;
+    for (let i = 0; i < 48; i += 1) {
+      px += vx * step;
+      pvy += GRAVITY * step;
+      py += pvy * step;
+      if (px < blast.left || px > blast.right || py > blast.top || py < blast.bottom) return true;
+    }
+    return false;
   }
 
   /** Stagger multi-player respawn positions so simultaneous KOs don't stack. */
@@ -772,6 +987,7 @@ export class GameplayScreen implements Screen {
 
     fighter.stocks -= 1;
     if (fighter.stocks > 0) {
+      slot.respawnPhase = 1;
       slot.respawnTimer = RESPAWN_DELAY;
       return;
     }
@@ -812,6 +1028,8 @@ export class GameplayScreen implements Screen {
     this.levelWon = true;
     this.levelEndTimer = CLEAR_BEAT_SECONDS;
     this.pickupManager?.vacuumAll();
+    if (!simPhase.resimulating) this.hud?.banner('GAME!', 1800);
+    game.events.emit('announce', { id: 'ann_game' });
     game.events.emit('music', { mood: 'victory' });
   }
 
@@ -930,6 +1148,14 @@ export class GameplayScreen implements Screen {
     const result: VersusEndResult = { placements, kosBySlot, goldBySlot };
     if (this.match.mode === 'teams' && placements.length > 0) {
       result.winnerTeam = this.match.players[placements[0]!]!.teamId;
+    }
+    // Winner call: team color for 2v2, player slot for FFA.
+    if (this.match.mode === 'teams' && result.winnerTeam !== undefined) {
+      this.enterGame?.events.emit('announce', {
+        id: result.winnerTeam === 1 ? 'ann_team_cyan_wins' : 'ann_team_pink_wins',
+      });
+    } else if (placements.length > 0) {
+      this.enterGame?.events.emit('announce', { id: `ann_p${placements[0]! + 1}_wins` });
     }
     this.opts.onMatchEnd?.(result);
   }

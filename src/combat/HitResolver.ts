@@ -31,6 +31,9 @@ export class HitResolver {
    */
   onPlayerHitPlayer: ((victimSlot: number, attackerSlot: number) => void) | null = null;
 
+  /** Big launches (Final-Zoom candidates). kb is post-immunity knockback. */
+  onLaunched: ((victim: FighterLike, kb: number) => void) | null = null;
+
   beginStep(): void {
     hitboxes.length = 0;
   }
@@ -122,6 +125,7 @@ export class HitResolver {
           launched,
         };
         victim.onHit(result);
+        if (launched && this.onLaunched) this.onLaunched(victim, effectiveKb);
         if (hitbox.def.freezeTime && hitbox.def.freezeTime > 0) {
           shieldedVictim.applyFreeze?.(hitbox.def.freezeTime);
         }

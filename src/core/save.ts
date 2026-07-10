@@ -1,6 +1,7 @@
 import { SAVE_KEY } from '../config';
 import { SIDEKICKS } from '../data/sidekicks';
 import type { SaveData } from '../data/types';
+import { sanitizeNickname } from '../net/nicknames';
 
 function defaults(): SaveData {
   return {
@@ -12,6 +13,7 @@ function defaults(): SaveData {
     ownedSidekicks: [],
     equippedSidekick: null,
     levelsBeaten: 0,
+    nickname: '',
     settings: { muted: false, quality: 'auto', shake: true },
   };
 }
@@ -87,6 +89,7 @@ function sanitize(save: SaveData): SaveData {
   for (const key of Object.keys(save.materials) as (keyof SaveData['materials'])[]) {
     save.materials[key] = Math.floor(num(save.materials[key], 0, 0, 9999));
   }
+  save.nickname = typeof save.nickname === 'string' ? sanitizeNickname(save.nickname) : '';
   save.purchasedCharacters = stringArray(save.purchasedCharacters);
   save.ownedSidekicks = stringArray(save.ownedSidekicks);
   save.craftedWeapons = stringArray(save.craftedWeapons);

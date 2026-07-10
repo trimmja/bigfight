@@ -42,6 +42,16 @@ export const RESPAWN_DELAY = 1.2;
 export const RESPAWN_INVULN = 2.5;
 /** Upward blast-line KO faster than this = Star KO (background fly + scream). */
 export const STAR_KO_MIN_VY = 18;
+// Respawn cloud (multiplayer modes — Smash Ultimate revival platform rules).
+export const CLOUD_DESCENT_TIME = 0.7;
+export const CLOUD_MAX_RIDE = 5.0;
+export const CLOUD_INVULN_MAX = 2.0;
+export const CLOUD_INVULN_MIN = 1.0;
+/** Final Zoom: killing-blow slow-mo factor + duration (versus only). */
+export const FINAL_ZOOM_TIME = 0.45;
+export const FINAL_ZOOM_SCALE = 0.3;
+/** Versus pre-match freeze: 3-2-1-GO over frozen fighters (frames). */
+export const VERSUS_COUNTDOWN_FRAMES = 168;
 
 // ---- AI ----
 /** Max mobs in windup/attack simultaneously (crowd fairness). */

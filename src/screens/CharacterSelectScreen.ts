@@ -1,36 +1,25 @@
-import * as THREE from 'three';
 import { events } from '../core/events';
 import type { Game } from '../Game';
-import { pick, rand } from '../core/math';
-import { CHARACTERS, characterById } from '../data/characters';
-import type { CharacterDef } from '../data/types';
-import { isCharacterUnlocked, unlockedCharacters } from '../progression';
-import { buildCharacterRig } from '../rigs/characterBuilders';
-import type { Rig } from '../rigs/FighterRig';
-import { poseFightStance, poseAttack } from '../rigs/poses';
+import { characterById } from '../data/characters';
+import { buildCharacterGrid, type CharacterGrid } from '../ui/characterGrid';
 import { button, el, uiRoot } from '../ui/dom';
+import { FighterTurntable } from '../ui/fighterPreview';
 import type { Screen } from './Screen';
 
 /**
  * Character select: card grid on the left, live 3D preview (idling, punches
- * when you tap them) on the right, stat bars, RANDOM option.
+ * when you tap them) on the right, stat bars, RANDOM option. Grid + preview
+ * live in ui/characterGrid.ts + ui/fighterPreview.ts (shared with the online
+ * select).
  */
 export class CharacterSelectScreen implements Screen {
   private root: HTMLElement | null = null;
-  private preview: Rig | null = null;
-  private previewGroup = new THREE.Group();
+  private turntable: FighterTurntable | null = null;
+  private grid: CharacterGrid | null = null;
   private selectedId: string;
-  private t = 0;
-  private punchT = -1;
   private nameEl: HTMLElement | null = null;
   private tagEl: HTMLElement | null = null;
   private statsEl: HTMLElement | null = null;
-  private cards = new Map<string, HTMLButtonElement>();
-  /** Drag-to-spin state: user yaw persists, idle sway rides on top. */
-  private userYaw = -Math.PI / 2;
-  private dragPointerId: number | null = null;
-  private lastDragX = 0;
-  private spinVelocity = 0;
 
   constructor(
     private readonly callbacks: {
@@ -43,7 +32,8 @@ export class CharacterSelectScreen implements Screen {
 
   enter(game: Game): void {
     game.input.setTouchControlsVisible(false);
-    game.renderer.scene.add(this.previewGroup);
+    this.turntable = new FighterTurntable();
+    game.renderer.scene.add(this.turntable.group);
     game.renderer.camera.position.set(0, 0, 22);
     game.renderer.camera.lookAt(0, 0, 0);
 
@@ -53,51 +43,10 @@ export class CharacterSelectScreen implements Screen {
     el('h1', 'bf-select-title', header).textContent = 'CHOOSE YOUR FIGHTER';
 
     const body = el('div', 'bf-select-body', this.root);
-    const grid = el('div', 'bf-select-grid', body);
-    for (const def of CHARACTERS) {
-      const unlocked = isCharacterUnlocked(def, game.save);
-      const card = el('button', 'bf-card' + (unlocked ? '' : ' bf-card-locked'), grid);
-      card.type = 'button';
-      const dot = el('span', 'bf-card-dot', card);
-      dot.style.background = `#${def.palette.core.toString(16).padStart(6, '0')}`;
-      el('span', 'bf-card-name', card).textContent = unlocked ? def.name : '???';
-      if (!unlocked) {
-        el('span', 'bf-card-lock', card).textContent =
-          def.unlock.type === 'level' ? `Beat level ${def.unlock.level}` : `💰 in Market`;
-      }
-      card.disabled = !unlocked;
-      card.addEventListener('click', () => this.select(game, def.id, true));
-      this.cards.set(def.id, card);
-    }
-    // Random card.
-    const randomCard = el('button', 'bf-card bf-card-random', grid);
-    randomCard.type = 'button';
-    el('span', 'bf-card-dot', randomCard).textContent = '🎲';
-    el('span', 'bf-card-name', randomCard).textContent = 'RANDOM';
-    randomCard.addEventListener('click', () => {
-      const options = unlockedCharacters(game.save);
-      this.select(game, pick(rand, options).id, true);
-    });
+    this.grid = buildCharacterGrid(body, game.save, (id) => this.select(game, id, true));
 
     // Drag anywhere that isn't a button to spin the fighter around.
-    this.root.addEventListener('pointerdown', (e) => {
-      if ((e.target as HTMLElement).closest('button')) return;
-      this.dragPointerId = e.pointerId;
-      this.lastDragX = e.clientX;
-      this.spinVelocity = 0;
-    });
-    this.root.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== this.dragPointerId) return;
-      const dx = e.clientX - this.lastDragX;
-      this.lastDragX = e.clientX;
-      this.userYaw += dx * 0.013;
-      this.spinVelocity = dx * 0.013 * 60;
-    });
-    const endDrag = (e: PointerEvent): void => {
-      if (e.pointerId === this.dragPointerId) this.dragPointerId = null;
-    };
-    this.root.addEventListener('pointerup', endDrag);
-    this.root.addEventListener('pointercancel', endDrag);
+    this.turntable.attachDrag(this.root);
 
     const side = el('div', 'bf-select-side', body);
     this.nameEl = el('h2', 'bf-select-name', side);
@@ -119,11 +68,9 @@ export class CharacterSelectScreen implements Screen {
   private select(_game: Game, id: string, sfx: boolean): void {
     this.selectedId = id;
     if (sfx) events.emit('ui', { kind: 'move' });
-    for (const [cardId, card] of this.cards) {
-      card.classList.toggle('bf-card-selected', cardId === id);
-    }
+    this.grid?.setSelected(id);
     const def = characterById(id);
-    this.buildPreview(def);
+    this.turntable?.setCharacter(def);
     if (this.nameEl) this.nameEl.textContent = def.name.toUpperCase();
     if (this.tagEl) this.tagEl.textContent = def.tagline;
     if (this.statsEl) {
@@ -133,9 +80,6 @@ export class CharacterSelectScreen implements Screen {
       this.statBar('WEIGHT', (def.weight - 80) / 40);
       this.statBar('JUMP', (def.jumpVel - 12) / 4.5);
     }
-    this.punchT = 0; // greet with a punch
-    this.userYaw = -Math.PI / 2; // new fighter faces the camera
-    this.spinVelocity = 0;
   }
 
   private statBar(label: string, frac: number): void {
@@ -147,54 +91,18 @@ export class CharacterSelectScreen implements Screen {
     fill.style.width = `${Math.round(Math.max(0.08, Math.min(1, frac)) * 100)}%`;
   }
 
-  private buildPreview(def: CharacterDef): void {
-    if (this.preview) {
-      this.previewGroup.remove(this.preview.root);
-      this.preview.dispose();
-    }
-    this.preview = buildCharacterRig(def);
-    // Rig at the group origin; the group carries position/scale/spin —
-    // placement is aspect-aware and happens every frame in update().
-    this.preview.setShadow(null, 0);
-    this.previewGroup.add(this.preview.root);
-  }
-
   exit(game: Game): void {
-    game.renderer.scene.remove(this.previewGroup);
-    this.preview?.dispose();
-    this.preview = null;
+    if (this.turntable) {
+      game.renderer.scene.remove(this.turntable.group);
+      this.turntable.dispose();
+      this.turntable = null;
+    }
+    this.grid = null;
     this.root?.remove();
     this.root = null;
   }
 
   update(game: Game, dt: number): void {
-    this.t += dt;
-    if (!this.preview) return;
-
-    // Anchor the fighter to the middle of the right-hand zone regardless of
-    // aspect ratio (phones squished him small and high), at ~2x scale.
-    const cam = game.renderer.camera;
-    const dist = cam.position.z - 10;
-    const halfH = Math.tan((cam.fov * Math.PI) / 360) * dist;
-    const halfW = halfH * cam.aspect;
-    const scale = 2.0;
-    this.previewGroup.scale.setScalar(scale);
-    this.previewGroup.position.set(halfW * 0.47, halfH * 0.18 - 1.05 * scale, 10);
-
-    const blend = 1 - Math.exp(-14 * dt);
-    if (this.punchT >= 0) {
-      this.punchT += dt * 2.4;
-      if (this.punchT >= 1) this.punchT = -1;
-      else this.preview.setPose(poseAttack('finisher', this.punchT), blend);
-    }
-    if (this.punchT < 0) this.preview.setPose(poseFightStance(this.t), blend);
-    // Drag-to-spin with momentum; gentle idle sway rides on top. (Yaw lives
-    // on the wrapper group — the rig's own root yaw belongs to facing turns.)
-    if (this.dragPointerId === null && Math.abs(this.spinVelocity) > 0.01) {
-      this.userYaw += this.spinVelocity * dt;
-      this.spinVelocity *= Math.exp(-3.2 * dt);
-    }
-    this.previewGroup.rotation.y = this.userYaw + Math.sin(this.t * 0.5) * 0.1;
-    this.preview.update(dt);
+    this.turntable?.update(game.renderer.camera, dt);
   }
 }

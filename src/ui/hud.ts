@@ -10,9 +10,31 @@ const POWERUP_BANNERS: Record<PowerupId, string> = {
   freezeRay: '❄️ FREEZE RAY!',
 };
 
+/** One multiplayer HUD cluster's worth of data (Smash-style bottom row). */
+export interface PlayerHudView {
+  slot: number;
+  color: number;
+  name: string;
+  characterName: string;
+  damage: number;
+  stocks: number;
+  eliminated: boolean;
+  isLocal: boolean;
+}
+
+type Cluster = {
+  root: HTMLElement;
+  damageEl: HTMLElement;
+  stocksEl: HTMLElement;
+  lastDamage: number;
+  lastStocks: number;
+  lastEliminated: boolean;
+};
+
 /**
  * In-fight HUD: damage %, stock pips, wave banner, boss health bar.
- * GameplayScreen calls set() once per frame; everything else is event-driven.
+ * GameplayScreen calls set() (solo corner) or setPlayers() (multiplayer
+ * bottom-center row) once per frame; everything else is event-driven.
  */
 export class Hud {
   private root: HTMLElement;
@@ -22,6 +44,9 @@ export class Hud {
   private bossBar: HTMLElement;
   private bossFill: HTMLElement;
   private bossName: HTMLElement;
+  private cornerEl: HTMLElement;
+  private rowEl: HTMLElement | null = null;
+  private clusters: Cluster[] = [];
 
   private lastDamage = -1;
   private lastStocks = -1;
@@ -32,6 +57,7 @@ export class Hud {
     this.root = uiRoot('bf-hud');
 
     const corner = el('div', 'bf-hud-corner', this.root);
+    this.cornerEl = corner;
     this.damageEl = el('div', 'bf-damage', corner);
     this.damageEl.textContent = '0%';
     this.stocksEl = el('div', 'bf-stocks', corner);
@@ -85,6 +111,56 @@ export class Hud {
       this.lastStocks = stocks;
       this.stocksEl.replaceChildren();
       for (let i = 0; i < Math.max(0, stocks); i += 1) el('span', 'bf-stock', this.stocksEl);
+    }
+  }
+
+  /** Multiplayer: 2-4 slot-colored clusters, Smash-style bottom-center row. */
+  setPlayers(views: readonly PlayerHudView[]): void {
+    if (!this.rowEl) {
+      this.cornerEl.style.display = 'none';
+      this.rowEl = el('div', 'bf-hud-row', this.root);
+      this.clusters = [];
+      for (const view of views) {
+        const cluster = el('div', 'bf-hud-cluster', this.rowEl);
+        cluster.style.setProperty('--slot', `#${view.color.toString(16).padStart(6, '0')}`);
+        if (view.isLocal) cluster.classList.add('bf-hud-cluster-local');
+        const label = el('div', 'bf-hud-name', cluster);
+        label.textContent = `P${view.slot + 1} ${view.name}`;
+        const damageEl = el('div', 'bf-damage bf-hud-cluster-damage', cluster);
+        damageEl.textContent = '0%';
+        const stocksEl = el('div', 'bf-stocks', cluster);
+        this.clusters.push({
+          root: cluster,
+          damageEl,
+          stocksEl,
+          lastDamage: -1,
+          lastStocks: -1,
+          lastEliminated: false,
+        });
+      }
+    }
+    for (let i = 0; i < views.length && i < this.clusters.length; i += 1) {
+      const view = views[i]!;
+      const cluster = this.clusters[i]!;
+      const d = Math.round(view.damage);
+      if (d !== cluster.lastDamage) {
+        cluster.lastDamage = d;
+        cluster.damageEl.textContent = `${d}%`;
+        const hue = Math.max(0, 120 - d * 1.1);
+        cluster.damageEl.style.color = `hsl(${hue}, 90%, 46%)`;
+        cluster.damageEl.classList.remove('bf-damage-pop');
+        void cluster.damageEl.offsetWidth;
+        cluster.damageEl.classList.add('bf-damage-pop');
+      }
+      if (view.stocks !== cluster.lastStocks) {
+        cluster.lastStocks = view.stocks;
+        cluster.stocksEl.replaceChildren();
+        for (let s = 0; s < Math.max(0, view.stocks); s += 1) el('span', 'bf-stock', cluster.stocksEl);
+      }
+      if (view.eliminated !== cluster.lastEliminated) {
+        cluster.lastEliminated = view.eliminated;
+        cluster.root.classList.toggle('bf-hud-cluster-out', view.eliminated);
+      }
     }
   }
 

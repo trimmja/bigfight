@@ -8,6 +8,7 @@ import type { SaveData } from './data/types';
 import { InputManager } from './input/InputManager';
 import { Renderer } from './render/Renderer';
 import { goReplayLab, goTitle } from './flow';
+import { goOnlineJoinDeepLink } from './flowOnline';
 import { ScreenManager } from './screens/ScreenManager';
 
 /**
@@ -44,7 +45,12 @@ export class Game {
     });
     window.visualViewport?.addEventListener('resize', () => this.renderer.onResize());
 
+    // `?join=CODE` deep link (a friend's share) → straight to the join
+    // screen, pre-filled + auto-joining. The param is stripped AFTER a
+    // successful join (JoinCodeScreen), so a mid-join reload retries it.
+    const joinCode = new URLSearchParams(location.search).get('join');
     if (location.search.includes('replaylab')) goReplayLab(this);
+    else if (joinCode) goOnlineJoinDeepLink(this, joinCode);
     else goTitle(this);
     this.stopLoop = startLoop(
       (dt) => {

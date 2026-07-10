@@ -20,7 +20,10 @@ export class TitleScreen implements Screen {
   private t = 0;
   private started = false;
 
-  constructor(private readonly onPlay: () => void) {}
+  constructor(
+    private readonly onPlay: () => void,
+    private readonly onOnline?: () => void,
+  ) {}
 
   enter(game: Game): void {
     // Hero lineup: the three starters idling/jogging on the sky.
@@ -58,6 +61,21 @@ export class TitleScreen implements Screen {
     this.root.addEventListener('pointerdown', start);
     events.emit('music', { mood: 'menu' });
 
+    // Online lobby entry — violet is the online identity color.
+    if (this.onOnline) {
+      const online = this.onOnline;
+      const onlineBtn = button(
+        '🌐 ONLINE',
+        () => {
+          events.emit('ui', { kind: 'confirm' });
+          online();
+        },
+        'bf-button bf-button-violet bf-online-pill',
+        this.root,
+      );
+      onlineBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    }
+
     // Quiet update check — a one-tap refresh beats force-quitting the webapp
     // (save data survives the reload untouched).
     void updateAvailable().then((available) => {
@@ -94,8 +112,9 @@ export class TitleScreen implements Screen {
   }
 }
 
-/** Friendly cartoon pistol: chunky rounded shapes, thick outline, star muzzle. */
-const PISTOL_SVG = `
+/** Friendly cartoon pistol: chunky rounded shapes, thick outline, star muzzle.
+ * (Exported for the online 'pistol wipe' screen transition — ui/transition.ts.) */
+export const PISTOL_SVG = `
 <svg viewBox="0 0 240 140" xmlns="http://www.w3.org/2000/svg" aria-label="Big Fight pistol logo">
   <g stroke="#1e2a4a" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
     <rect x="18" y="38" width="170" height="42" rx="20" fill="#4ab0ff"/>
