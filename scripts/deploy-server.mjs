@@ -32,6 +32,11 @@ function run(cmd, args) {
 }
 
 // 1. Build the client (tsc + vite -> dist/).
+// The Fly server serves the client at ROOT ("/"), so force Vite's base to "/"
+// (vite.config.ts defaults to "/bigfight/" for the GitHub Pages project site — that
+// would 404 every asset at the apex). spawnSync inherits process.env, so this env
+// var reaches the `npm run build` child.
+process.env.BASE_PATH = '/';
 run('npm', ['run', 'build']);
 if (!fs.existsSync(path.join(dist, 'index.html'))) {
   console.error('dist/index.html missing after build — aborting.');
