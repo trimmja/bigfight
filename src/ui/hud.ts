@@ -91,6 +91,11 @@ export class Hud {
       events.on('powerup', ({ id }) => {
         this.banner(POWERUP_BANNERS[id] ?? 'POWER UP!', 2000);
       }),
+      // Netplay peer health — small top banner, kid-voice, never blocks play.
+      events.on('netPeer', ({ kind }) => {
+        if (kind === 'lagging') this.banner('⚠️ Reconnecting…', 1500);
+        else if (kind === 'disconnected') this.banner('💨 Player left the fight!', 2400);
+      }),
     );
   }
 

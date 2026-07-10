@@ -37,6 +37,8 @@ export interface GameEvents {
   ui: { kind: 'move' | 'confirm' | 'back' | 'buy' | 'error' | 'unlock' };
   /** ElevenLabs voice line by VoiceId (audio/voicepack.ts) — announcer + screams. */
   announce: { id: string };
+  /** Netplay peer health for in-match UX (lag toast / disconnect banner). */
+  netPeer: { slot: number; kind: 'lagging' | 'ok' | 'disconnected' };
   /** Music mood change request. */
   music: { mood: 'menu' | 'battle' | 'boss' | 'victory' | 'defeat' | 'off' };
   screenShake: { amount: number };
