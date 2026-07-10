@@ -1,4 +1,4 @@
-import type { IInput, InputState } from '../contracts';
+import type { AbilityButtonInfo, IInput, InputState } from '../contracts';
 import { clamp } from '../core/math';
 import { KeyboardInput } from './keyboard';
 import { TouchInput } from './touch';
@@ -15,12 +15,19 @@ export class InputManager implements IInput {
     attackHeld: false,
     weaponPressed: false,
     weaponHeld: false,
+    specialSlot: -1,
+    specialSlotPressed: false,
     pausePressed: false,
     anyPressed: false,
   };
 
-  /** True when the browser reports a touch-capable device. */
-  readonly isTouch = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1;
+  /**
+   * True when the browser reports a touch-capable device — or when `?touch` is
+   * in the URL, which force-shows the mobile overlay on desktop for review
+   * (keyboard still works; click the on-screen buttons with the mouse).
+   */
+  readonly isTouch = (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1)
+    || (typeof location !== 'undefined' && location.search.includes('touch'));
 
   private readonly keyboard = new KeyboardInput();
   private readonly touch: TouchInput;
@@ -28,6 +35,7 @@ export class InputManager implements IInput {
   private prevAttackHeld = false;
   private prevWeaponHeld = false;
   private prevPauseHeld = false;
+  private prevSpecialSlot = -1;
 
   /** Finds `#touch` and creates the hidden touch overlay. */
   constructor() {
@@ -48,6 +56,10 @@ export class InputManager implements IInput {
     const pausePressed = pauseHeld && !this.prevPauseHeld;
     const keyboardInteracted = this.keyboard.consumeInteraction();
     const touchInteracted = this.touch.consumeInteraction();
+    // Explicit ability slot comes from the mobile ability buttons; keyboard has
+    // no explicit slot (it uses weapon+direction), so it contributes -1.
+    const specialSlot = this.touch.specialSlot;
+    const specialSlotPressed = specialSlot >= 0 && specialSlot !== this.prevSpecialSlot;
 
     this.state.moveX = clamp(this.keyboard.moveX + this.touch.moveX, -1, 1);
     this.state.moveY = clamp(this.keyboard.moveY + this.touch.moveY, -1, 1);
@@ -57,10 +69,13 @@ export class InputManager implements IInput {
     this.state.attackHeld = attackHeld;
     this.state.weaponPressed = weaponPressed;
     this.state.weaponHeld = weaponHeld;
+    this.state.specialSlot = specialSlot;
+    this.state.specialSlotPressed = specialSlotPressed;
     this.state.pausePressed = pausePressed;
     this.state.anyPressed = jumpPressed
       || attackPressed
       || weaponPressed
+      || specialSlotPressed
       || pausePressed
       || keyboardInteracted
       || touchInteracted;
@@ -69,6 +84,7 @@ export class InputManager implements IInput {
     this.prevAttackHeld = attackHeld;
     this.prevWeaponHeld = weaponHeld;
     this.prevPauseHeld = pauseHeld;
+    this.prevSpecialSlot = specialSlot;
   }
 
   /** Shows gameplay touch controls only on touch-capable devices. */
@@ -79,5 +95,13 @@ export class InputManager implements IInput {
   /** Updates the weapon-button cooldown ring fill. */
   setWeaponCooldown(frac: number): void {
     this.touch.setWeaponCooldown(frac);
+  }
+
+  setAbilityButtons(buttons: readonly AbilityButtonInfo[] | null, tint: number): void {
+    this.touch.setAbilityButtons(buttons, tint);
+  }
+
+  setAbilityCooldowns(fracs: readonly number[]): void {
+    this.touch.setAbilityCooldowns(fracs);
   }
 }

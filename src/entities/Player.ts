@@ -125,6 +125,8 @@ export class Player extends Fighter {
     this.intents.attackPressed = state.attackPressed;
     this.intents.weaponPressed = state.weaponPressed;
     this.intents.weaponHeld = state.weaponHeld;
+    this.intents.specialSlot = state.specialSlot;
+    this.intents.specialSlotPressed = state.specialSlotPressed;
     this.updatePowerupTimers(dt);
 
     // HAMMER MODE (Smash Bros style): relentless auto-swinging; manual
@@ -133,6 +135,8 @@ export class Player extends Fighter {
       this.intents.attackPressed = false;
       this.intents.weaponPressed = false;
       this.intents.weaponHeld = false;
+      this.intents.specialSlot = -1;
+      this.intents.specialSlotPressed = false;
       if (
         this.state === 'idle' ||
         this.state === 'run' ||
@@ -204,6 +208,10 @@ export class Player extends Fighter {
     // Hammer-mode override model follows the restored timer.
     if (this.hammerTimer > 0) this.startHammerMode(this.hammerTimer);
     else if (this.autoSwingMove === false && this.hammerTimer === 0) this.setWeaponModelOverride(null);
+  }
+
+  protected override hasPowerupWeapon(): boolean {
+    return this.temporaryWeaponTimer > 0;
   }
 
   protected override attackForCode(code: number): AttackDef | null {

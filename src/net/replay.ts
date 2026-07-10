@@ -96,6 +96,8 @@ export class ScriptedIntentSource implements IIntentSource {
     attackHeld: false,
     weaponPressed: false,
     weaponHeld: false,
+    specialSlot: -1,
+    specialSlotPressed: false,
     pausePressed: false,
     anyPressed: false,
   };

@@ -29,9 +29,27 @@ export interface InputState {
   attackHeld: boolean;
   weaponPressed: boolean;
   weaponHeld: boolean;
+  /**
+   * Explicit signature-ability slot requested this step (mobile ability
+   * buttons): -1 = none (keyboard falls back to weapon+direction), 0 = neutral,
+   * 1 = side, 2 = up, 3 = down. Held for holdable abilities (jetpack).
+   */
+  specialSlot: number;
+  /** Edge: specialSlot became active / changed this step (fire once). */
+  specialSlotPressed: boolean;
   pausePressed: boolean;
   /** Any interaction this step (menus, audio unlock). */
   anyPressed: boolean;
+}
+
+/** Per-button config for the mobile ability buttons (one per directional slot). */
+export interface AbilityButtonInfo {
+  /** Emoji glyph shown on the button. */
+  icon: string;
+  /** Tiny slot hint, e.g. 'B' / '→' / '↑' / '↓'. */
+  dir: string;
+  /** Held-to-use (jetpack) vs tap-to-fire — affects the ring meaning. */
+  holdable: boolean;
 }
 
 /**
@@ -53,6 +71,14 @@ export interface IInput {
   readonly isTouch: boolean;
   /** Set the weapon-button cooldown ring fill, 0 (ready) – 1 (just used). */
   setWeaponCooldown(frac: number): void;
+  /**
+   * Configure the mobile ability buttons for the local character (one per
+   * directional slot: neutral/side/up/down). Pass null to hide them. `tint` is
+   * the character's accent color (hex) for a uniform per-fighter look.
+   */
+  setAbilityButtons(buttons: readonly AbilityButtonInfo[] | null, tint: number): void;
+  /** Per-frame cooldown-ring fill for the 4 ability buttons, 0 (ready) – 1. */
+  setAbilityCooldowns(fracs: readonly number[]): void;
 }
 
 // ---------------------------------------------------------------------------

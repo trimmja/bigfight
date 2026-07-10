@@ -2,7 +2,8 @@ import type { IIntentSource, InputState } from '../contracts';
 
 /**
  * Netplay input wire format: 3 bytes per player per frame.
- *   byte0  bit0 jumpHeld · bit1 attackHeld · bit2 weaponHeld
+ *   byte0  bit0 jumpHeld · bit1 attackHeld · bit2 weaponHeld ·
+ *          bits3-5 (specialSlot + 1): 0 none · 1-4 = ability slot 0-3 (mobile)
  *   byte1  moveX quantized to int8 (-127..127 → -1..1)
  *   byte2  moveY quantized to int8
  *
@@ -18,6 +19,8 @@ export function encodeInput(state: InputState, out: Uint8Array, offset: number):
   if (state.jumpHeld) buttons |= 1;
   if (state.attackHeld) buttons |= 2;
   if (state.weaponHeld) buttons |= 4;
+  // specialSlot -1..3 → 0..4 in bits 3-5 (mobile ability buttons).
+  buttons |= (((state.specialSlot + 1) & 7) << 3);
   out[offset] = buttons;
   out[offset + 1] = quantizeAxis(state.moveX);
   out[offset + 2] = quantizeAxis(state.moveY);
@@ -48,6 +51,8 @@ export class NetIntentSource implements IIntentSource {
     attackHeld: false,
     weaponPressed: false,
     weaponHeld: false,
+    specialSlot: -1,
+    specialSlotPressed: false,
     pausePressed: false,
     anyPressed: false,
   };
@@ -55,6 +60,7 @@ export class NetIntentSource implements IIntentSource {
   private prevJumpHeld = false;
   private prevAttackHeld = false;
   private prevWeaponHeld = false;
+  private prevSpecialSlot = -1;
 
   /** Apply one decoded wire frame (buttons byte + quantized axes). */
   applyFrame(bytes: Uint8Array, offset: number): void {
@@ -62,6 +68,7 @@ export class NetIntentSource implements IIntentSource {
     const jumpHeld = (buttons & 1) !== 0;
     const attackHeld = (buttons & 2) !== 0;
     const weaponHeld = (buttons & 4) !== 0;
+    const specialSlot = ((buttons >> 3) & 7) - 1;
     const s = this.state;
     s.moveX = dequantizeAxis(bytes[offset + 1] ?? 128);
     s.moveY = dequantizeAxis(bytes[offset + 2] ?? 128);
@@ -71,11 +78,14 @@ export class NetIntentSource implements IIntentSource {
     s.attackHeld = attackHeld;
     s.weaponPressed = weaponHeld && !this.prevWeaponHeld;
     s.weaponHeld = weaponHeld;
+    s.specialSlot = specialSlot;
+    s.specialSlotPressed = specialSlot >= 0 && specialSlot !== this.prevSpecialSlot;
     s.pausePressed = false;
-    s.anyPressed = s.jumpPressed || s.attackPressed || s.weaponPressed;
+    s.anyPressed = s.jumpPressed || s.attackPressed || s.weaponPressed || s.specialSlotPressed;
     this.prevJumpHeld = jumpHeld;
     this.prevAttackHeld = attackHeld;
     this.prevWeaponHeld = weaponHeld;
+    this.prevSpecialSlot = specialSlot;
   }
 
   /**
@@ -86,11 +96,13 @@ export class NetIntentSource implements IIntentSource {
     this.prevJumpHeld = (buttons & 1) !== 0;
     this.prevAttackHeld = (buttons & 2) !== 0;
     this.prevWeaponHeld = (buttons & 4) !== 0;
+    this.prevSpecialSlot = ((buttons >> 3) & 7) - 1;
   }
 
   reset(): void {
     this.prevJumpHeld = false;
     this.prevAttackHeld = false;
     this.prevWeaponHeld = false;
+    this.prevSpecialSlot = -1;
   }
 }

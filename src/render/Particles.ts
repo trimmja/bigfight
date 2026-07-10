@@ -128,6 +128,29 @@ export class Particles {
     }
   }
 
+  /** Even-angled expanding shockwave ring — reads as a clean blast wave. */
+  ring(x: number, y: number, color: number, count: number, speed: number): void {
+    this.tmpColor.setHex(color, THREE.SRGBColorSpace);
+    const r = this.tmpColor.r;
+    const g = this.tmpColor.g;
+    const b = this.tmpColor.b;
+    for (let k = 0; k < count; k++) {
+      const a = (k / count) * TWO_PI;
+      const s = speed * (0.9 + Math.random() * 0.2);
+      this.spawn(x, y, Math.cos(a) * s, Math.sin(a) * s, 0.4 + Math.random() * 0.4, r, g, b);
+    }
+  }
+
+  /**
+   * Big layered ability blast: a shockwave ring in `accent`, a dense omni cloud
+   * in `color`, and a spray of fast white sparks — "particles everywhere".
+   */
+  blast(x: number, y: number, color: number, accent: number, scale: number): void {
+    this.ring(x, y, accent, Math.round(14 + scale * 10), 7 + scale * 3);
+    this.burst(x, y, color, Math.round(18 + scale * 16), 6 + scale * 3);
+    this.burst(x, y, 0xffffff, Math.round(6 + scale * 6), 10 + scale * 4);
+  }
+
   /** KO pop: a big fast radial burst plus a few slow, long-lived sparks. */
   koExplosion(x: number, y: number, color: number): void {
     this.burst(x, y, color, 60, 12);

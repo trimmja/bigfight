@@ -370,7 +370,13 @@ export class GameplayScreen implements Screen {
 
     this.cameraRig.setBounds(stageDef.blast.left, stageDef.blast.right, stageDef.blast.bottom);
     this.hitUnsub = game.events.on('hit', ({ pos, damage, kb }) => {
-      this.particles?.burst(pos.x, pos.y, COLOR_NEON_YELLOW, Math.min(28, 8 + damage * 3), 5 + kb * 0.22);
+      const p = this.particles;
+      if (!p) return;
+      // Broader, cooler impacts: a fat spark burst + a white shock-ring, with an
+      // extra hot spray on the heavy hits.
+      p.burst(pos.x, pos.y, COLOR_NEON_YELLOW, Math.min(60, 14 + damage * 4), 7 + kb * 0.3);
+      p.ring(pos.x, pos.y, 0xffffff, Math.min(24, 8 + Math.round(kb * 0.5)), 6 + kb * 0.4);
+      if (damage >= 8) p.burst(pos.x, pos.y, 0xffd23e, 18, 12);
     });
 
     // Register every snapshot-referenceable object's net id (rollback).
@@ -408,7 +414,27 @@ export class GameplayScreen implements Screen {
 
     if (DEBUG) this.createDebug(game);
     game.input.setTouchControlsVisible(true);
+    this.configureAbilityButtons(game);
     game.events.emit('music', { mood: 'battle' });
+  }
+
+  /** Set up the mobile ability diamond from the local fighter's signature moves. */
+  private configureAbilityButtons(game: Game): void {
+    const def = this.localPlayer?.def;
+    const a = def?.abilities;
+    if (!def || !a) {
+      game.input.setAbilityButtons(null, 0);
+      return;
+    }
+    game.input.setAbilityButtons(
+      [
+        { icon: a.neutral.icon, dir: 'B', holdable: a.neutral.holdable === true },
+        { icon: a.side.icon, dir: '↔', holdable: a.side.holdable === true },
+        { icon: a.up.icon, dir: '↑', holdable: a.up.holdable === true },
+        { icon: a.down.icon, dir: '↓', holdable: a.down.holdable === true },
+      ],
+      def.palette.glow,
+    );
   }
 
   /** Versus: per-slot spawn table (mirrored defaults if a stage lacks one). */
@@ -454,6 +480,7 @@ export class GameplayScreen implements Screen {
     this.cameraRig?.dispose();
     this.destroyDebug();
     game.input.setTouchControlsVisible(false);
+    game.input.setAbilityButtons(null, 0);
     this.stage = null;
     this.enterGame = null;
     this.particles = null;
@@ -562,7 +589,15 @@ export class GameplayScreen implements Screen {
 
     pickupManager.update(ctx, dt, this.players);
     if (!this.levelEnding) powerupSpawner.update(ctx, dt, this.players);
-    game.input.setWeaponCooldown(this.localPlayer?.weaponCooldownFrac ?? 0);
+    const localForHud = this.localPlayer;
+    if (localForHud) {
+      game.input.setAbilityCooldowns([
+        localForHud.abilityCooldownFrac(0),
+        localForHud.abilityCooldownFrac(1),
+        localForHud.abilityCooldownFrac(2),
+        localForHud.abilityCooldownFrac(3),
+      ]);
+    }
 
     for (let i = 0; i < this.players.length; i += 1) this.checkPlayerBlast(game, i);
     this.evaluateVersusEnd(game);

@@ -24,9 +24,9 @@ export const HITSTUN_MAX = 1.1;
 /** Knockback above this speed enters `launched` tumble instead of flinch. */
 export const LAUNCH_THRESHOLD = 14;
 export const LANDING_LAG = 0.15;
-export const HITSTOP_BASE = 0.02;
-export const HITSTOP_PER_DAMAGE = 0.006;
-export const HITSTOP_MAX = 0.12;
+export const HITSTOP_BASE = 0.025;
+export const HITSTOP_PER_DAMAGE = 0.009;
+export const HITSTOP_MAX = 0.17;
 /** DI: max launch-angle rotation from perpendicular stick input, degrees. */
 export const DI_MAX_DEG = 10;
 /** Air control multiplier while tumbling. */
@@ -62,6 +62,12 @@ export const SPAWN_STAGGER = 0.3;
 // ---- signature abilities (directional specials) ----
 /** Stick magnitude past which a Special press counts as a directional variant. */
 export const SPECIAL_DEADZONE = 0.4;
+/** Global cooldown multiplier — keep the hero abilities snappy/tight. */
+export const ABILITY_COOLDOWN_SCALE = 0.5;
+/** Cap on ability wind-up so specials trigger near-instantly on press. */
+export const ABILITY_WINDUP_CAP = 0.05;
+/** Signature-ability melee hitboxes are this much broader than authored. */
+export const ABILITY_HITBOX_SCALE = 1.45;
 /** Comet's jetpack: full tank in seconds of continuous thrust. */
 export const JETPACK_FUEL_MAX = 1.25;
 /** Jetpack refuel rate (units of fuel per second) while grounded. */
@@ -87,15 +93,15 @@ export const SHAKE_DECAY = 6;
 // ---- rendering ----
 export const DPR_CAP_MOBILE = 1.5;
 export const DPR_CAP_DESKTOP = 2;
-export const BLOOM_STRENGTH = 0.3;
-export const BLOOM_RADIUS = 0.5;
-export const BLOOM_THRESHOLD = 0.85;
+export const BLOOM_STRENGTH = 0.42;
+export const BLOOM_RADIUS = 0.6;
+export const BLOOM_THRESHOLD = 0.8;
 /** Auto quality tier drops to mobile if avg frame time exceeds this (ms). */
 export const AUTO_QUALITY_FRAME_MS = 20;
 
 // ---- pools ----
-export const POOL_PROJECTILES = 64;
-export const POOL_PARTICLES = 1024;
+export const POOL_PROJECTILES = 80;
+export const POOL_PARTICLES = 2600;
 export const POOL_DAMAGE_NUMBERS = 24;
 export const POOL_PICKUPS = 32;
 
