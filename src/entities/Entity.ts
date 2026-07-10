@@ -6,6 +6,7 @@ import type { StageColliders } from '../physics/collision';
 import { Body } from '../physics/Body';
 import type { Particles } from '../render/Particles';
 import type { Trails } from '../render/Trails';
+import type { Fighter } from './Fighter';
 
 let nextEntityId = 1;
 
@@ -24,7 +25,10 @@ export interface WorldCtx {
     blast: BlastZone;
     respawnPoint: Vec2;
   };
-  playerPos: Vec2;
+  /** Human fighters in stable slot order (dead ones stay — check .alive). */
+  players: readonly Fighter[];
+  /** Nearest alive human to a point — the standard AI/pickup target query. */
+  nearestAlivePlayer(x: number, y: number): Fighter | null;
   requestHitbox(h: ActiveHitbox): void;
   fireProjectile(
     def: ProjectileDef,
@@ -35,6 +39,7 @@ export interface WorldCtx {
     faction: Faction,
     teamId: number,
     power: number,
+    ownerSlot?: number,
   ): void;
 }
 

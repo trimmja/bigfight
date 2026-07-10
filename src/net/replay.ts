@@ -3,6 +3,7 @@ import { TIMESTEP } from '../config';
 import { events } from '../core/events';
 import { SimRng } from '../core/rng';
 import type { Game } from '../Game';
+import type { MatchConfig } from '../match/MatchConfig';
 import { GameplayScreen } from '../screens/GameplayScreen';
 import { simPhase } from './simPhase';
 
@@ -26,6 +27,10 @@ export interface ReplayFixture {
   weaponId: string;
   seed: number;
   inputSeed: number;
+  /** Optional full multiplayer setup; omitted fixtures exercise legacy solo. */
+  match?: MatchConfig;
+  /** One deterministic input bot seed per multiplayer slot. */
+  inputSeeds?: readonly number[];
   frames: number;
 }
 
@@ -48,6 +53,30 @@ export const FIXTURES: readonly ReplayFixture[] = [
     seed: 0xbf02,
     inputSeed: 0x5678,
     frames: 4200, // 70s: reaches + fights the boss, minion summons
+  },
+  {
+    name: 'ffa-four-player-rooftop',
+    levelId: 1,
+    characterId: 'volt',
+    weaponId: 'rustyPistol',
+    seed: 0xbf03,
+    inputSeed: 0x9012,
+    inputSeeds: [0x9012, 0x3456, 0x789a, 0xbcde],
+    match: {
+      mode: 'ffa',
+      players: [
+        { slot: 0, characterId: 'volt', weaponId: 'rustyPistol', sidekickId: null, teamId: 1, nickname: 'P1' },
+        { slot: 1, characterId: 'kaze', weaponId: 'practiceSword', sidekickId: null, teamId: 2, nickname: 'P2' },
+        { slot: 2, characterId: 'grim', weaponId: 'rustyPistol', sidekickId: null, teamId: 3, nickname: 'P3' },
+        { slot: 3, characterId: 'ace', weaponId: 'practiceSword', sidekickId: null, teamId: 4, nickname: 'P4' },
+      ],
+      stageId: 'rooftop',
+      stocks: 3,
+      crates: false,
+      powerupIds: [],
+      seed: 0xbf03,
+    },
+    frames: 2400,
   },
 ];
 
@@ -135,14 +164,19 @@ export interface ReplayRun {
  * code path). Returns per-frame digests + sim-step timing.
  */
 export function runReplay(game: Game, fixture: ReplayFixture, dumpAtFrame = -1): ReplayRun {
-  const source = new ScriptedIntentSource(fixture.inputSeed);
+  const inputSeeds = fixture.inputSeeds ?? [fixture.inputSeed];
+  const sources = inputSeeds.map((seed) => new ScriptedIntentSource(seed));
+  if (fixture.match && sources.length !== fixture.match.players.length) {
+    throw new Error(`${fixture.name}: input seed count must match player count`);
+  }
   const screen = new GameplayScreen({
     levelId: fixture.levelId,
     characterId: fixture.characterId,
     weaponId: fixture.weaponId,
     seed: fixture.seed,
-    intentSource: source,
-    onLevelEnd: () => undefined, // stay put — the lab owns navigation
+    ...(fixture.match
+      ? { match: fixture.match, intentSources: sources, localSlot: 0, onMatchEnd: () => undefined }
+      : { intentSource: sources[0], onLevelEnd: () => undefined }),
   });
 
   const digests = new Uint32Array(fixture.frames);
@@ -155,7 +189,7 @@ export function runReplay(game: Game, fixture: ReplayFixture, dumpAtFrame = -1):
   try {
     screen.enter(game);
     for (let frame = 0; frame < fixture.frames; frame += 1) {
-      source.step();
+      for (let i = 0; i < sources.length; i += 1) sources[i]!.step();
       const t0 = performance.now();
       screen.update(game, TIMESTEP);
       const ms = performance.now() - t0;

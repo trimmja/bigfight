@@ -12,6 +12,9 @@ import {
 import { getMobAttackTokens, resetMobAttackTokens } from '../ai/MobBrain';
 import type { IIntentSource } from '../contracts';
 import { createSimRngSet, type SimRngSet } from '../core/rng';
+import { ALL_POWERUP_IDS, assertMatchConfig, isVersus, type MatchConfig } from '../match/MatchConfig';
+import { createMatchState, digestMatchState, type MatchState } from '../match/MatchState';
+import { computePlacements, evaluateFfaEnd, evaluateTeamsEnd, versusGoldFor } from '../match/rules';
 import { hashNumbers } from '../net/hash';
 import { WaveSpawner } from '../ai/WaveSpawner';
 import type { ActiveHitbox, FighterLike, Rect } from '../combat/types';
@@ -64,6 +67,15 @@ export type LevelEndResult = {
   levelId: number;
 };
 
+export type VersusEndResult = {
+  /** Slot ids best-to-worst. */
+  placements: number[];
+  kosBySlot: number[];
+  /** Payout per slot (participation + placement + KOs — Ryder's law). */
+  goldBySlot: number[];
+  winnerTeam?: number;
+};
+
 export type GameplayScreenOptions = {
   levelId?: number;
   characterId: string;
@@ -73,7 +85,17 @@ export type GameplayScreenOptions = {
   seed?: number;
   /** Player intent source (default: live device input). Replays/net inject here. */
   intentSource?: IIntentSource;
+  /**
+   * Full multiplayer config. Absent → a solo-campaign config is synthesized
+   * from the fields above (behavior byte-identical to the classic game).
+   */
+  match?: MatchConfig;
+  /** Per-slot intent sources, parallel to match.players. */
+  intentSources?: IIntentSource[];
+  /** Which slot THIS device controls (camera/HUD/input focus). */
+  localSlot?: number;
   onLevelEnd?: (result: LevelEndResult) => void;
+  onMatchEnd?: (result: VersusEndResult) => void;
   onPause?: () => void;
 };
 
@@ -84,9 +106,16 @@ const EMPTY_MOBS: readonly Mob[] = [];
 
 export class GameplayScreen implements Screen {
   private readonly opts: GameplayScreenOptions;
-  private readonly level: LevelDef;
+  private readonly match: MatchConfig;
+  private readonly matchState: MatchState;
+  /** null for versus matches (no waves/boss/level bounty). */
+  private readonly level: LevelDef | null;
+  /** True when the config was synthesized from legacy solo options. */
+  private readonly isSynthSolo: boolean;
+  private readonly localSlot: number;
   private stage: BuiltStage | null = null;
-  private player: Player | null = null;
+  private players: Player[] = [];
+  private sidekicks: (Sidekick | null)[] = [];
   private hud: Hud | null = null;
   private damageNumbers: DamageNumbers | null = null;
   private particles: Particles | null = null;
@@ -99,7 +128,6 @@ export class GameplayScreen implements Screen {
   private pickupManager: PickupManager | null = null;
   private projectileManager: ProjectileManager | null = null;
   private powerupSpawner: PowerupSpawner | null = null;
-  private sidekick: Sidekick | null = null;
   private boss: Boss | null = null;
   private mobPool: MobPool | null = null;
   private hitUnsub: (() => void) | null = null;
@@ -113,7 +141,6 @@ export class GameplayScreen implements Screen {
   private readonly materialsEarned: Partial<Record<MaterialId, number>> = {};
 
   private rng: SimRngSet | null = null;
-  private playerRespawnTimer = 0;
   private goldEarned = 0;
   private levelEnding = false;
   private levelWon = false;
@@ -133,7 +160,36 @@ export class GameplayScreen implements Screen {
 
   constructor(opts: GameplayScreenOptions) {
     this.opts = opts;
-    this.level = levelById(opts.levelId ?? 1);
+    this.isSynthSolo = !opts.match;
+    this.match = opts.match ?? {
+      mode: 'campaign',
+      players: [
+        {
+          slot: 0,
+          characterId: opts.characterId,
+          weaponId: opts.weaponId ?? 'rustyPistol',
+          sidekickId: null, // synth-solo: resolved from the save in enter()
+          teamId: 1,
+          nickname: '',
+        },
+      ],
+      stocks: PLAYER_STOCKS,
+      crates: true,
+      powerupIds: [...ALL_POWERUP_IDS], // synth-solo: replaced by save unlocks in enter()
+      seed: opts.seed ?? -1,
+      levelId: opts.levelId ?? 1,
+      ...(opts.stageId !== undefined ? { stageId: opts.stageId } : {}),
+    };
+    assertMatchConfig(this.match);
+    this.level = isVersus(this.match.mode) ? null : levelById(this.match.levelId ?? opts.levelId ?? 1);
+    this.matchState = createMatchState(this.match.players.length, this.match.stocks);
+    this.localSlot = opts.localSlot ?? 0;
+    if (this.localSlot < 0 || this.localSlot >= this.match.players.length) {
+      throw new Error(`localSlot ${this.localSlot} is outside this ${this.match.players.length}-player match`);
+    }
+    if (opts.match && this.match.players.length > 1 && opts.intentSources?.length !== this.match.players.length) {
+      throw new Error('Multiplayer GameplayScreen requires exactly one intent source per player');
+    }
   }
 
   /** All pooled mobs, stable order (dead ones are `!alive`) — sim iterates this. */
@@ -141,13 +197,19 @@ export class GameplayScreen implements Screen {
     return this.mobPool ? this.mobPool.all : EMPTY_MOBS;
   }
 
+  private get localPlayer(): Player | null {
+    return this.players[this.localSlot] ?? null;
+  }
+
   enter(game: Game): void {
     resetMobAttackTokens();
     resetEntityIds(); // deterministic entity ids: nothing constructs mid-match (MobPool)
-    const stageDef = stageById(this.level.stageId);
-    const playerDef = characterById(this.opts.characterId);
+    const match = this.match;
+    const stageDef = stageById(match.stageId ?? this.level?.stageId ?? 'rooftop');
 
-    const rng = createSimRngSet(this.opts.seed ?? ((Math.random() * 0xffffffff) >>> 0)); // det-ok: seeds SOLO only; net passes opts.seed
+    const rng = createSimRngSet(
+      match.seed >= 0 ? match.seed : ((Math.random() * 0xffffffff) >>> 0), // det-ok: seeds SOLO only; net passes a shared seed
+    );
     this.rng = rng;
 
     this.stage = buildStage(stageDef, game.renderer.scene);
@@ -155,9 +217,15 @@ export class GameplayScreen implements Screen {
     this.trails = new Trails(game.renderer.scene);
     this.cameraRig = new CameraRig(game.renderer.camera, () => game.save.settings.shake);
     this.hitResolver = new HitResolver();
+    this.hitResolver.onPlayerHitPlayer = (victimSlot, attackerSlot) => {
+      const slot = this.matchState.slots[victimSlot];
+      if (!slot) return;
+      slot.lastHitBySlot = attackerSlot;
+      slot.lastHitTimer = 4;
+    };
     this.physics = new PhysicsWorld();
     this.mobPool = new MobPool(game.renderer.scene);
-    this.mobPool.prewarm(this.level);
+    if (this.level) this.mobPool.prewarm(this.level);
     this.pickupManager = new PickupManager(game.renderer.scene, rng.drops, (gold, material) => {
       // Direct sim credit (rollback-safe) — the loot EVENT is audio/UI only.
       this.goldEarned += gold;
@@ -165,29 +233,48 @@ export class GameplayScreen implements Screen {
     });
     const projectileManager = new ProjectileManager(game.renderer.scene);
     this.projectileManager = projectileManager;
-    this.powerupSpawner = new PowerupSpawner(game.renderer.scene, unlockedPowerupIds(game.save), rng.drops);
+    // Crate table must be identical on every peer: synth-solo keeps the save-
+    // derived unlocks (classic behavior); real configs carry it explicitly.
+    const powerupIds = this.isSynthSolo ? unlockedPowerupIds(game.save) : match.powerupIds;
+    this.powerupSpawner = match.crates
+      ? new PowerupSpawner(game.renderer.scene, powerupIds, rng.drops)
+      : new PowerupSpawner(game.renderer.scene, [], rng.drops);
 
-    this.player = new Player(playerDef, this.opts.intentSource ?? game.input);
-    this.player.stocks = PLAYER_STOCKS;
-    this.player.koReset(stageDef.playerSpawn);
-    this.player.facing = 1;
-    const weapon = weaponById(this.opts.weaponId ?? 'rustyPistol');
-    this.player.equipWeapon(weapon, buildWeaponModel(weapon));
-    game.renderer.scene.add(this.player.group);
+    // --- players (slot order) ---
+    const sources = this.opts.intentSources ?? [this.opts.intentSource ?? game.input];
+    this.players = [];
+    this.sidekicks = [];
+    for (let i = 0; i < match.players.length; i += 1) {
+      const setup = match.players[i]!;
+      const def = characterById(setup.characterId);
+      const source = sources[i] ?? game.input;
+      const player = new Player(def, source);
+      player.setTeam(setup.teamId);
+      player.slotIndex = i;
+      player.stocks = match.stocks;
+      const spawn = this.spawnPointFor(stageDef, i);
+      player.koReset(spawn);
+      player.facing = spawn.x <= 0 ? 1 : -1; // face stage center
+      const weapon = weaponById(setup.weaponId);
+      player.equipWeapon(weapon, buildWeaponModel(weapon));
+      game.renderer.scene.add(player.group);
+      this.players.push(player);
 
-    if (game.save.equippedSidekick) {
-      this.sidekick = new Sidekick(
-        sidekickById(game.save.equippedSidekick),
-        this.player,
-        projectileManager,
-        () => this.liveFighters,
-      );
-      game.renderer.scene.add(this.sidekick.group);
+      // Sidekicks: campaign/co-op only (synth-solo keeps the save's equipped one).
+      const sidekickId = this.isSynthSolo ? game.save.equippedSidekick : setup.sidekickId;
+      if (sidekickId && !isVersus(match.mode)) {
+        const sidekick = new Sidekick(sidekickById(sidekickId), player, projectileManager, () => this.liveFighters);
+        game.renderer.scene.add(sidekick.group);
+        this.sidekicks.push(sidekick);
+      } else {
+        this.sidekicks.push(null);
+      }
     }
 
     this.hud = new Hud();
     this.damageNumbers = new DamageNumbers(game.renderer.scene);
 
+    const players = this.players;
     this.ctx = {
       particles: this.particles,
       trails: this.trails,
@@ -197,7 +284,23 @@ export class GameplayScreen implements Screen {
         blast: stageDef.blast,
         respawnPoint: stageDef.respawnPoint,
       },
-      playerPos: this.player.body.pos,
+      players,
+      nearestAlivePlayer: (x, y) => {
+        let best: Player | null = null;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < players.length; i += 1) {
+          const player = players[i]!;
+          if (!player.alive) continue;
+          const dx = player.body.pos.x - x;
+          const dy = player.body.pos.y - y;
+          const d = dx * dx + dy * dy;
+          if (d < bestDist) {
+            bestDist = d;
+            best = player;
+          }
+        }
+        return best;
+      },
       requestHitbox: (h) => {
         this.hitResolver?.submit(h);
         if (DEBUG && this.debugSubmittedHitboxes.length < DEBUG_HITBOX_SLOTS) {
@@ -209,17 +312,19 @@ export class GameplayScreen implements Screen {
       },
     };
 
-    this.waveSpawner = new WaveSpawner(
-      this.level,
-      stageDef.enemySpawns,
-      (enemyId, pos) => {
-        this.spawnMob(game, enemyId, pos);
-      },
-      (pos) => this.telegraphSpawn(game, pos),
-    );
-    this.waveSpawner.onAllWavesCleared = () => this.handleAllWavesCleared(game);
-    // Direct sim callback (rollback-safe) — the waveCleared EVENT is audio/UI only.
-    this.waveSpawner.onWaveCleared = () => this.pickupManager?.vacuumAll();
+    if (this.level) {
+      this.waveSpawner = new WaveSpawner(
+        this.level,
+        stageDef.enemySpawns,
+        (enemyId, pos) => {
+          this.spawnMob(game, enemyId, pos);
+        },
+        (pos) => this.telegraphSpawn(game, pos),
+      );
+      this.waveSpawner.onAllWavesCleared = () => this.handleAllWavesCleared(game);
+      // Direct sim callback (rollback-safe) — the waveCleared EVENT is audio/UI only.
+      this.waveSpawner.onWaveCleared = () => this.pickupManager?.vacuumAll();
+    }
 
     this.cameraRig.setBounds(stageDef.blast.left, stageDef.blast.right, stageDef.blast.bottom);
     this.hitUnsub = game.events.on('hit', ({ pos, damage, kb }) => {
@@ -231,6 +336,15 @@ export class GameplayScreen implements Screen {
     game.events.emit('music', { mood: 'battle' });
   }
 
+  /** Versus: per-slot spawn table (mirrored defaults if a stage lacks one). */
+  private spawnPointFor(stageDef: ReturnType<typeof stageById>, index: number): Vec2 {
+    if (this.match.players.length === 1) return stageDef.playerSpawn;
+    const table = stageDef.versusSpawns;
+    if (table && table[index]) return table[index]!;
+    const spread = 6 + index * 2;
+    return { x: index % 2 === 0 ? -spread : spread, y: 0.5 };
+  }
+
   exit(game: Game): void {
     this.hitUnsub?.();
     this.hitUnsub = null;
@@ -238,11 +352,12 @@ export class GameplayScreen implements Screen {
     this.hud = null;
     this.damageNumbers?.dispose();
     this.damageNumbers = null;
-    this.sidekick?.dispose();
-    this.sidekick = null;
+    for (let i = 0; i < this.sidekicks.length; i += 1) this.sidekicks[i]?.dispose();
+    this.sidekicks = [];
     this.boss?.dispose();
     this.boss = null;
-    this.player?.dispose();
+    for (let i = 0; i < this.players.length; i += 1) this.players[i]!.dispose();
+    this.players = [];
     this.mobPool?.dispose();
     this.mobPool = null;
     this.projectileManager?.dispose();
@@ -257,7 +372,6 @@ export class GameplayScreen implements Screen {
     this.destroyDebug();
     game.input.setTouchControlsVisible(false);
     this.stage = null;
-    this.player = null;
     this.particles = null;
     this.trails = null;
     this.cameraRig = null;
@@ -270,7 +384,6 @@ export class GameplayScreen implements Screen {
   }
 
   update(game: Game, dt: number): void {
-    const player = this.player;
     const ctx = this.ctx;
     const stage = this.stage;
     const physics = this.physics;
@@ -281,7 +394,7 @@ export class GameplayScreen implements Screen {
     const projectileManager = this.projectileManager;
     const powerupSpawner = this.powerupSpawner;
     if (
-      !player
+      this.players.length === 0
       || !ctx
       || !stage
       || !physics
@@ -300,6 +413,7 @@ export class GameplayScreen implements Screen {
       return;
     }
 
+    this.matchState.frame += 1;
     hitResolver.beginStep();
     this.debugSubmittedHitboxes.length = 0;
     this.updateRespawns(ctx, dt);
@@ -310,7 +424,15 @@ export class GameplayScreen implements Screen {
       this.updateBossSpawn(game, dt);
     }
 
-    if (player.alive) player.update(ctx, dt);
+    for (let i = 0; i < this.players.length; i += 1) {
+      const player = this.players[i]!;
+      if (player.alive) player.update(ctx, dt);
+      const slot = this.matchState.slots[i]!;
+      if (slot.lastHitTimer > 0) {
+        slot.lastHitTimer = Math.max(0, slot.lastHitTimer - dt);
+        if (slot.lastHitTimer === 0) slot.lastHitBySlot = -1;
+      }
+    }
     for (let i = 0; i < this.mobs.length; i += 1) {
       const mob = this.mobs[i]!;
       if (mob.alive) mob.update(ctx, dt);
@@ -319,10 +441,12 @@ export class GameplayScreen implements Screen {
 
     this.physicsBodies.length = 0;
     this.liveFighters.length = 0;
-    this.collectLiveFighter(player);
+    for (let i = 0; i < this.players.length; i += 1) this.collectLiveFighter(this.players[i]!);
     for (let i = 0; i < this.mobs.length; i += 1) this.collectLiveFighter(this.mobs[i]!);
     if (this.boss) this.collectLiveFighter(this.boss);
-    if (this.sidekick && !this.levelEnding) this.sidekick.update(ctx, dt);
+    if (!this.levelEnding) {
+      for (let i = 0; i < this.sidekicks.length; i += 1) this.sidekicks[i]?.update(ctx, dt);
+    }
     projectileManager.update(ctx, dt, this.liveFighters);
     pickupManager.collectBodies(this.physicsBodies);
 
@@ -338,11 +462,12 @@ export class GameplayScreen implements Screen {
     projectileManager.collectDestructibleTargets(this.combatTargets);
     hitResolver.resolve(this.combatTargets);
 
-    if (player.alive) pickupManager.update(ctx, dt, player);
-    if (player.alive && !this.levelEnding) powerupSpawner.update(ctx, dt, player);
-    game.input.setWeaponCooldown(player.weaponCooldownFrac);
+    pickupManager.update(ctx, dt, this.players);
+    if (!this.levelEnding) powerupSpawner.update(ctx, dt, this.players);
+    game.input.setWeaponCooldown(this.localPlayer?.weaponCooldownFrac ?? 0);
 
-    this.checkBlast(game, player);
+    for (let i = 0; i < this.players.length; i += 1) this.checkPlayerBlast(game, i);
+    this.evaluateVersusEnd(game);
     for (let i = 0; i < this.mobs.length; i += 1) this.checkMobBlast(game, this.mobs[i]!);
     // Boss ring-out: bosses can't be KO'd off-stage, but knocking one out
     // costs it 8% health and it respawns from the sky (Ryder's rule).
@@ -370,7 +495,8 @@ export class GameplayScreen implements Screen {
     particles.update(dt);
     trails.update(dt);
     this.damageNumbers?.update(dt);
-    if (this.player) this.hud?.set(this.player.damage, this.player.stocks);
+    const local = this.localPlayer;
+    if (local) this.hud?.set(local.damage, local.stocks);
     if (DEBUG) this.updateDebug(dt);
     this.updateLevelEnd(game, dt);
   }
@@ -413,13 +539,16 @@ export class GameplayScreen implements Screen {
   }
 
   private spawnMob(_game: Game, enemyId: string, pos: Vec2): Mob | null {
-    const player = this.player;
     const pool = this.mobPool;
-    if (!player || !pool) return null;
+    const ctx = this.ctx;
+    if (!pool || !ctx) return null;
     const mob = pool.obtain(enemyId);
-    mob.setTarget(player);
     mob.koReset(pos);
-    mob.facing = mob.body.pos.x < player.body.pos.x ? 1 : -1;
+    const target = ctx.nearestAlivePlayer(pos.x, pos.y);
+    if (target) {
+      mob.setTarget(target);
+      mob.facing = mob.body.pos.x < target.body.pos.x ? 1 : -1;
+    }
     return mob;
   }
 
@@ -429,7 +558,7 @@ export class GameplayScreen implements Screen {
   }
 
   private handleAllWavesCleared(game: Game): void {
-    if (!this.level.bossId) {
+    if (!this.level?.bossId) {
       this.beginLevelCleared(game);
       return;
     }
@@ -448,16 +577,16 @@ export class GameplayScreen implements Screen {
   }
 
   private spawnBoss(game: Game): void {
-    const bossId = this.level.bossId;
+    const bossId = this.level?.bossId;
     const stage = this.stage;
-    const player = this.player;
-    if (!bossId || !stage || !player) return;
+    const target = this.ctx?.nearestAlivePlayer(0, 0);
+    if (!bossId || !stage) return;
 
     const def = bossById(bossId);
     const boss = this.createBoss(game, bossId);
     const spawn = stage.def.respawnPoint;
     boss.koReset({ x: 0, y: spawn.y });
-    boss.facing = boss.body.pos.x < player.body.pos.x ? 1 : -1;
+    boss.facing = target && boss.body.pos.x < target.body.pos.x ? 1 : -1;
     this.boss = boss;
     game.renderer.scene.add(boss.group);
     game.events.emit('bossSpawned', { name: def.name, title: def.title });
@@ -511,15 +640,27 @@ export class GameplayScreen implements Screen {
   }
 
   private updateRespawns(ctx: WorldCtx, dt: number): void {
-    const player = this.player;
-    if (!player || player.alive || this.playerRespawnTimer <= 0 || this.levelEnding) return;
-    this.playerRespawnTimer = Math.max(0, this.playerRespawnTimer - dt);
-    if (this.playerRespawnTimer === 0 && player.stocks > 0) player.respawn(ctx);
+    if (this.levelEnding) return;
+    for (let i = 0; i < this.players.length; i += 1) {
+      const player = this.players[i]!;
+      const slot = this.matchState.slots[i]!;
+      if (player.alive || slot.respawnTimer <= 0 || slot.eliminated) continue;
+      slot.respawnTimer = Math.max(0, slot.respawnTimer - dt);
+      if (slot.respawnTimer === 0 && player.stocks > 0) {
+        player.respawn(ctx, this.respawnOffsetX(i));
+      }
+    }
   }
 
-  private checkBlast(game: Game, fighter: Fighter): void {
+  /** Stagger multi-player respawn positions so simultaneous KOs don't stack. */
+  private respawnOffsetX(index: number): number {
+    return this.players.length === 1 ? 0 : (index - (this.players.length - 1) * 0.5) * 2.5;
+  }
+
+  private checkPlayerBlast(game: Game, index: number): void {
     const stage = this.stage;
     const particles = this.particles;
+    const fighter = this.players[index]!;
     if (!stage || !particles || !fighter.alive || this.levelEnding) return;
     const x = fighter.body.pos.x;
     const y = fighter.body.pos.y + fighter.body.height * 0.5;
@@ -532,14 +673,56 @@ export class GameplayScreen implements Screen {
     particles.koExplosion(x, y, fighter.def.palette.glow);
     fighter.beginKo();
 
-    if (this.player) {
-      this.player.stocks -= 1;
-      if (this.player.stocks <= 0) {
-        this.beginLevelFailed(game);
-      } else {
-        this.playerRespawnTimer = RESPAWN_DELAY;
-      }
+    const slot = this.matchState.slots[index]!;
+    // KO credit: whoever hit this player in the last 4s scores it (versus).
+    if (slot.lastHitBySlot >= 0) {
+      const scorer = this.matchState.slots[slot.lastHitBySlot];
+      if (scorer && slot.lastHitBySlot !== index) scorer.kos += 1;
     }
+
+    fighter.stocks -= 1;
+    if (fighter.stocks > 0) {
+      slot.respawnTimer = RESPAWN_DELAY;
+      return;
+    }
+
+    // Out of stocks — mode decides what that means.
+    switch (this.match.mode) {
+      case 'campaign':
+        this.beginLevelFailed(game);
+        break;
+      case 'coop': {
+        // Level fails only when EVERY player is out of stocks simultaneously.
+        let anyLeft = false;
+        for (let i = 0; i < this.players.length; i += 1) {
+          if (this.players[i]!.stocks > 0) anyLeft = true;
+        }
+        if (!anyLeft) this.beginLevelFailed(game);
+        break;
+      }
+      case 'ffa':
+      case 'teams':
+        slot.eliminated = true;
+        slot.eliminationFrame = this.matchState.frame;
+        break;
+    }
+  }
+
+  /** Versus modes: end the match when the rules say so (2.2s beat → results). */
+  private evaluateVersusEnd(game: Game): void {
+    if (!isVersus(this.match.mode) || this.matchState.ended || this.levelEnding) return;
+    const end =
+      this.match.mode === 'ffa'
+        ? evaluateFfaEnd(this.matchState)
+        : evaluateTeamsEnd(this.matchState, this.match);
+    if (!end) return;
+    this.matchState.ended = true;
+    this.matchState.placements = end.placements;
+    this.levelEnding = true;
+    this.levelWon = true;
+    this.levelEndTimer = CLEAR_BEAT_SECONDS;
+    this.pickupManager?.vacuumAll();
+    game.events.emit('music', { mood: 'victory' });
   }
 
   private checkMobBlast(game: Game, mob: Mob): void {
@@ -582,7 +765,7 @@ export class GameplayScreen implements Screen {
   }
 
   private beginLevelCleared(game: Game): void {
-    if (this.levelEnding) return;
+    if (this.levelEnding || !this.level) return;
     this.levelEnding = true;
     this.levelWon = true;
     this.levelEndTimer = CLEAR_BEAT_SECONDS;
@@ -592,7 +775,7 @@ export class GameplayScreen implements Screen {
   }
 
   private beginLevelFailed(game: Game): void {
-    if (this.levelEnding) return;
+    if (this.levelEnding || !this.level) return;
     this.levelEnding = true;
     this.levelWon = false;
     this.levelEndTimer = 0;
@@ -607,6 +790,13 @@ export class GameplayScreen implements Screen {
       if (this.levelEndTimer > 0) return;
     }
     this.levelEndSent = true;
+
+    if (isVersus(this.match.mode)) {
+      this.finishVersusMatch();
+      return;
+    }
+    if (!this.level) return;
+
     // Any loot still flying toward the player is banked instantly — the coin
     // was earned the moment it dropped; the flight is just theater.
     this.pickupManager?.bankAll();
@@ -629,19 +819,42 @@ export class GameplayScreen implements Screen {
     }));
   }
 
+  private finishVersusMatch(): void {
+    const placements = this.matchState.placements.length
+      ? this.matchState.placements
+      : computePlacements(this.matchState);
+    const kosBySlot = this.matchState.slots.map((slot) => slot.kos);
+    const goldBySlot = new Array<number>(this.matchState.slots.length).fill(0);
+    for (let p = 0; p < placements.length; p += 1) {
+      const slotId = placements[p]!;
+      goldBySlot[slotId] = versusGoldFor(p, kosBySlot[slotId] ?? 0);
+    }
+    const result: VersusEndResult = { placements, kosBySlot, goldBySlot };
+    if (this.match.mode === 'teams' && placements.length > 0) {
+      result.winnerTeam = this.match.players[placements[0]!]!.teamId;
+    }
+    this.opts.onMatchEnd?.(result);
+  }
+
   private updateCamera(stage: BuiltStage): void {
-    const player = this.player;
-    if (!player) return;
+    const local = this.localPlayer;
+    if (!local) return;
     this.cameraPoints.length = 0;
-    if (player.alive) this.cameraPoints.push(player.body.pos);
+    // Local player FIRST — CameraRig gives point 0 double weight, so each
+    // device's own fighter stays prioritized in the framing.
+    if (local.alive) this.cameraPoints.push(local.body.pos);
+    for (let i = 0; i < this.players.length; i += 1) {
+      const player = this.players[i]!;
+      if (player !== local && player.alive) this.cameraPoints.push(player.body.pos);
+    }
     if (this.boss?.alive) this.cameraPoints.push(this.boss.body.pos);
 
     let bestA: Mob | null = null;
     let bestB: Mob | null = null;
     let bestAD = Number.POSITIVE_INFINITY;
     let bestBD = Number.POSITIVE_INFINITY;
-    const px = player.body.pos.x;
-    const py = player.body.pos.y;
+    const px = local.body.pos.x;
+    const py = local.body.pos.y;
     for (let i = 0; i < this.mobs.length; i += 1) {
       const mob = this.mobs[i]!;
       if (!mob.alive) continue;
@@ -684,7 +897,10 @@ export class GameplayScreen implements Screen {
       fill(values);
       segments.push({ label, values });
     };
-    if (this.player) push('player', (out) => this.player!.digestInto(out));
+    for (let i = 0; i < this.players.length; i += 1) {
+      const player = this.players[i]!;
+      push(`p${i}:${player.def.id}`, (out) => player.digestInto(out));
+    }
     for (let i = 0; i < this.mobs.length; i += 1) {
       const mob = this.mobs[i]!;
       push(`mob${i}:${mob.enemyDef.id}`, (out) => mob.digestInto(out));
@@ -695,8 +911,8 @@ export class GameplayScreen implements Screen {
     push('crates', (out) => this.powerupSpawner?.digestInto(out));
     push('waves', (out) => this.waveSpawner?.digestInto(out));
     push('match', (out) => {
+      digestMatchState(this.matchState, out);
       out.push(
-        this.playerRespawnTimer,
         this.goldEarned,
         this.materialsEarned.boneShard ?? 0,
         this.materialsEarned.slimeGoo ?? 0,
@@ -770,7 +986,7 @@ export class GameplayScreen implements Screen {
   }
 
   private updateDebug(dt: number): void {
-    const player = this.player;
+    const player = this.localPlayer;
     if (!player || !this.debugPanel) return;
     const aliveMobs = this.countAliveMobs();
     const boss = this.boss?.alive ? this.boss : null;
@@ -793,8 +1009,11 @@ export class GameplayScreen implements Screen {
       `loot gold:${this.goldEarned}\n` +
       `FPS ${this.fps.toFixed(0)} step ${(dt * 1000).toFixed(1)}ms`;
 
-    this.updateBodyLine(0, player);
-    let lineIndex = 1;
+    let lineIndex = 0;
+    for (let i = 0; i < this.players.length && lineIndex < this.debugBodyLines.length; i += 1) {
+      this.updateBodyLine(lineIndex, this.players[i]!);
+      lineIndex += 1;
+    }
     if (boss && lineIndex < this.debugBodyLines.length) {
       this.updateBodyLine(lineIndex, boss);
       lineIndex += 1;

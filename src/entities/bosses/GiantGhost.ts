@@ -179,7 +179,7 @@ export class GiantGhost extends Boss {
   }
 
   private fireOrb(ctx: WorldCtx, index: number): void {
-    const dx = ctx.playerPos.x - this.body.pos.x;
+    const dx = this.rotationPlayerPos(ctx).x - this.body.pos.x;
     const facing = dx >= 0 ? 1 : -1;
     this.facing = facing;
     const def = ORBS[index % ORBS.length]!;
@@ -202,9 +202,10 @@ export class GiantGhost extends Boss {
     this.body.gravityScale = 0;
     this.setIntangible(true, 0.66);
     this.setAngry(false);
-    const side = this.body.pos.x < ctx.playerPos.x ? -1 : 1;
-    const targetX = ctx.playerPos.x + side * 2.2;
-    const targetY = clampNumber(ctx.playerPos.y + 0.18, 0.45, 5.1);
+    const targetPos = this.rotationPlayerPos(ctx);
+    const side = this.body.pos.x < targetPos.x ? -1 : 1;
+    const targetX = targetPos.x + side * 2.2;
+    const targetY = clampNumber(targetPos.y + 0.18, 0.45, 5.1);
     this.steerTo(targetX, targetY, 7.5, 28, dt);
     this.requestPose('fall');
   }
@@ -236,6 +237,7 @@ export class GiantGhost extends Boss {
 
   private enterVolley(): void {
     this.phase = 'volley';
+    this.advanceTargetRotation(); // new attack cycle → next player takes the pressure
     this.phaseDuration = 1;
     this.phaseTimer = 1;
     this.volleyCount = this.isBelowHp(0.5) ? 6 : 3 + (this.volleyCycle % 3);
@@ -249,7 +251,7 @@ export class GiantGhost extends Boss {
     this.phase = 'beamWarn';
     this.phaseDuration = BEAM_WARN;
     this.phaseTimer = BEAM_WARN;
-    this.beamLaneY = clampNumber(ctx.playerPos.y + 1.15, 1.25, 8.4);
+    this.beamLaneY = clampNumber(this.rotationPlayerPos(ctx).y + 1.15, 1.25, 8.4);
     this.beamDir = this.beamDir === 1 ? -1 : 1;
     this.telegraphFlash(0xff3048, BEAM_WARN);
   }

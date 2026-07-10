@@ -322,6 +322,12 @@ export interface StageDef {
   blast: BlastZone;
   playerSpawn: Vec2;
   enemySpawns: Vec2[];
+  /**
+   * Versus-mode spawn points for slots P1-P4 (all face stage center).
+   * 2v2 pairs teammates on the same side: team A → indices 0,2; team B → 1,3.
+   * Absent → mirrored defaults derived from playerSpawn.
+   */
+  versusSpawns?: Vec2[];
   /** Respawn platform position (stage top-center). */
   respawnPoint: Vec2;
   unlockedAtStart: boolean;

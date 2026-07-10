@@ -21,6 +21,12 @@ export const STAGES: readonly StageDef[] = [
     ],
     blast: { left: -24, right: 24, top: 18, bottom: -10 },
     playerSpawn: { x: -6, y: 0.5 },
+    versusSpawns: [
+      { x: -8, y: 0.5 },
+      { x: 8, y: 0.5 },
+      { x: -8, y: 4 },
+      { x: 8, y: 4 },
+    ],
     enemySpawns: [
       { x: 6, y: 0.5 },
       { x: -8, y: 4 },
@@ -43,6 +49,12 @@ export const STAGES: readonly StageDef[] = [
     ],
     blast: { left: -23, right: 23, top: 18, bottom: -10 },
     playerSpawn: { x: -6, y: 0.5 },
+    versusSpawns: [
+      { x: -12, y: 0.5 },
+      { x: 12, y: 0.5 },
+      { x: -4, y: 0.5 },
+      { x: 4, y: 0.5 },
+    ],
     enemySpawns: [
       { x: 6, y: 0.5 },
       { x: -8, y: 0.5 },
@@ -67,6 +79,12 @@ export const STAGES: readonly StageDef[] = [
     ],
     blast: { left: -25, right: 25, top: 18, bottom: -10 },
     playerSpawn: { x: -6, y: 0.5 },
+    versusSpawns: [
+      { x: -9, y: 0.5 },
+      { x: 9, y: 0.5 },
+      { x: -8, y: 3.7 },
+      { x: 8, y: 3.7 },
+    ],
     enemySpawns: [
       { x: 7, y: 0.5 },
       { x: -8, y: 3.7 },
@@ -91,6 +109,12 @@ export const STAGES: readonly StageDef[] = [
     ],
     blast: { left: -24, right: 24, top: 18, bottom: -10 },
     playerSpawn: { x: -6, y: 0.5 },
+    versusSpawns: [
+      { x: -12, y: 0.5 },
+      { x: 12, y: 0.5 },
+      { x: -6, y: 4 },
+      { x: 5, y: 6 },
+    ],
     enemySpawns: [
       { x: 7, y: 0.5 },
       { x: -6, y: 4 },
@@ -114,6 +138,12 @@ export const STAGES: readonly StageDef[] = [
     ],
     blast: { left: -22, right: 22, top: 18, bottom: -10 },
     playerSpawn: { x: -6, y: 0.5 },
+    versusSpawns: [
+      { x: -7, y: 0.5 },
+      { x: 7, y: 0.5 },
+      { x: -3.5, y: 4 },
+      { x: 3.5, y: 7 },
+    ],
     enemySpawns: [
       { x: 6, y: 0.5 },
       { x: -3.5, y: 4 },
@@ -137,6 +167,12 @@ export const STAGES: readonly StageDef[] = [
     ],
     blast: { left: -26, right: 26, top: 18, bottom: -10 },
     playerSpawn: { x: -6, y: 0.5 },
+    versusSpawns: [
+      { x: -9, y: 0.5 },
+      { x: 9, y: 0.5 },
+      { x: -7, y: 4.5 },
+      { x: 7, y: 4.5 },
+    ],
     enemySpawns: [
       { x: 8, y: 0.5 },
       { x: -8, y: 0.5 },

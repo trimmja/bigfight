@@ -90,6 +90,8 @@ const FREEZE_RAY_WEAPON: WeaponDef = {
 
 export class Player extends Fighter {
   stocks = PLAYER_STOCKS;
+  /** Match slot (0-3) — KO attribution + identity. Set once at match setup. */
+  slotIndex = -1;
 
   private shieldTimer = 0;
   private hammerTimer = 0;
@@ -146,8 +148,9 @@ export class Player extends Fighter {
     }
   }
 
-  respawn(ctx: WorldCtx): void {
-    this.koReset(ctx.stage.respawnPoint);
+  respawn(ctx: WorldCtx, offsetX = 0): void {
+    const point = ctx.stage.respawnPoint;
+    this.koReset(offsetX === 0 ? point : { x: point.x + offsetX, y: point.y });
     this.invulnTimer = RESPAWN_INVULN;
     this.damage = 0;
   }

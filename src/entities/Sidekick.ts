@@ -153,6 +153,7 @@ export class Sidekick extends Entity {
       this.owner.teamId,
       1,
       this.attack,
+      this.owner.slotIndex,
     );
     ctx.particles.directional(this.body.pos.x, this.body.pos.y, -facing, 0.2, this.def.palette.glow, 8, 3.5);
     this.recoil = 0.24;

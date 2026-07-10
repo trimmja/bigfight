@@ -25,6 +25,12 @@ type ResolvedHitbox = ActiveHitbox & {
 };
 
 export class HitResolver {
+  /**
+   * Player-vs-player hit notifications (KO attribution in versus modes).
+   * Fires only when both parties carry a match slot; wired by GameplayScreen.
+   */
+  onPlayerHitPlayer: ((victimSlot: number, attackerSlot: number) => void) | null = null;
+
   beginStep(): void {
     hitboxes.length = 0;
   }
@@ -120,6 +126,13 @@ export class HitResolver {
           shieldedVictim.applyFreeze?.(hitbox.def.freezeTime);
         }
         hitbox.attacker.onDealtHit(result);
+        if (this.onPlayerHitPlayer) {
+          const attackerSlot = (hitbox.attacker as { slotIndex?: number }).slotIndex ?? -1;
+          const victimSlot = (victim as { slotIndex?: number }).slotIndex ?? -1;
+          if (attackerSlot >= 0 && victimSlot >= 0 && attackerSlot !== victimSlot) {
+            this.onPlayerHitPlayer(victimSlot, attackerSlot);
+          }
+        }
         if (notifyResolvedHit(hitbox)) break;
       }
     }

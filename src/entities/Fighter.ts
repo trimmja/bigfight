@@ -61,6 +61,8 @@ export class Fighter extends Entity {
   readonly faction: Faction;
   /** Combat gate (see combat/types.ts). Set once at match setup via setTeam. */
   teamId: number;
+  /** Match slot for players (-1 for mobs/bosses) — KO attribution. */
+  slotIndex = -1;
   readonly rig: Rig;
   readonly hurtbox: Hurtbox;
   readonly intents: FighterIntent = {
@@ -536,6 +538,7 @@ export class Fighter extends Entity {
         this.faction,
         this.teamId,
         this.power,
+        this.slotIndex,
       );
       if (wave.bothDirections) {
         ctx.fireProjectile(
@@ -547,6 +550,7 @@ export class Fighter extends Entity {
           this.faction,
           this.teamId,
           this.power,
+          this.slotIndex,
         );
       }
       // (ProjectileManager.fire emits the 'shoot' sfx event per wave.)
@@ -777,6 +781,7 @@ export class Fighter extends Entity {
       this.faction,
       this.teamId,
       this.power * this.attackMult,
+      this.slotIndex,
     );
   }
 
