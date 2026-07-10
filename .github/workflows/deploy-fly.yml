@@ -1,0 +1,58 @@
+name: Deploy to Fly (playbigfight.com)
+
+# playbigfight.com is the MAIN site (Fly app `bigfight-online`, also the online
+# multiplayer server). Every push to main auto-deploys it here — mirroring the
+# GitHub Pages deploy in deploy.yml — so the live site never lags behind main.
+#
+# Requires a repo secret FLY_API_TOKEN (a Fly deploy token for bigfight-online):
+#   flyctl tokens create deploy -a bigfight-online | gh secret set FLY_API_TOKEN -R trimmja/bigfight
+# Until that secret exists, the deploy job SKIPS (green, with a warning) instead
+# of failing.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false # never interrupt a deploy mid-flight
+
+jobs:
+  # Secrets can't be read in a job-level `if:`, so convert "is the token set?"
+  # into an output the deploy job can gate on. Missing token => skip, not fail.
+  check-token:
+    runs-on: ubuntu-latest
+    outputs:
+      has-token: ${{ steps.probe.outputs.has-token }}
+    steps:
+      - id: probe
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "has-token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::FLY_API_TOKEN not set — skipping the playbigfight.com deploy. Add the repo secret to enable auto-deploy."
+          else
+            echo "has-token=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: check-token
+    if: needs.check-token.outputs.has-token == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # deploy-server.mjs = the single source of truth for the Fly deploy:
+      # builds the client (BASE_PATH=/), stages it into server/public/,
+      # flyctl deploy (remote build), then pins to exactly one machine.
+      - name: Build client + deploy server to Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: node scripts/deploy-server.mjs
