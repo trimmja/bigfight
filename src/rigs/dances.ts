@@ -195,9 +195,19 @@ const DANCES: Record<string, Dance> = {
   titan: sprinkler,
 };
 
-/** The fighter's signature dance (falls back to the robot if unknown). */
+/** Global dance tempo — a t multiplier applied to every dance. <1 = slower. */
+const DANCE_SPEED = 0.7;
+
+/** The fighter's signature dance (falls back to the robot), slowed to the
+ * house tempo. One wrapper per lookup (called on pick/spawn, not per frame). */
 export function danceFor(characterId: string): Dance {
-  return DANCES[characterId] ?? robot;
+  const d = DANCES[characterId] ?? robot;
+  const s = DANCE_SPEED;
+  const scaled: Dance = { pose: (t) => d.pose(t * s) };
+  if (d.bob) scaled.bob = (t) => d.bob!(t * s);
+  if (d.sway) scaled.sway = (t) => d.sway!(t * s);
+  if (d.spin) scaled.spin = (t) => d.spin!(t * s);
+  return scaled;
 }
 
 void clamp01; // reserved for future eased phases
