@@ -65,6 +65,7 @@ test('host departure migrates ownership instead of closing the room', () => {
   const migrated = rooms.removePlayer('a');
   assert.equal(migrated?.hostId, 'b');
   assert.deepEqual(migrated?.players.map((player) => player.playerId), ['b', 'c']);
+  assert.deepEqual(migrated?.players.map((player) => player.slot), [0, 1]);
 });
 
 test('countdown requires two selected ready players and cancels on unready', () => {
@@ -92,4 +93,22 @@ test('untrusted room settings and visibility are normalized', () => {
   assert.equal(room.visibility, 'public');
   const updated = rooms.setSettings('a', { stageId: '../ghost ship!' });
   assert.equal(updated.settings.stageId, 'ghostship');
+});
+
+test('an active match pauses for a disconnected player and resumes in place', () => {
+  const { rooms, tick } = directory();
+  const room = rooms.create({ playerId: 'a', releaseId: 'release-1', nickname: 'Alpha', visibility: 'public' });
+  rooms.join({ playerId: 'b', releaseId: 'release-1', nickname: 'Bravo', roomId: room.id });
+  ready(rooms, 'a', 'volt');
+  ready(rooms, 'b', 'kaze');
+  rooms.startCountdown('a');
+  tick(3_000);
+  rooms.beginMatch(room.id);
+  const paused = rooms.setConnected('b', false);
+  assert.equal(paused.phase, 'paused');
+  assert.equal(paused.pauseStartedAt, 4_000);
+  const resumed = rooms.setConnected('b', true);
+  assert.equal(resumed.phase, 'match');
+  assert.equal(resumed.pauseStartedAt, null);
+  assert.deepEqual(resumed.players.map((player) => player.connected), [true, true]);
 });

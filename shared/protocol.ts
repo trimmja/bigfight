@@ -47,6 +47,7 @@ export interface RoomState {
   players: RoomPlayer[];
   countdownEndsAt: number | null;
   matchId: string | null;
+  pauseStartedAt: number | null;
   result: MatchResultSummary | null;
 }
 
@@ -99,8 +100,8 @@ export type S2C =
   | { t: 'protocolMismatch'; expected: number }
   | { t: 'countdown'; endsAt: number }
   | { t: 'matchStart'; match: MatchLaunch }
-  | { t: 'matchPaused'; playerId: string }
-  | { t: 'matchResumed' }
+  | { t: 'matchPaused'; playerId: string; pausedAt: number }
+  | { t: 'matchResumed'; pausedAt: number; resumedAt: number }
   | { t: 'signal'; from: string; data: unknown }
   | { t: 'pong'; clientTs: number; serverTs: number };
 

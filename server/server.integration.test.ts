@@ -3,7 +3,14 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { WebSocket, type RawData } from 'ws';
-import { PROTOCOL_VERSION, type C2S, type S2C } from '../shared/protocol';
+import {
+  PROTOCOL_VERSION,
+  RELAY_CHANNEL_GAME,
+  decodeRelayFrame,
+  encodeRelayFrame,
+  type C2S,
+  type S2C,
+} from '../shared/protocol';
 
 const PROJECT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 type RoomMessage = Extract<S2C, { t: 'room' }>;
@@ -11,11 +18,16 @@ type RoomListMessage = Extract<S2C, { t: 'roomList' }>;
 
 class TestClient {
   private readonly queued: S2C[] = [];
+  private readonly binaryQueued: Uint8Array[] = [];
   private readonly waiters = new Set<() => void>();
 
   constructor(readonly socket: WebSocket) {
     socket.on('message', (raw: RawData, binary: boolean) => {
-      if (binary) return;
+      if (binary) {
+        this.binaryQueued.push(new Uint8Array(raw as Buffer));
+        for (const wake of this.waiters) wake();
+        return;
+      }
       this.queued.push(JSON.parse(raw.toString()) as S2C);
       for (const wake of this.waiters) wake();
     });
@@ -41,6 +53,25 @@ class TestClient {
         clearTimeout(timer);
         this.waiters.delete(check);
         resolve(message);
+      };
+      this.waiters.add(check);
+    });
+  }
+
+  async waitForBinary(timeoutMs = 2_000): Promise<Uint8Array> {
+    const queued = this.binaryQueued.shift();
+    if (queued) return queued;
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.waiters.delete(check);
+        reject(new Error('Timed out waiting for binary relay packet'));
+      }, timeoutMs);
+      const check = () => {
+        const data = this.binaryQueued.shift();
+        if (!data) return;
+        clearTimeout(timer);
+        this.waiters.delete(check);
+        resolve(data);
       };
       this.waiters.add(check);
     });
@@ -83,9 +114,30 @@ test('real websocket clients can discover, join, and resume the same room', asyn
   const danced = await resumed.client.waitFor((message): message is RoomMessage => message.t === 'room' && message.room.players.some((player) => player.playerId === host.playerId && player.danceSeq === 1));
   assert.equal(danced.room.players.find((player) => player.playerId === host.playerId)?.connected, true);
 
+  resumed.client.send({ t: 'setPlayer', characterId: 'volt', ready: true });
+  guest.client.send({ t: 'setPlayer', characterId: 'kaze', ready: true });
+  await resumed.client.waitFor((message): message is RoomMessage => message.t === 'room' && message.room.players.every((player) => player.ready));
+  resumed.client.send({ t: 'startMatch' });
+  await resumed.client.waitFor((message) => message.t === 'matchStart', 2_000);
+
+  const relayFrame = encodeRelayFrame(1, RELAY_CHANNEL_GAME, new Uint8Array([9, 7, 5]));
+  resumed.client.socket.send(relayFrame.slice().buffer as ArrayBuffer);
+  const relayed = decodeRelayFrame(await guest.client.waitForBinary());
+  assert.equal(relayed?.slot, 0);
+  assert.equal(relayed?.channel, RELAY_CHANNEL_GAME);
+  assert.deepEqual([...relayed!.payload], [9, 7, 5]);
+
   guest.client.socket.close();
-  const guestRemoved = await resumed.client.waitFor((message): message is RoomMessage => message.t === 'room' && message.room.players.length === 1, 2_000);
+  const guestRemoved = await resumed.client.waitFor((message): message is RoomMessage => message.t === 'room' && message.room.players.length === 1, 3_000);
   assert.equal(guestRemoved.room.hostId, host.playerId);
+
+  const transient = await connect(launched.port, 'release-test');
+  transient.client.socket.close();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const health = await fetch(`http://127.0.0.1:${launched.port}/healthz`).then((response) => response.json()) as { sessions: number };
+  assert.equal(health.sessions, 1);
+  assert.equal((await fetch(`http://127.0.0.1:${launched.port}/missing.js`)).status, 404);
+  assert.equal((await fetch(`http://127.0.0.1:${launched.port}/%ZZ`)).status, 400);
 });
 
 async function connect(port: number, releaseId: string, resumeToken?: string): Promise<{
@@ -107,7 +159,7 @@ async function connect(port: number, releaseId: string, resumeToken?: string): P
 async function launchServer(): Promise<{ child: ChildProcess; port: number }> {
   const child = spawn(process.execPath, ['--import', 'tsx', 'server/main.ts'], {
     cwd: PROJECT_ROOT,
-    env: { ...process.env, PORT: '0', RECONNECT_GRACE_MS: '100' },
+    env: { ...process.env, PORT: '0', RECONNECT_GRACE_MS: '1000', MATCH_COUNTDOWN_MS: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   return new Promise((resolve, reject) => {

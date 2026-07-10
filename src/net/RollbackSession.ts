@@ -33,6 +33,9 @@ const HASH_INTERVAL = 20;
 
 const MSG_INPUTS = 0x01;
 const MSG_HASH = 0x03;
+const MSG_INPUT_REQUEST = 0x04;
+const MSG_INPUT_REPAIR = 0x05;
+const REPAIR_CHUNK_FRAMES = 200;
 
 export interface RollbackStats {
   frame: number;
@@ -59,6 +62,7 @@ export interface RollbackSessionOptions {
   inputDelay?: number;
   /** Maximum prediction distance before the sim waits for real inputs. */
   rollbackWindow?: number;
+  onPeerChange?: (slot: PeerSlot, event: 'connected' | 'lost' | 'left') => void;
 }
 
 export class RollbackSession {
@@ -144,6 +148,10 @@ export class RollbackSession {
     }
 
     this.transport.onMessage((from, channel, data) => this.onMessage(from, channel, data));
+    this.transport.onPeerChange((slot, event) => {
+      if (event === 'connected') this.requestPeerRepair(slot);
+      opts.onPeerChange?.(slot, event);
+    });
     // Neutral inputs cover the delay gap at match start (all peers agree).
     const neutral = new Uint8Array(INPUT_BYTES); // buttons 0, axes 0
     for (let f = 0; f < this.inputDelay; f += 1) this.writeRing(this.localSlot, f, neutral, 0, true);
@@ -206,6 +214,11 @@ export class RollbackSession {
   flush(): void {
     this.broadcastInputs();
     this.applyRollbackIfNeeded();
+  }
+
+  /** Refill any input gap after a coordinated room reconnect. */
+  repairConnections(): void {
+    for (const slot of this.transport.peerSlots) this.requestPeerRepair(slot);
   }
 
   private canSimulate(frame: number): boolean {
@@ -324,6 +337,42 @@ export class RollbackSession {
       }
     } else if (data[0] === MSG_HASH) {
       if (channel === 'control' && data.length >= 10 && data[1] === from) this.onHashMessage(data);
+    } else if (data[0] === MSG_INPUT_REQUEST) {
+      if (channel !== 'control' || data.length !== 6 || data[1] !== from) return;
+      this.sendInputRepair(from, readU32(data, 2));
+    } else if (data[0] === MSG_INPUT_REPAIR) {
+      if (channel !== 'control' || data.length < 7 || data[1] !== from || from >= this.playerCount) return;
+      const startFrame = readU32(data, 2);
+      const count = data[6]!;
+      if (count === 0 || data.length !== 7 + count * INPUT_BYTES) return;
+      for (let i = 0; i < count; i += 1) this.ingestInput(from, startFrame + i, data, 7 + i * INPUT_BYTES);
+    }
+  }
+
+  private requestPeerRepair(slot: PeerSlot): void {
+    if (slot >= this.playerCount || slot === this.localSlot) return;
+    const packet = new Uint8Array(6);
+    packet[0] = MSG_INPUT_REQUEST;
+    packet[1] = this.localSlot;
+    writeU32(packet, 2, this.lastKnownFrame[slot]! + 1);
+    this.transport.send(slot, 'control', packet);
+  }
+
+  private sendInputRepair(to: PeerSlot, requestedFrame: number): void {
+    const newest = this.nextLocalFrame - 1;
+    if (newest < 0 || requestedFrame > newest) return;
+    const oldestAvailable = Math.max(0, newest - INPUT_RING + 1);
+    let frame = Math.max(requestedFrame, oldestAvailable);
+    while (frame <= newest) {
+      const count = Math.min(REPAIR_CHUNK_FRAMES, newest - frame + 1);
+      const packet = new Uint8Array(7 + count * INPUT_BYTES);
+      packet[0] = MSG_INPUT_REPAIR;
+      packet[1] = this.localSlot;
+      writeU32(packet, 2, frame);
+      packet[6] = count;
+      for (let i = 0; i < count; i += 1) packet.set(this.readRing(this.localSlot, frame + i), 7 + i * INPUT_BYTES);
+      this.transport.send(to, 'control', packet);
+      frame += count;
     }
   }
 

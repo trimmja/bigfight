@@ -69,10 +69,21 @@ export function runRollbackTest(game: Game): RollbackTestReport {
 
     // Drive both peers + the network until both simulate TEST_FRAMES.
     let guard = TEST_FRAMES * 40;
+    let networkTick = 0;
     while ((peerA.session.frame < TEST_FRAMES || peerB.session.frame < TEST_FRAMES) && guard > 0) {
+      // A full second with every realtime input packet lost is longer than the
+      // redundant packet tail. Recovery therefore proves the reliable repair
+      // exchange, not ordinary resend luck.
+      if (networkTick === 420) hub.lossRate = 1;
+      if (networkTick === 490) {
+        hub.lossRate = 0.05;
+        peerA.session.repairConnections();
+        peerB.session.repairConnections();
+      }
       hub.pump(1000 * TIMESTEP);
       if (peerA.session.frame < TEST_FRAMES) peerA.session.pump(1);
       if (peerB.session.frame < TEST_FRAMES) peerB.session.pump(1);
+      networkTick += 1;
       guard -= 1;
     }
     // Drain: deliver the tail inputs (rebroadcast beats loss) and let final

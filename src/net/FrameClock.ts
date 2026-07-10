@@ -6,10 +6,12 @@
 export class FrameClock {
   private epochMs = 0;
   private offsetFrames = 0;
+  private pauseStartedAtMs: number | null = null;
 
   start(epochMs: number): void {
     this.epochMs = epochMs;
     this.offsetFrames = 0;
+    this.pauseStartedAtMs = null;
   }
 
   targetFrame(nowMs: number): number {
@@ -19,5 +21,15 @@ export class FrameClock {
   /** Timesync: slow down (-1) or speed up (+1) relative to the raw clock. */
   nudge(frames: number): void {
     this.offsetFrames += frames;
+  }
+
+  pause(serverTimeMs: number): void {
+    if (this.pauseStartedAtMs === null) this.pauseStartedAtMs = serverTimeMs;
+  }
+
+  resume(pausedAtMs: number, resumedAtMs: number): void {
+    const start = this.pauseStartedAtMs ?? pausedAtMs;
+    this.epochMs += Math.max(0, resumedAtMs - start);
+    this.pauseStartedAtMs = null;
   }
 }

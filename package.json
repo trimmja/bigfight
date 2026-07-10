@@ -10,7 +10,10 @@
     "check": "tsc --noEmit && node scripts/check-determinism.mjs",
     "server:dev": "tsx watch server/main.ts",
     "server:start": "tsx server/main.ts",
-    "server:test": "tsx --test server/**/*.test.ts"
+    "server:test": "tsx --test server/**/*.test.ts",
+    "net:unit": "tsx --test src/net/**/*.test.ts",
+    "net:test": "node scripts/webrtc-ci.mjs",
+    "net:lobby-test": "node scripts/lobby-client-ci.mjs"
   },
   "dependencies": {
     "three": "^0.185.1",

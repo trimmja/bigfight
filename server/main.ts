@@ -14,8 +14,9 @@ import {
 } from '../shared/protocol';
 import { RoomDirectory, RoomError } from './rooms';
 
-const PORT = Number(process.env.PORT ?? 8080);
-const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS ?? 30_000);
+const PORT = envNumber('PORT', 8080, 0);
+const RECONNECT_GRACE_MS = envNumber('RECONNECT_GRACE_MS', 30_000, 1_000);
+const MATCH_COUNTDOWN_MS = envNumber('MATCH_COUNTDOWN_MS', 3_000, 1);
 const MAX_CONTROL_BYTES = 32 * 1024;
 const PUBLIC_DIR = fileURLToPath(new URL('../dist/', import.meta.url));
 
@@ -146,7 +147,7 @@ function handleControl(connection: Connection, raw: RawData): void {
         return;
       }
       case 'startMatch': {
-        const room = rooms.startCountdown(connection.playerId);
+        const room = rooms.startCountdown(connection.playerId, MATCH_COUNTDOWN_MS);
         publishRoom(room);
         publishToRoom(room, { t: 'countdown', endsAt: room.countdownEndsAt! });
         syncCountdown(room);
@@ -197,6 +198,7 @@ function handleHello(connection: Connection, message: Extract<C2S, { t: 'hello' 
     return;
   }
   const resumed = message.resumeToken ? sessionsByToken.get(message.resumeToken) : undefined;
+  let matchResumed: { pausedAt: number; resumedAt: number } | null = null;
   if (resumed && resumed.expiresAt >= Date.now() && resumed.releaseId === message.releaseId) {
     const old = connectionByPlayer.get(resumed.playerId);
     old?.socket.close(4001, 'resumed elsewhere');
@@ -205,7 +207,13 @@ function handleHello(connection: Connection, message: Extract<C2S, { t: 'hello' 
     connection.resumeToken = resumed.resumeToken;
     connection.releaseId = resumed.releaseId;
     connection.removalTimer = null;
-    if (rooms.roomForPlayer(connection.playerId)) rooms.setConnected(connection.playerId, true);
+    const before = rooms.roomForPlayer(connection.playerId);
+    if (before) {
+      const after = rooms.setConnected(connection.playerId, true);
+      if (before.phase === 'paused' && before.pauseStartedAt !== null && after.phase === 'match') {
+        matchResumed = { pausedAt: before.pauseStartedAt, resumedAt: Date.now() };
+      }
+    }
   } else {
     connection.playerId = crypto.randomUUID();
     connection.resumeToken = crypto.randomUUID();
@@ -222,7 +230,10 @@ function handleHello(connection: Connection, message: Extract<C2S, { t: 'hello' 
   });
   send(connection, { t: 'welcome', playerId: connection.playerId, resumeToken: connection.resumeToken });
   const room = rooms.roomForPlayer(connection.playerId);
-  if (room) publishRoom(room);
+  if (room) {
+    publishRoom(room);
+    if (matchResumed) publishToRoom(room, { t: 'matchResumed', ...matchResumed });
+  }
   send(connection, { t: 'roomList', rooms: rooms.listPublic(connection.releaseId) });
 }
 
@@ -260,9 +271,16 @@ function handleClose(connection: Connection): void {
   connectionByPlayer.delete(connection.playerId);
   const room = rooms.roomForPlayer(connection.playerId);
   const session = sessionsByToken.get(connection.resumeToken);
-  if (!room || !session) return;
+  if (!session) return;
+  if (!room) {
+    sessionsByToken.delete(connection.resumeToken);
+    return;
+  }
   const updated = rooms.setConnected(connection.playerId, false);
   publishRoom(updated);
+  if (room.phase === 'match' && updated.pauseStartedAt !== null) {
+    publishToRoom(updated, { t: 'matchPaused', playerId: connection.playerId, pausedAt: updated.pauseStartedAt });
+  }
   publishRoomLists();
   session.expiresAt = Date.now() + RECONNECT_GRACE_MS;
   session.removalTimer = setTimeout(() => {
@@ -361,7 +379,12 @@ function rawDataToUint8Array(raw: RawData): Uint8Array {
 function handleHttp(request: IncomingMessage, response: ServerResponse): void {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
   if (url.pathname === '/healthz') {
-    writeJson(response, 200, { ok: true, publicRooms: rooms.listPublic().length, connections: connections.size });
+    writeJson(response, 200, {
+      ok: true,
+      publicRooms: rooms.listPublic().length,
+      connections: connections.size,
+      sessions: sessionsByToken.size,
+    });
     return;
   }
   if (url.pathname === '/api/rooms') {
@@ -376,14 +399,27 @@ function handleHttp(request: IncomingMessage, response: ServerResponse): void {
 }
 
 function serveStatic(pathname: string, headOnly: boolean, response: ServerResponse): void {
-  let relative = normalize(decodeURIComponent(pathname)).replace(/^\/+/, '');
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    response.writeHead(400).end();
+    return;
+  }
+  let relative = normalize(decoded).replace(/^\/+/, '');
   // The old GitHub Pages build uses /bigfight/ while the canonical Fly domain
   // builds for /. Serving both makes cached clients and local builds recover.
   if (relative === 'bigfight') relative = '';
   else if (relative.startsWith('bigfight/')) relative = relative.slice('bigfight/'.length);
   if (!relative || relative.endsWith('/')) relative += 'index.html';
   let file = join(PUBLIC_DIR, relative);
-  if (!file.startsWith(PUBLIC_DIR) || !existsSync(file) || !statSync(file).isFile()) file = join(PUBLIC_DIR, 'index.html');
+  const invalidPath = !file.startsWith(PUBLIC_DIR);
+  const missing = invalidPath || !existsSync(file) || !statSync(file).isFile();
+  if (missing && extname(relative)) {
+    response.writeHead(404).end();
+    return;
+  }
+  if (missing) file = join(PUBLIC_DIR, 'index.html');
   if (!existsSync(file)) {
     response.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' }).end('Client build not staged');
     return;
@@ -408,3 +444,8 @@ const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.webmanifest': 'application/manifest+json',
 };
+
+function envNumber(name: string, fallback: number, minimum: number): number {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed >= minimum ? parsed : fallback;
+}

@@ -18,6 +18,8 @@ export interface NetMatchScreenOptions {
   onMatchEnd: (result: VersusEndResult) => void;
   /** Measured in the lobby after direct/relay transport selection. */
   tuning?: NetworkTuning;
+  /** Server-synchronized wall clock; LobbySocket.serverNow supplies this. */
+  nowMs?: () => number;
   onDisconnect?: (slot: number) => void;
 }
 
@@ -31,6 +33,7 @@ export class NetMatchScreen implements Screen {
   private inner: GameplayScreen | null = null;
   private session: RollbackSession | null = null;
   private readonly clock = new FrameClock();
+  private reconnectPaused = false;
 
   constructor(private readonly opts: NetMatchScreenOptions) {}
 
@@ -63,6 +66,9 @@ export class NetMatchScreen implements Screen {
       sources,
       inputDelay: tuning.inputDelayFrames,
       rollbackWindow: tuning.rollbackWindowFrames,
+      onPeerChange: (slot, event) => {
+        if (event === 'lost' || event === 'left') this.opts.onDisconnect?.(slot);
+      },
     });
     this.clock.start(this.opts.startEpochMs);
   }
@@ -80,7 +86,11 @@ export class NetMatchScreen implements Screen {
     if (!session) return;
     // Catch up toward the shared clock (bounded — beyond that we stall and
     // timesync handles it), but always pump at least one step attempt.
-    const target = this.clock.targetFrame(performance.now());
+    if (this.reconnectPaused) {
+      session.flush();
+      return;
+    }
+    const target = this.clock.targetFrame(this.opts.nowMs?.() ?? Date.now());
     const behind = Math.max(0, target - session.frame);
     session.pump(Math.min(4, Math.max(1, behind)));
   }
@@ -92,5 +102,22 @@ export class NetMatchScreen implements Screen {
   /** Live session stats for the net HUD / lobby debug. */
   get stats(): RollbackSession['stats'] | null {
     return this.session?.stats ?? null;
+  }
+
+  /** Room server calls this after a paused player resumes their session. */
+  repairConnections(): void {
+    this.session?.repairConnections();
+  }
+
+  pauseForReconnect(pausedAt: number): void {
+    if (this.reconnectPaused) return;
+    this.reconnectPaused = true;
+    this.clock.pause(pausedAt);
+  }
+
+  resumeAfterReconnect(pausedAt: number, resumedAt: number): void {
+    this.clock.resume(pausedAt, resumedAt);
+    this.session?.repairConnections();
+    this.reconnectPaused = false;
   }
 }

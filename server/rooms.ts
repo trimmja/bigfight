@@ -88,6 +88,7 @@ export class RoomDirectory {
       players: [player],
       countdownEndsAt: null,
       matchId: null,
+      pauseStartedAt: null,
       result: null,
       createdAt: now,
       updatedAt: now,
@@ -232,6 +233,7 @@ export class RoomDirectory {
     room.phase = 'match';
     room.matchId = matchId;
     room.countdownEndsAt = null;
+    room.pauseStartedAt = null;
     this.touch(room);
     return {
       matchId,
@@ -247,8 +249,10 @@ export class RoomDirectory {
     this.assertHost(room, playerId);
     if (room.phase !== 'match' || room.matchId !== matchId) throw new RoomError('invalidPhase');
     room.phase = 'results';
+    room.pauseStartedAt = null;
     room.result = copyResult(result);
     for (const player of room.players) player.ready = false;
+    compactSlots(room.players);
     this.touch(room);
     return snapshot(room);
   }
@@ -261,7 +265,9 @@ export class RoomDirectory {
     room.matchId = null;
     room.result = null;
     room.countdownEndsAt = null;
+    room.pauseStartedAt = null;
     for (const player of room.players) player.ready = false;
+    compactSlots(room.players);
     this.touch(room);
     return snapshot(room);
   }
@@ -271,6 +277,14 @@ export class RoomDirectory {
     const player = requirePlayer(room, playerId);
     player.connected = connected;
     if (!connected && room.phase === 'countdown') this.cancelCountdownRecord(room);
+    else if (!connected && room.phase === 'match') {
+      room.phase = 'paused';
+      room.pauseStartedAt = this.now();
+    }
+    else if (connected && room.phase === 'paused' && room.players.every((candidate) => candidate.connected)) {
+      room.phase = 'match';
+      room.pauseStartedAt = null;
+    }
     this.touch(room);
     return snapshot(room);
   }
@@ -286,6 +300,7 @@ export class RoomDirectory {
     }
     if (room.hostId === playerId) room.hostId = room.joinOrder[0] ?? room.players[0]!.playerId;
     if (room.phase === 'countdown') this.cancelCountdownRecord(room);
+    if (room.phase === 'lobby' || room.phase === 'results') compactSlots(room.players);
     this.touch(room);
     return snapshot(room);
   }
@@ -366,6 +381,11 @@ function lowestFreeSlot(players: readonly RoomPlayer[]): number {
   return -1;
 }
 
+function compactSlots(players: RoomPlayer[]): void {
+  players.sort((a, b) => a.slot - b.slot);
+  for (let index = 0; index < players.length; index += 1) players[index]!.slot = index as RoomPlayer['slot'];
+}
+
 function cleanNickname(value: string, fallback: string): string {
   const cleaned = value.replace(/[^A-Za-z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 12);
   return cleaned || fallback;
@@ -402,6 +422,7 @@ function snapshot(room: RoomRecord): RoomState {
     players: room.players.slice().sort((a, b) => a.slot - b.slot).map(copyPlayer),
     countdownEndsAt: room.countdownEndsAt,
     matchId: room.matchId,
+    pauseStartedAt: room.pauseStartedAt,
     result: room.result ? copyResult(room.result) : null,
   };
 }
