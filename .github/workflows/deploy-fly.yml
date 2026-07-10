@@ -1,0 +1,44 @@
+name: Deploy playbigfight.com
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  check-token:
+    runs-on: ubuntu-latest
+    outputs:
+      has-token: ${{ steps.probe.outputs.has-token }}
+    steps:
+      - id: probe
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "has-token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::FLY_API_TOKEN is not set; playbigfight.com was not deployed."
+          else
+            echo "has-token=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: check-token
+    if: needs.check-token.outputs.has-token == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy browser and room server
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: node scripts/deploy-server.mjs

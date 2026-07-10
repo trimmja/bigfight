@@ -3,7 +3,7 @@
 A bright, chunky, Smash-Bros-style platform fighter that runs in your browser — designed by
 **Ryder (age 9)** and built with his dad.
 
-**▶️ Play it: [trimmja.github.io/bigfight](https://trimmja.github.io/bigfight/)**
+**▶️ Play it: [playbigfight.com](https://playbigfight.com/)**
 (On iPhone: open in Safari, turn sideways, Share → *Add to Home Screen* for the full-screen app.)
 
 ## The game
@@ -30,8 +30,13 @@ A bright, chunky, Smash-Bros-style platform fighter that runs in your browser �
 
 ## Tech
 Three.js + TypeScript + Vite. **100% procedural** — every model, animation, stage, sound
-effect, and music track is generated in code; the repo contains zero asset files. Deployed
-by GitHub Actions to GitHub Pages on every push.
+effect, and music track is generated in code; the repo contains zero asset files.
+
+`playbigfight.com` is the canonical browser game and online room server. Fly runs one Dallas
+machine for room discovery, WebRTC signaling, and fallback relay traffic; live matches use
+direct peer-to-peer data channels whenever the players' routers allow them. GitHub Pages only
+redirects old links to the canonical domain. Pushing `main` deploys the combined client/server
+release through GitHub Actions.
 
 Built by a father-son team with help from Claude and Codex.
 Lead designer & QA department: Ryder. 🥊

@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Redirect legacy GitHub Pages
 
 on:
   push:
@@ -15,22 +15,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  redirect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: github-pages-redirect
 
   deploy:
-    needs: build
+    needs: redirect
     runs-on: ubuntu-latest
     environment:
       name: github-pages

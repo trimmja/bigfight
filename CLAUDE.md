@@ -10,8 +10,9 @@ spec; when a "bug report" describes intended-but-confusing behavior, fix the *co
 
 ## Workflow
 - `npm run dev` (LAN-exposed for phone testing) · `npm run check` · `npm run build` (tsc + vite).
-- **Deploy = `git push`** (main → GitHub Actions → trimmja.github.io/bigfight). Verify with
-  `gh run watch`. Players get it via the 🔄 update pill on the title screen (build-id check).
+- **Deploy = `git push`** (main → GitHub Actions → playbigfight.com on Fly). Verify with
+  `gh run watch`. GitHub Pages only redirects to the canonical domain. Players get updates via
+  the update pill on the title screen (commit-derived release-id check).
 - `?debug` URL flag: hitboxes, state panel, FPS.
 
 ## Testing gotchas (hard-won)
