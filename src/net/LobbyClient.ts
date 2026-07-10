@@ -367,6 +367,11 @@ export class LobbyClient {
     this.send({ t: 'setPlayer', ...patch });
   }
 
+  /** Fire our dance emote — bumps our emoteSeq so everyone replays our dance. */
+  dance(): void {
+    this.send({ t: 'setPlayer', dance: true });
+  }
+
   /** Host only. Partial room settings update; `stageId` may be 'random'. */
   setSettings(patch: {
     mode?: GameMode;

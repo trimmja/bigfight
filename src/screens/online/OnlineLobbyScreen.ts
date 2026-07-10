@@ -38,6 +38,9 @@ export class OnlineLobbyScreen implements Screen {
   private plates: HTMLElement[] = [];
   private grid: CharacterGrid | null = null;
   private readyBtn: HTMLButtonElement | null = null;
+  private danceBtn: HTMLButtonElement | null = null;
+  /** Per-slot {playerId, last emoteSeq} so we replay a dance only on a fresh bump. */
+  private emoteState: Record<number, { pid: string; seq: number }> = {};
   private settingsBtn: HTMLButtonElement | null = null;
   private settingsPanel: HTMLElement | null = null;
   private countdownEl: HTMLElement | null = null;
@@ -97,6 +100,8 @@ export class OnlineLobbyScreen implements Screen {
     const pickWrap = el('div', 'bf-arena-pick', bar);
     el('div', 'bf-arena-pick-label', pickWrap).textContent = 'YOUR FIGHTER';
     this.grid = buildCharacterGrid(pickWrap, game.save, (id) => this.select(id, true));
+    this.danceBtn = button('💃', () => this.triggerDance(), 'bf-button bf-button-yellow bf-arena-dance', bar);
+    this.danceBtn.title = 'Dance!';
     this.readyBtn = button('READY!', () => this.toggleReady(), 'bf-button bf-button-green bf-button-big bf-arena-ready', bar);
 
     this.unsubs.push(
@@ -145,6 +150,14 @@ export class OnlineLobbyScreen implements Screen {
     }
   }
 
+  /** Fire my dance emote. The server echoes an emoteSeq bump; updateEmotes then
+   * plays it on my pedestal AND on everyone else's screen — one shared path. */
+  private triggerDance(): void {
+    if (this.client.self === null) return;
+    events.emit('ui', { kind: 'confirm' });
+    this.client.dance();
+  }
+
   private toggleReady(): void {
     const self = this.client.self;
     if (!self) return;
@@ -176,6 +189,10 @@ export class OnlineLobbyScreen implements Screen {
     }
 
     if (self) this.stage?.setLocal(self.slot);
+
+    // Dance emotes ride outside the signature gate (like pings): a bumped
+    // emoteSeq replays that fighter's dance on its pedestal for everyone.
+    this.updateEmotes(room);
 
     // Signature-gate: only touch the DOM/3D when the visible state changes
     // (the server re-broadcasts ~1/s for pings — never rebuild on those).
@@ -233,6 +250,20 @@ export class OnlineLobbyScreen implements Screen {
     }
     if (p.ready) el('div', 'bf-plate-check', plate).textContent = 'READY!';
     if (!p.connected) el('div', 'bf-plate-away', plate).textContent = '📶…';
+  }
+
+  private updateEmotes(room: RoomState): void {
+    for (const p of room.players) {
+      const prev = this.emoteState[p.slot];
+      if (!prev || prev.pid !== p.playerId) {
+        // New occupant (or first sight) — record the baseline, don't replay.
+        this.emoteState[p.slot] = { pid: p.playerId, seq: p.emoteSeq };
+      } else if (p.emoteSeq > prev.seq) {
+        prev.seq = p.emoteSeq;
+        this.stage?.playDance(p.slot);
+        events.emit('ui', { kind: 'move' });
+      }
+    }
   }
 
   private updatePlatePings(room: RoomState): void {
@@ -444,6 +475,7 @@ export class OnlineLobbyScreen implements Screen {
     this.plates = [];
     this.grid = null;
     this.readyBtn = null;
+    this.danceBtn = null;
     this.settingsBtn = null;
     this.settingsPanel = null;
     this.plateLayer = null;

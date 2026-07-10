@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 import { characterById } from '../../data/characters';
+import { danceFor, type Dance } from '../../rigs/dances';
 import { buildCharacterRig } from '../../rigs/characterBuilders';
 import type { Rig } from '../../rigs/FighterRig';
 import { poseAttack, poseFightStance } from '../../rigs/poses';
 import { makeToonMaterial } from '../../render/toon';
+
+/** How long a triggered dance emote plays before returning to the stance. */
+const DANCE_DURATION = 4.2;
 
 /**
  * The cinematic 3D lobby stage: up to 4 lit pedestals in a shallow arc, each
@@ -44,6 +48,8 @@ class Pedestal {
   private ready = false;
   private local = false;
   private pulseFired = false;
+  private dance: Dance | null = null;
+  private danceT = 0;
   private readonly mats: THREE.Material[] = [];
 
   constructor(
@@ -140,6 +146,14 @@ class Pedestal {
     this.local = local;
   }
 
+  /** Break into this fighter's signature dance (restarts if already dancing). */
+  startDance(): void {
+    if (!this.characterId) return;
+    this.dance = danceFor(this.characterId);
+    this.danceT = 0.0001;
+    this.punchT = -1; // cancel any greeting
+  }
+
   /** True once, the frame a player readies (owner spawns confetti). */
   consumeReadyPulse(): boolean {
     if (!this.pulseFired) return false;
@@ -172,17 +186,28 @@ class Pedestal {
       }
     }
 
-    // A readied fighter holds a confident finisher pose; otherwise idle/greet.
+    // Dancing takes over the whole body (pose + bob/sway/spin); a readied
+    // fighter otherwise holds a finisher; else greet / idle stance.
     if (this.rig) {
-      if (this.punchT >= 0) {
+      const root = this.rig.root;
+      const d = this.dance;
+      if (d && this.danceT > 0) {
+        this.danceT += dt;
+        if (this.danceT >= DANCE_DURATION) this.dance = null; // ...back to stance
+        else this.rig.setPose(d.pose(this.danceT), blend);
+      } else if (this.punchT >= 0) {
         this.punchT += dt * 2.4;
         if (this.punchT >= 1) this.punchT = -1;
         else this.rig.setPose(poseAttack('finisher', this.punchT), blend);
-      }
-      if (this.punchT < 0) {
+      } else {
         this.rig.setPose(this.ready ? poseAttack('finisher', 0.55) : poseFightStance(this.t), blend);
       }
+      // rig.update() rewrites root.rotation.y (facing), so apply the facing +
+      // dance transform AFTER it, every frame.
       this.rig.update(dt);
+      const dancing = this.dance && this.danceT > 0;
+      root.position.set(dancing ? this.dance!.sway?.(this.danceT) ?? 0 : 0, 0.2 + (dancing ? this.dance!.bob?.(this.danceT) ?? 0 : 0), 0);
+      root.rotation.y = -Math.PI / 2 + (dancing ? this.dance!.spin?.(this.danceT) ?? 0 : 0);
     }
   }
 
@@ -223,6 +248,10 @@ export class PedestalStage {
   }
   setLocal(slot: number): void {
     for (const p of this.pedestals) p.setLocal(p.slot === slot);
+  }
+  /** Trigger the fighter on `slot` to break into its signature dance. */
+  playDance(slot: number): void {
+    this.pedestals[slot]?.startDance();
   }
 
   /** Screen fraction {x,y} of a pedestal top (confetti origin). */

@@ -1534,6 +1534,14 @@ html, body {
 .bf-arena-pick .bf-card-name { font-size: 12px; }
 .bf-arena-pick .bf-card-lock { display: none; }
 .bf-arena-ready { flex: 0 0 auto; align-self: stretch; min-width: 128px; }
+/* dance emote trigger — chunky round button between the carousel and READY */
+.bf-arena-dance {
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-width: 58px;
+  font-size: 24px;
+  padding: 0 12px;
+}
 
 /* host settings popover (⚙) */
 .bf-arena-settings {
@@ -1573,4 +1581,5 @@ html, body {
   .bf-arena-pick { padding: 4px 8px 6px; }
   .bf-arena-pick .bf-card { padding: 4px 9px; }
   .bf-arena-ready { min-width: 100px; }
+  .bf-arena-dance { min-width: 46px; font-size: 20px; padding: 0 8px; }
 }

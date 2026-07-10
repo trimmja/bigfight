@@ -69,6 +69,7 @@ interface PlayerRec {
   team: Team | null;
   connected: boolean;
   pings: Record<string, number>;
+  emoteSeq: number;
   levelsBeaten: number;
   rematchVote: boolean;
   lastPingsReportAt: number;
@@ -143,6 +144,7 @@ function snapshot(room: Room): RoomState {
         team: p.team,
         connected: p.connected,
         pings: { ...p.pings },
+        emoteSeq: p.emoteSeq,
       })),
   };
 }
@@ -199,6 +201,7 @@ function makePlayer(conn: Conn, nickname: string, levelsBeaten: number, slot: nu
     team: null,
     connected: true,
     pings: {},
+    emoteSeq: 0,
     levelsBeaten: Math.max(0, Number(levelsBeaten) || 0),
     rematchVote: false,
     lastPingsReportAt: 0,
@@ -486,6 +489,7 @@ function handleControl(ws: WS, msg: C2S): void {
         self.characterId = typeof msg.pick === 'string' ? msg.pick : null;
       }
       if (msg.team === 'A' || msg.team === 'B') self.team = msg.team;
+      if (msg.dance === true) self.emoteSeq += 1; // fire the dance emote to everyone
       if (typeof msg.ready === 'boolean') {
         self.ready = msg.ready;
         if (!msg.ready && room.phase === 'countdown') {

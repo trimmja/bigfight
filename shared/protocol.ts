@@ -80,6 +80,9 @@ export interface RoomPlayer {
   connected: boolean;
   /** RTTs in ms this player measured to other playerIds (c2s `reportPings`). */
   pings: Record<string, number>;
+  /** Bumps each time the player triggers their dance emote — clients replay the
+   * fighter's dance on that pedestal when they see this increase. */
+  emoteSeq: number;
 }
 
 /** Full room snapshot — the server re-sends the whole thing on every change. */
@@ -150,6 +153,8 @@ export interface C2SSetPlayer {
   ready?: boolean;
   team?: Team;
   nickname?: string;
+  /** Trigger the sender's dance emote (bumps their emoteSeq for everyone). */
+  dance?: boolean;
 }
 
 /** Host only. Partial update of room settings; `stageId` may be 'random'. */
