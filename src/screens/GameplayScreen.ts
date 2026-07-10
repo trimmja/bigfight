@@ -526,9 +526,10 @@ export class GameplayScreen implements Screen {
 
     this.matchState.frame += 1;
 
-    // Versus pre-match freeze: fighters hold their spawns through 3-2-1-GO.
-    // Frame-count gated → identical on every peer; nothing else steps.
-    if (isVersus(this.match.mode) && this.matchState.frame <= VERSUS_COUNTDOWN_FRAMES) {
+    // Pre-match freeze (every mode): fighters hold their spawns through
+    // 3-2-1-GO so campaign gets the same hype intro. Frame-count gated →
+    // identical on every peer; nothing else steps (waves wait for GO).
+    if (this.matchState.frame <= VERSUS_COUNTDOWN_FRAMES) {
       if (!simPhase.resimulating) this.updateViewTail(game, dt, stage);
       return;
     }
@@ -650,9 +651,9 @@ export class GameplayScreen implements Screen {
     this.updateLevelEnd(game, dt);
   }
 
-  /** Versus 3-2-1-GO — banner + announcer keyed off the sim frame counter. */
+  /** 3-2-1-GO — banner + announcer (every mode), keyed off the sim frame counter. */
   private updateCountdownView(game: Game): void {
-    if (!isVersus(this.match.mode) || this.countStage >= 4) return;
+    if (this.countStage >= 4) return;
     const frame = this.matchState.frame;
     const stages: { at: number; text: string; voice: string }[] = [
       { at: 6, text: '3', voice: 'ann_3' },
@@ -1121,6 +1122,9 @@ export class GameplayScreen implements Screen {
     this.levelWon = true;
     this.levelEndTimer = CLEAR_BEAT_SECONDS;
     this.pickupManager?.vacuumAll();
+    // Same hype beat as a versus win: a big banner + announcer "VICTORY!".
+    if (!simPhase.resimulating) this.hud?.banner('VICTORY!', 1800);
+    game.events.emit('announce', { id: 'ann_victory' });
     game.events.emit('levelCleared', { levelId: this.level.id });
     game.events.emit('music', { mood: 'victory' });
   }

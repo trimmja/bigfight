@@ -1249,7 +1249,13 @@ export class Fighter extends Entity {
         this.jetpackSfxTimer = 0.16;
         events.emit('shoot', { kind: 'jetpack', pos: { x: this.body.pos.x, y: this.body.pos.y } });
       }
-      ctx.particles.burst(this.body.pos.x, this.body.pos.y + 0.05, this.def.palette.accent, 3, 4); // det-ok: view-only
+      // Constant roaring exhaust plume: a dense downward jet stream from the
+      // pack every frame, hot yellow-white core layered over the accent flame
+      // so it reads as a continuous rocket burn, not a puff. (view-only)
+      const nozzleX = this.body.pos.x - this.facing * 0.12;
+      const nozzleY = this.body.pos.y + 0.12;
+      ctx.particles.directional(nozzleX, nozzleY, 0, -1, this.def.palette.accent, 6, 13); // det-ok: view-only
+      ctx.particles.directional(nozzleX, nozzleY, 0, -1, 0xffe27a, 4, 9.5); // det-ok: hot core
     }
     return true;
   }
