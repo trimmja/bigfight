@@ -628,10 +628,20 @@ async function serveStatic(pathname: string): Promise<Response> {
   const file = Bun.file(PUBLIC_DIR + p);
   if (await file.exists()) {
     // Bun.file infers Content-Type from the extension.
-    return new Response(file);
+    // HTML shell must NEVER be cached — it points at fingerprinted bundles, so
+    // a stale shell serves stale JS (this is the "I don't see the new build"
+    // trap). Vite-hashed assets under /assets/ are immutable → cache forever.
+    const cache = p.endsWith('.html')
+      ? 'no-cache, no-store, must-revalidate'
+      : p.startsWith('/assets/')
+        ? 'public, max-age=31536000, immutable'
+        : 'no-cache';
+    return new Response(file, { headers: { 'cache-control': cache } });
   }
   if (pathname === '/') {
-    return new Response(NO_CLIENT_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    return new Response(NO_CLIENT_PAGE, {
+      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+    });
   }
   return new Response('Not found', { status: 404 });
 }
