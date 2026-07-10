@@ -4,9 +4,10 @@ import { CHARACTERS } from '../../data/characters';
 import type { CharacterDef, SaveData } from '../../data/types';
 import { isCharacterUnlocked } from '../../progression';
 import { toonRamp } from '../../render/toon';
+import { danceFor, type Dance } from '../../rigs/dances';
 import { buildCharacterRig } from '../../rigs/characterBuilders';
 import type { Rig } from '../../rigs/FighterRig';
-import { poseFightStance, poseIdle, poseRun } from '../../rigs/poses';
+import { poseRun } from '../../rigs/poses';
 
 /**
  * The "Choose your battle" cinematic backdrop — the WHOLE roster lined up in a
@@ -25,7 +26,7 @@ import { poseFightStance, poseIdle, poseRun } from '../../rigs/poses';
  */
 
 /** Half-width of the lineup arc (world units). */
-const ARC_X = 7.2;
+const ARC_X = 6.6;
 /** Feet height — the fighters loom behind the UI, heads up in the top band. */
 const BASE_Y = 0.2;
 /** Nearest depth (arc ends); the middle bows away from the camera. */
@@ -34,7 +35,7 @@ const DEPTH_BOW = 1.4;
 /** The middle stands on "risers": lifted to counter its recession so every
  * head reads at the same screen height (and it looks like a group photo). */
 const MID_LIFT = 1.15;
-const FIGHTER_SCALE = 1.05;
+const FIGHTER_SCALE = 1.3;
 
 /** Entrance timing. */
 const ENTRANCE_S = 1.9;
@@ -42,16 +43,54 @@ const MARCH_S = 0.95;
 const STAGGER_S = 0.1;
 const TURN_S = 0.42;
 
-/** Camera waypoints: pulled-back 3/4 vantage → settled two-shot of the arc. */
-const CAM_ENTRY = { pos: new THREE.Vector3(-6.8, 2.8, 22), tgt: new THREE.Vector3(3, 0.3, 2), fov: 48 };
-const CAM_SETTLE = { pos: new THREE.Vector3(0, 0.9, 17), tgt: new THREE.Vector3(0, -0.35, 1.5), fov: 45 };
+/** Settled camera: framed so the WHOLE arc fits horizontally at any aspect —
+ * pull back on a narrow phone so all 8 fighters stay on screen ("stretched
+ * across"), come in close on a wide desktop. */
+const SETTLE_FOV = 45;
+const SETTLE_Y = 0.9;
+const AIM_Z = 1.5;
+/** Downward pitch (rise/run) at the near vs far camera distances. Farther back
+ * (narrow phone) needs a STEEPER pitch to lift the small, distant fighters up
+ * out from behind the UI cards into the empty top band; close-up (wide desktop)
+ * wants the gentle look. Calibrated against the on-screen projection probe. */
+const PITCH_NEAR = 0.065;
+const PITCH_FAR = 0.2;
+const FIT_MARGIN = 1.6; // world units of breathing room past the end fighters
+const CAMZ_MIN = 16;
+const CAMZ_MAX = 44;
+
+interface Waypoint {
+  pos: THREE.Vector3;
+  tgt: THREE.Vector3;
+  fov: number;
+}
+
+/** Entry (pulled-back 3/4) + settled waypoints for the current aspect. */
+function framing(aspect: number): { entry: Waypoint; settle: Waypoint } {
+  const fovV = (SETTLE_FOV * Math.PI) / 180;
+  const hHalf = Math.atan(Math.tan(fovV / 2) * Math.max(0.3, aspect));
+  const settleZ = Math.min(CAMZ_MAX, Math.max(CAMZ_MIN, BASE_Z + (ARC_X + FIT_MARGIN) / Math.tan(hHalf)));
+  const zt = Math.min(1, Math.max(0, (settleZ - CAMZ_MIN) / (CAMZ_MAX - CAMZ_MIN)));
+  const pitchTan = PITCH_NEAR + (PITCH_FAR - PITCH_NEAR) * zt;
+  const tgtY = SETTLE_Y - pitchTan * (settleZ - AIM_Z);
+  return {
+    settle: { pos: new THREE.Vector3(0, SETTLE_Y, settleZ), tgt: new THREE.Vector3(0, tgtY, AIM_Z), fov: SETTLE_FOV },
+    entry: {
+      pos: new THREE.Vector3(-settleZ * 0.34, SETTLE_Y + 2.3, settleZ * 1.24),
+      tgt: new THREE.Vector3(3, tgtY + 0.7, AIM_Z + 0.5),
+      fov: SETTLE_FOV + 4,
+    },
+  };
+}
 
 class ShowcaseFighter {
   readonly wrapper = new THREE.Group();
   private readonly rig: Rig;
   private readonly frostMat: THREE.Material | null = null;
+  private readonly dance: Dance;
   private readonly startX: number;
   private readonly targetX: number;
+  private readonly baseY: number;
   private readonly marchYaw: number;
   private t: number;
   private march = 0; // 0 → 1 across the whole [delay, delay+MARCH_S] window
@@ -67,8 +106,10 @@ class ShowcaseFighter {
     y: number,
     z: number,
   ) {
-    this.t = slot * 1.37; // desync the idle breath per fighter
+    this.t = slot * 1.37; // desync the dance phase per fighter
     this.targetX = x;
+    this.baseY = y;
+    this.dance = danceFor(def.id);
     // March in from off-frame on the near side; face the way we travel.
     const side = x >= 0 ? 1 : -1;
     this.startX = x + side * 8.5;
@@ -98,14 +139,19 @@ class ShowcaseFighter {
       this.march = Math.min(1, local / MARCH_S);
       const e = easeOutCubic(this.march);
       this.wrapper.position.x = this.startX + (this.targetX - this.startX) * e;
+      this.wrapper.position.y = this.baseY;
       this.wrapper.rotation.y = this.marchYaw;
-      this.rig.setPose(poseRun(this.t, this.locked ? 0.7 : 0.85), blend);
+      this.rig.setPose(poseRun(this.t, 0.8), blend);
     } else {
-      // Arrived: turn to face the camera and settle into a lively idle.
+      // Arrived: turn to face the camera and break into the signature dance.
+      // Everyone dances — even the frosted "mystery" fighters (funnier that way).
       this.settleTurn = Math.min(1, this.settleTurn + dt / TURN_S);
-      this.wrapper.rotation.y = lerpAngle(this.marchYaw, -Math.PI / 2, easeOutCubic(this.settleTurn));
-      // Locked "mystery" statues idle calmly; unlocked fighters stay ready.
-      this.rig.setPose(this.locked ? poseIdle(this.t) : poseFightStance(this.t), blend);
+      const st = easeOutCubic(this.settleTurn);
+      const d = this.dance;
+      this.rig.setPose(d.pose(this.t), blend);
+      this.wrapper.rotation.y = lerpAngle(this.marchYaw, -Math.PI / 2, st) + (d.spin?.(this.t) ?? 0) * st;
+      this.wrapper.position.x = this.targetX + (d.sway?.(this.t) ?? 0) * st;
+      this.wrapper.position.y = this.baseY + (d.bob?.(this.t) ?? 0) * st;
     }
     this.rig.update(dt);
   }
@@ -170,9 +216,10 @@ export class RosterShowcase {
     this.elapsed = 0;
     this.camT = 0;
     this.drift = 0;
-    cam.position.copy(CAM_ENTRY.pos);
-    cam.fov = CAM_ENTRY.fov;
-    cam.lookAt(CAM_ENTRY.tgt);
+    const { entry } = framing(cam.aspect);
+    cam.position.copy(entry.pos);
+    cam.fov = entry.fov;
+    cam.lookAt(entry.tgt);
     cam.updateProjectionMatrix();
   }
 
@@ -181,13 +228,15 @@ export class RosterShowcase {
     this.drift += dt;
 
     // Camera: ease entry → settle (pos + target + fov together), then a gentle
-    // forever drift on the look-target so the frame is never static.
+    // forever drift on the look-target so the frame is never static. Framing is
+    // aspect-aware so the whole roster fits across a narrow phone.
+    const { entry, settle } = framing(cam.aspect);
     this.camT = Math.min(1, this.camT + dt / ENTRANCE_S);
     const u = easeInOutCubic(this.camT);
-    cam.position.lerpVectors(CAM_ENTRY.pos, CAM_SETTLE.pos, u);
-    cam.fov = CAM_ENTRY.fov + (CAM_SETTLE.fov - CAM_ENTRY.fov) * u;
+    cam.position.lerpVectors(entry.pos, settle.pos, u);
+    cam.fov = entry.fov + (settle.fov - entry.fov) * u;
     cam.updateProjectionMatrix();
-    const tgt = new THREE.Vector3().lerpVectors(CAM_ENTRY.tgt, CAM_SETTLE.tgt, u);
+    const tgt = new THREE.Vector3().lerpVectors(entry.tgt, settle.tgt, u);
     const driftX = Math.sin(this.drift * 0.22) * 0.28 * u;
     const driftY = Math.sin(this.drift * 0.17 + 1.7) * 0.16 * u;
     cam.position.x += driftX * 0.5;
