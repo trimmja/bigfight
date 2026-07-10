@@ -7,14 +7,21 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "check": "tsc --noEmit && node scripts/check-determinism.mjs"
+    "check": "tsc --noEmit && node scripts/check-determinism.mjs",
+    "server:dev": "tsx watch server/main.ts",
+    "server:start": "tsx server/main.ts",
+    "server:test": "tsx --test server/**/*.test.ts"
   },
   "dependencies": {
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "@types/three": "^0.185.0",
+    "@types/ws": "^8.18.1",
     "playwright": "^1.60.0",
+    "tsx": "^4.20.0",
     "typescript": "^7.0.2",
     "vite": "^8.1.3"
   }

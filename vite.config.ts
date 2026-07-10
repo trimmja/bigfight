@@ -1,8 +1,11 @@
 import { defineConfig, type Plugin } from 'vite';
+import { execFileSync } from 'node:child_process';
 
-// One id per build: baked into the bundle AND emitted as version.json, so the
-// running app can ask the server "is there a newer me?".
-const BUILD_ID = Date.now().toString(36);
+// One id per source release, shared by every deployment of the same commit.
+// Separate build timestamps made GitHub Pages and Fly reject each other even
+// when their source was identical.
+const BUILD_ID = releaseId();
+const BASE_PATH = process.env.BASE_PATH ?? '/bigfight/';
 
 function emitVersionFile(): Plugin {
   return {
@@ -11,14 +14,14 @@ function emitVersionFile(): Plugin {
       this.emitFile({
         type: 'asset',
         fileName: 'version.json',
-        source: JSON.stringify({ buildId: BUILD_ID }),
+        source: JSON.stringify({ buildId: BUILD_ID, releaseId: BUILD_ID }),
       });
     },
   };
 }
 
 export default defineConfig({
-  base: '/bigfight/',
+  base: BASE_PATH,
   define: {
     __BUILD_ID__: JSON.stringify(BUILD_ID),
   },
@@ -35,3 +38,13 @@ export default defineConfig({
     },
   },
 });
+
+function releaseId(): string {
+  const configured = (process.env.RELEASE_ID ?? process.env.GITHUB_SHA ?? '').trim();
+  if (configured) return configured.slice(0, 40);
+  try {
+    return execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], { encoding: 'utf8' }).trim();
+  } catch {
+    return 'development';
+  }
+}
