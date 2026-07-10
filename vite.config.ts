@@ -18,7 +18,9 @@ function emitVersionFile(): Plugin {
 }
 
 export default defineConfig({
-  base: '/bigfight/',
+  // Default '/bigfight/' for the GitHub Pages project site (trimmja.github.io/bigfight).
+  // Override with BASE_PATH=/ on a root/apex-domain deploy (e.g. playbigfight.com on Cloudflare Pages).
+  base: process.env.BASE_PATH ?? '/bigfight/',
   define: {
     __BUILD_ID__: JSON.stringify(BUILD_ID),
   },
