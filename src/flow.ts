@@ -20,12 +20,9 @@ import { WeaponSelectScreen } from './screens/WeaponSelectScreen';
  */
 
 export function goTitle(game: Game): void {
-  game.screens.replace(
-    new TitleScreen(
-      () => goLevelMap(game),
-      () => goOnlineMenu(game),
-    ),
-  );
+  // Tap the title → the online hub (mode/server select). Solo campaign lives
+  // one tap inside it, so the title stays clean — no floating buttons.
+  game.screens.replace(new TitleScreen(() => goOnlineMenu(game)));
 }
 
 /** `?replaylab` dev tool — sim-determinism harness (see ReplayLabScreen). */

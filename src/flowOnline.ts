@@ -1,12 +1,11 @@
 import type { S2CMatchStart } from '../shared/protocol';
-import { goTitle } from './flow';
+import { goLevelMap, goTitle } from './flow';
 import type { Game } from './Game';
 import { ALL_POWERUP_IDS, type MatchConfig, type PlayerSetup } from './match/MatchConfig';
 import { LobbyClient } from './net/LobbyClient';
 import { WsRelayTransport } from './net/WsRelayTransport';
 import { JoinCodeScreen } from './screens/online/JoinCodeScreen';
-import { LobbyScreen } from './screens/online/LobbyScreen';
-import { OnlineCharacterSelectScreen } from './screens/online/OnlineCharacterSelectScreen';
+import { OnlineLobbyScreen } from './screens/online/OnlineLobbyScreen';
 import { OnlineMenuScreen } from './screens/online/OnlineMenuScreen';
 import { OnlineResultsScreen, type OnlineResultsPayload } from './screens/online/OnlineResultsScreen';
 import { NetMatchScreen } from './screens/NetMatchScreen';
@@ -14,9 +13,9 @@ import { toast } from './ui/toasts';
 import { wipe } from './ui/transition';
 
 /**
- * Online navigation in one place, mirroring flow.ts: menu → join/lobby →
- * char select → match → results → (rematch/lobby) … One shared LobbyClient
- * lives here for the whole online session; leaving online disposes it.
+ * Online navigation in one place: hub → the cinematic battle LOBBY (pick your
+ * fighter + ready up here — no separate char-select) → match → results →
+ * (rematch → lobby) … One shared LobbyClient lives for the whole session.
  */
 
 let client: LobbyClient | null = null;
@@ -33,12 +32,17 @@ function disposeClient(): void {
   client = null;
 }
 
+/** The online hub (server/mode selection). Also the door to solo campaign. */
 export function goOnlineMenu(game: Game): void {
   wipe(() =>
     game.screens.replace(
       new OnlineMenuScreen(lobbyClient(), {
-        onLobby: () => goLobby(game),
+        onLobby: () => goOnlineLobby(game),
         onJoinCode: () => goJoinCode(game),
+        onSolo: () => {
+          disposeClient();
+          goLevelMap(game);
+        },
         onBack: () => {
           disposeClient();
           goTitle(game);
@@ -53,7 +57,7 @@ export function goJoinCode(game: Game, prefillCode?: string): void {
     new JoinCodeScreen(
       lobbyClient(),
       {
-        onLobby: () => goLobby(game),
+        onLobby: () => goOnlineLobby(game),
         onBack: () => goOnlineMenu(game),
       },
       prefillCode,
@@ -61,23 +65,12 @@ export function goJoinCode(game: Game, prefillCode?: string): void {
   );
 }
 
-export function goLobby(game: Game): void {
+/** The cinematic 3D battle lobby: pick your fighter on a pedestal, then ready. */
+export function goOnlineLobby(game: Game): void {
   wipe(() =>
     game.screens.replace(
-      new LobbyScreen(lobbyClient(), {
-        onCharSelect: () => goOnlineCharSelect(game),
-        onLeft: () => goOnlineMenu(game),
-      }),
-    ),
-  );
-}
-
-export function goOnlineCharSelect(game: Game): void {
-  wipe(() =>
-    game.screens.replace(
-      new OnlineCharacterSelectScreen(lobbyClient(), {
+      new OnlineLobbyScreen(lobbyClient(), {
         onMatch: (ms) => goOnlineMatch(game, ms),
-        onLobby: () => goLobby(game),
         onLeft: () => goOnlineMenu(game),
       }),
     ),
@@ -87,8 +80,8 @@ export function goOnlineCharSelect(game: Game): void {
 export function goOnlineResults(game: Game, payload: OnlineResultsPayload): void {
   game.screens.replace(
     new OnlineResultsScreen(payload, lobbyClient(), {
-      onCharSelect: () => goOnlineCharSelect(game),
-      onLobby: () => goLobby(game),
+      onCharSelect: () => goOnlineLobby(game),
+      onLobby: () => goOnlineLobby(game),
       onLeft: () => goOnlineMenu(game),
     }),
   );
@@ -106,7 +99,7 @@ export function goOnlineMatch(game: Game, matchStart: S2CMatchStart): void {
   const localIndex = roster.findIndex((p) => p.playerId === client.selfId);
   if (localIndex < 0) {
     toast("Couldn't find your fighter — back to the lobby!");
-    goLobby(game);
+    goOnlineLobby(game);
     return;
   }
 
@@ -174,7 +167,7 @@ export function goOnlineMatch(game: Game, matchStart: S2CMatchStart): void {
         game.persist();
         if (client.isHost) client.backToLobby();
         toast(result.won ? '🏆 Level cleared — loot banked!' : 'Defeated… but you keep all your loot!');
-        goLobby(game);
+        goOnlineLobby(game);
       },
     }),
   );

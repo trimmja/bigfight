@@ -245,29 +245,30 @@ function cancelCountdown(room: Room, by: string): void {
   broadcastRoom(room);
 }
 
-/** lobby: ≥2 connected, all connected ready → 3s countdown → charSelect. */
+/**
+ * Lobby is now the ONE staging room: players pick their fighter AND ready up
+ * here (no separate char-select phase). ≥2 connected, ALL picked + ready →
+ * 3s countdown → match. A late unready/unpick/leave cancels it (setPlayer +
+ * cancelCountdown handle that), and we re-validate when the timer fires.
+ */
 function checkLobbyCountdown(room: Room): void {
   if (room.phase !== 'lobby') return;
   const conn = connectedPlayers(room);
-  if (conn.length < 2 || !conn.every((p) => p.ready)) return;
+  if (conn.length < 2 || !conn.every((p) => p.ready && p.characterId !== null)) return;
   room.phase = 'countdown';
   broadcast(room, { t: 'countdown', seconds: COUNTDOWN_SECONDS });
   broadcastRoom(room);
   room.countdownTimer = setTimeout(() => {
     room.countdownTimer = null;
     if (rooms.get(room.code) !== room || room.phase !== 'countdown') return;
-    room.phase = 'charSelect';
-    for (const p of room.players) p.ready = false; // re-ready with picks
-    broadcastRoom(room);
+    const ready = connectedPlayers(room);
+    if (ready.length < 2 || !ready.every((p) => p.ready && p.characterId !== null)) {
+      room.phase = 'lobby';
+      broadcastRoom(room);
+      return;
+    }
+    beginMatch(room, ready);
   }, COUNTDOWN_SECONDS * 1000);
-}
-
-/** charSelect: ≥2 connected, all connected picked + ready → start the match. */
-function checkCharSelectStart(room: Room): void {
-  if (room.phase !== 'charSelect') return;
-  const conn = connectedPlayers(room);
-  if (conn.length < 2 || !conn.every((p) => p.characterId !== null && p.ready)) return;
-  beginMatch(room, conn);
 }
 
 function beginMatch(room: Room, players: PlayerRec[]): void {
@@ -311,7 +312,6 @@ function removePlayer(room: Room, p: PlayerRec): void {
   updateEmptySince(room);
   broadcastRoom(room);
   checkLobbyCountdown(room);
-  checkCharSelectStart(room);
   checkRematch(room);
 }
 
@@ -341,7 +341,6 @@ function handleDisconnect(ws: WS): void {
   if (room.phase !== 'match') scheduleVacate(room, p);
   broadcastRoom(room);
   checkLobbyCountdown(room);
-  checkCharSelectStart(room);
   checkRematch(room);
 }
 
@@ -349,7 +348,7 @@ function checkRematch(room: Room): void {
   if (room.phase !== 'results') return;
   const conn = connectedPlayers(room);
   if (conn.length === 0 || !conn.every((p) => p.rematchVote)) return;
-  room.phase = 'charSelect';
+  room.phase = 'lobby'; // back to the staging room; picks kept, re-ready to go
   for (const p of room.players) {
     p.ready = false; // picks kept
     p.rematchVote = false;
@@ -496,7 +495,6 @@ function handleControl(ws: WS, msg: C2S): void {
       }
       broadcastRoom(room);
       checkLobbyCountdown(room);
-      checkCharSelectStart(room);
       return;
     }
 
@@ -518,7 +516,7 @@ function handleControl(ws: WS, msg: C2S): void {
 
     case 'startMatch': {
       if (!isHost) return;
-      checkCharSelectStart(room); // validates phase + all picked/ready; else no-op
+      checkLobbyCountdown(room); // validates ≥2 picked + ready; else no-op
       return;
     }
 

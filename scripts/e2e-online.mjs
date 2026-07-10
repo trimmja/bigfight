@@ -1,13 +1,17 @@
-// End-to-end online match test: two headless browsers drive the REAL flow
-// (title → online → create/join room → ready → char select → rollback match
-// over the live Fly relay) and verify both sims advance together.
+// End-to-end online match test: two headless browsers drive the REAL merged
+// flow (title tap → hub → create/join room → pick fighter + ready in the 3D
+// battle lobby → countdown → rollback match) and verify both sims advance
+// together with zero desyncs.
 //
-//   node scripts/e2e-online.mjs            uses the running dev server :5173
-//   node scripts/e2e-online.mjs --url=***  any deployed origin (e.g. playbigfight.com)
+//   node scripts/e2e-online.mjs                              live Fly server
+//   node scripts/e2e-online.mjs --url=.../bigfight/?localserver   local dev + local ws
+//   node scripts/e2e-online.mjs --url=https://playbigfight.com/   deployed origin
 import { chromium } from 'playwright';
 
 const urlArg = process.argv.find((a) => a.startsWith('--url='));
 const BASE = urlArg ? urlArg.slice(6) : 'http://localhost:5173/bigfight/';
+// Deep-link join keeps any existing query (e.g. ?localserver) and adds join=.
+const joinUrl = (code) => (BASE.includes('?') ? `${BASE}&join=${code}` : `${BASE}?join=${code}`);
 const SHOTS = process.env.E2E_SHOTS ?? '';
 
 const browser = await chromium.launch();
@@ -57,15 +61,21 @@ async function clickText(page, text, timeout = 12000) {
   throw new Error(`clickText: "${text}" never appeared — page says: ${bodyText}`);
 }
 
+// Advance past the title screen (pointerdown anywhere → hub).
+async function tapTitle(page) {
+  await page.mouse.click(640, 360);
+  await page.waitForTimeout(600);
+}
+
 try {
   const a = await newPlayer('A');
   const b = await newPlayer('B');
 
-  // A: title → online → create room.
-  await clickText(a, 'ONLINE');
-  await shot(a, 'a1-menu');
+  // A: title tap → hub (FFA is the default mode) → create room.
+  await tapTitle(a);
+  await shot(a, 'a1-hub');
   await clickText(a, 'CREATE ROOM');
-  // Read the 4-letter room code off the lobby.
+  // Read the 4-letter room code off the lobby chip.
   await a.waitForFunction(() => /\b[BCDFGHJKLMNPQRSTVWXZ]{4}\b/.test(document.body.innerText), null, {
     timeout: 15000,
   });
@@ -74,20 +84,25 @@ try {
   await shot(a, 'a2-lobby');
 
   // B: join via deep link (exercises ?join= too).
-  await b.goto(`${BASE}?join=${code}`, { waitUntil: 'domcontentloaded' });
-  await b.waitForTimeout(2500);
+  await b.goto(joinUrl(code), { waitUntil: 'domcontentloaded' });
+  await b.waitForTimeout(600);
+  await tapTitle(b); // in case the deep-link still shows the title first
+  await b.waitForFunction((c) => document.body.innerText.includes(`ROOM ${c}`), code, { timeout: 15000 });
+  await b.waitForTimeout(1200);
   await shot(b, 'b1-joined');
 
-  // Both ready in the lobby — verify the toggle actually landed, retry if not.
+  // Pick distinct fighters from the lobby carousel (so the pedestals differ).
+  await clickText(a, 'Grim');
+  await clickText(b, 'Kaze');
+  await a.waitForTimeout(400);
+
+  // Both ready in the lobby — readying sends the current pick too. Verify the
+  // toggle landed (button flips to "✔ READY!"), retry if the snapshot raced.
   const readyUp = async (page, who) => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await clickText(page, 'READY');
       const confirmed = await page
-        .waitForFunction(
-          () => /TAP TO WAIT|TAP TO CHANGE|✔ READY/.test(document.body.innerText),
-          null,
-          { timeout: 2500 },
-        )
+        .waitForFunction(() => /✔ READY/.test(document.body.innerText), null, { timeout: 2500 })
         .then(() => true)
         .catch(() => false);
       if (confirmed) return;
@@ -97,25 +112,8 @@ try {
   };
   await readyUp(a, 'A');
   await readyUp(b, 'B');
-  log('*', 'both ready — countdown');
+  log('*', 'both picked + ready — expecting countdown → READY TO FIGHT → match');
   await shot(a, 'a3-ready');
-
-  // Countdown (3s) → char select.
-  const inSelect = (page) =>
-    page.waitForFunction(() => document.body.innerText.includes('PICK YOUR FIGHTER'), null, {
-      timeout: 25000,
-    });
-  await inSelect(a);
-  await inSelect(b);
-  await shot(a, 'a4-charselect');
-
-  // Pick fighters (click card by name) + ready (retry-verified again).
-  await clickText(a, 'Volt').catch(() => clickText(a, 'VOLT'));
-  await clickText(b, 'Kaze').catch(() => clickText(b, 'KAZE'));
-  await a.waitForTimeout(400);
-  await readyUp(a, 'A');
-  await readyUp(b, 'B');
-  log('*', 'picks locked — expecting READY TO FIGHT → match');
 
   // Match: NetMatchScreen mounted and sim frames advancing on BOTH peers.
   const getStats = () => {

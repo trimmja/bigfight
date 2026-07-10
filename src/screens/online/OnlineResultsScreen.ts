@@ -11,7 +11,7 @@ import { poseAttack, poseFightStance, poseIdle } from '../../rigs/poses';
 import { button, el, uiRoot } from '../../ui/dom';
 import { toast } from '../../ui/toasts';
 import type { Screen } from '../Screen';
-import { SLOT_COLORS } from './LobbyScreen';
+import { SLOT_COLORS } from './OnlineLobbyScreen';
 
 /**
  * VersusEndResult-shaped payload the netcode layer hands over when an online

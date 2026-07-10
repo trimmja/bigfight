@@ -28,6 +28,7 @@ export class OnlineMenuScreen implements Screen {
     private readonly callbacks: {
       onLobby: () => void;
       onJoinCode: () => void;
+      onSolo: () => void;
       onBack: () => void;
     },
   ) {}
@@ -91,6 +92,17 @@ export class OnlineMenuScreen implements Screen {
       },
       'bf-button bf-button-big bf-hub-join',
       actions,
+    );
+
+    // Solo campaign lives one tap away (no floating buttons on the title now).
+    button(
+      '⚔️ Solo Adventure',
+      () => {
+        events.emit('ui', { kind: 'back' });
+        this.callbacks.onSolo();
+      },
+      'bf-button bf-hub-solo',
+      body,
     );
   }
 

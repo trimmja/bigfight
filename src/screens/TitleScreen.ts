@@ -20,10 +20,7 @@ export class TitleScreen implements Screen {
   private t = 0;
   private started = false;
 
-  constructor(
-    private readonly onPlay: () => void,
-    private readonly onOnline?: () => void,
-  ) {}
+  constructor(private readonly onPlay: () => void) {}
 
   enter(game: Game): void {
     // Hero lineup: the three starters idling/jogging on the sky.
@@ -60,21 +57,6 @@ export class TitleScreen implements Screen {
     };
     this.root.addEventListener('pointerdown', start);
     events.emit('music', { mood: 'menu' });
-
-    // Online lobby entry — violet is the online identity color.
-    if (this.onOnline) {
-      const online = this.onOnline;
-      const onlineBtn = button(
-        '🌐 ONLINE',
-        () => {
-          events.emit('ui', { kind: 'confirm' });
-          online();
-        },
-        'bf-button bf-button-violet bf-online-pill',
-        this.root,
-      );
-      onlineBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    }
 
     // Quiet update check — a one-tap refresh beats force-quitting the webapp
     // (save data survives the reload untouched).
