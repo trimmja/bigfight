@@ -156,6 +156,23 @@ class ProjectileSlot implements FighterLike {
     return 0;
   }
 
+  /**
+   * Deflected by Nova's Light Shield: reverse course and switch to the
+   * reflector's side so the shot flies back at whoever fired it.
+   */
+  reflect(teamId: number, faction: Faction): void {
+    this.body.vel.x = -this.body.vel.x;
+    this.body.vel.y = Math.abs(this.body.vel.y) * 0.4 + 2;
+    this.facing = (this.facing === 1 ? -1 : 1) as Facing;
+    this.teamId = teamId;
+    this.faction = faction;
+    this.homingDeg = 0;
+    this.hitbox.teamId = teamId;
+    this.hitbox.faction = faction;
+    this.hurtbox.faction = faction;
+    this.alreadyHit.clear();
+  }
+
   fire(
     def: ProjectileDef,
     x: number,

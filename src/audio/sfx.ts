@@ -128,12 +128,242 @@ export class Sfx {
     if (normalized === 'laser') return this.shootLaser();
     if (normalized === 'rocket' || normalized === 'bomb') return this.shootWhoosh();
     if (normalized === 'feather') return this.shootFeather();
-    if (normalized === 'slash') return this.shootSlash();
+    if (normalized === 'slash' || normalized === 'shuriken') return this.shootSlash();
     if (normalized === 'flame') return this.shootFlame();
-    if (normalized === 'shockwave') return this.shootThunder();
-    if (normalized === 'bolt') return this.shootZap();
+    if (normalized === 'shockwave' || normalized === 'quake' || normalized === 'pound') return this.shootThunder();
+    if (normalized === 'bolt' || normalized === 'zap') return this.shootZap();
     if (normalized === 'freeze') return this.shootFreeze();
+    // Signature-ability sounds.
+    if (normalized === 'dash' || normalized === 'whoosh') return this.abilityWhoosh();
+    if (normalized === 'jetpack') return this.abilityJet();
+    if (normalized === 'lasso') return this.abilityLasso();
+    if (normalized === 'lassosnap') return this.abilitySnap();
+    if (normalized === 'cloak') return this.abilityCloak();
+    if (normalized === 'charge') return this.abilityCharge();
+    if (normalized === 'warp') return this.abilityWarp();
+    if (normalized === 'shield') return this.abilityShield();
+    if (normalized === 'gravity') return this.abilityGravity();
+    if (normalized === 'meteor') return this.abilityMeteor();
+    if (normalized === 'cannon') return this.shootWhoosh();
+    if (normalized === 'boulder' || normalized === 'fuse') return this.shootWhoosh();
+    if (normalized === 'orb') return this.abilityGravity();
     return this.shootMagic();
+  }
+
+  /** Airy dash whoosh: quick bandpass noise sweep up then away. */
+  private abilityWhoosh(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.2;
+    const noise = this.createNoiseSource();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    filter.type = 'bandpass';
+    filter.Q.setValueAtTime(1.1, when);
+    filter.frequency.setValueAtTime(500, when);
+    filter.frequency.exponentialRampToValueAtTime(3200, when + duration * 0.5);
+    filter.frequency.exponentialRampToValueAtTime(900, when + duration);
+    this.envelope(gain.gain, when, 0.12, 0.02, duration);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([noise], [filter, gain]);
+    noise.start(when, Math.random() * 0.4);
+    noise.stop(when + duration + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Rocket/jetpack thrust: filtered noise roar with a low body thump. */
+  private abilityJet(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.22;
+    const noise = this.createNoiseSource();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1600, when);
+    filter.frequency.exponentialRampToValueAtTime(600, when + duration);
+    this.envelope(gain.gain, when, 0.1, 0.02, duration);
+    const body = this.ctx.createOscillator();
+    const bodyGain = this.ctx.createGain();
+    body.type = 'sine';
+    body.frequency.setValueAtTime(120, when);
+    body.frequency.exponentialRampToValueAtTime(70, when + duration);
+    this.envelope(bodyGain.gain, when, 0.09, 0.01, duration);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bus);
+    body.connect(bodyGain);
+    bodyGain.connect(this.bus);
+    this.cleanup([noise, body], [filter, gain, bodyGain]);
+    noise.start(when, Math.random() * 0.4);
+    noise.stop(when + duration + TAIL_SECONDS);
+    body.start(when);
+    body.stop(when + duration + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Lasso whir: a wobbling rope spin. */
+  private abilityLasso(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.26;
+    const osc = this.ctx.createOscillator();
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(320, when);
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(22, when);
+    lfoGain.gain.setValueAtTime(140, when);
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    this.envelope(gain.gain, when, 0.08, 0.02, duration);
+    osc.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([osc, lfo], [lfoGain, gain]);
+    osc.start(when);
+    osc.stop(when + duration + TAIL_SECONDS);
+    lfo.start(when);
+    lfo.stop(when + duration + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Rope snap / whip crack: instant bright noise transient. */
+  private abilitySnap(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const noise = this.createNoiseSource();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(2200, when);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(0.22, when + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.09);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([noise], [filter, gain]);
+    noise.start(when, Math.random() * 0.5);
+    noise.stop(when + 0.12 + TAIL_SECONDS);
+    return 0.12;
+  }
+
+  /** Smoke-bomb poof: soft low noise burst. */
+  private abilityCloak(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.24;
+    const noise = this.createNoiseSource();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(900, when);
+    filter.frequency.exponentialRampToValueAtTime(300, when + duration);
+    this.envelope(gain.gain, when, 0.14, 0.03, duration);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([noise], [filter, gain]);
+    noise.start(when, Math.random() * 0.4);
+    noise.stop(when + duration + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Charge rev: a rising sawtooth growl (heavy charges). */
+  private abilityCharge(): number {
+    return this.simpleTone('sawtooth', 90, 260, 0.26, 0.12);
+  }
+
+  /** Teleport warp: pitch-bent whoosh with a pop. */
+  private abilityWarp(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.2;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(180, when);
+    osc.frequency.exponentialRampToValueAtTime(1400, when + duration * 0.55);
+    osc.frequency.exponentialRampToValueAtTime(300, when + duration);
+    this.envelope(gain.gain, when, 0.12, 0.01, duration);
+    osc.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([osc], [gain]);
+    osc.start(when);
+    osc.stop(when + duration + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Light-shield shimmer: bright bell + gentle sparkle. */
+  private abilityShield(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const freqs = [880, 1320, 1760];
+    for (let i = 0; i < freqs.length; i += 1) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const start = when + i * 0.03;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freqs[i]!, start);
+      this.envelope(gain.gain, start, 0.06, 0.01, 0.3);
+      osc.connect(gain);
+      gain.connect(this.bus);
+      this.cleanup([osc], [gain]);
+      osc.start(start);
+      osc.stop(start + 0.34 + TAIL_SECONDS);
+    }
+    return 0.34;
+  }
+
+  /** Gravity well / orb: deep wobbling sub with a low sweep. */
+  private abilityGravity(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.4;
+    const osc = this.ctx.createOscillator();
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(90, when);
+    osc.frequency.exponentialRampToValueAtTime(50, when + duration);
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(9, when);
+    lfoGain.gain.setValueAtTime(28, when);
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    this.envelope(gain.gain, when, 0.16, 0.04, duration);
+    osc.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([osc, lfo], [lfoGain, gain]);
+    osc.start(when);
+    osc.stop(when + duration + TAIL_SECONDS);
+    lfo.start(when);
+    lfo.stop(when + duration + TAIL_SECONDS);
+    return duration;
+  }
+
+  /** Meteor dive: a falling whistle into the impact. */
+  private abilityMeteor(): number {
+    if (!this.canSchedule()) return 0;
+    const when = this.ctx.currentTime + 0.001;
+    const duration = 0.32;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1400, when);
+    osc.frequency.exponentialRampToValueAtTime(160, when + duration);
+    this.envelope(gain.gain, when, 0.12, 0.02, duration);
+    osc.connect(gain);
+    gain.connect(this.bus);
+    this.cleanup([osc], [gain]);
+    osc.start(when);
+    osc.stop(when + duration + TAIL_SECONDS);
+    return duration;
   }
 
   /** Electric zap: buzzy sawtooth crackle diving down with noise fizz. */

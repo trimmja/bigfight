@@ -49,6 +49,36 @@ export const FIXTURES: readonly ReplayFixture[] = [
     inputSeed: 0x5678,
     frames: 4200, // 70s: reaches + fights the boss, minion summons
   },
+  // Signature-ability coverage: the bot mashes directional specials, so these
+  // exercise the new deterministic effect paths (jetpack fly, ground-slam
+  // shockwaves, armored charges, teleports, sticky/pull/field projectiles).
+  {
+    name: 'abilities-comet',
+    levelId: 3,
+    characterId: 'comet', // jetpack fly · star dash · meteor slam · gravity field
+    weaponId: 'rustyPistol',
+    seed: 0xbf03,
+    inputSeed: 0x9a1c,
+    frames: 1800,
+  },
+  {
+    name: 'abilities-grim',
+    levelId: 3,
+    characterId: 'grim', // boulder explode · armored horn charge · ground-pound slam
+    weaponId: 'practiceSword',
+    seed: 0xbf04,
+    inputSeed: 0x2f7e,
+    frames: 1800,
+  },
+  {
+    name: 'abilities-shade',
+    levelId: 3,
+    characterId: 'shade', // teleport blink/void rise · homing blades · decoy trap
+    weaponId: 'rustyPistol',
+    seed: 0xbf05,
+    inputSeed: 0x64b3,
+    frames: 1800,
+  },
 ];
 
 /**

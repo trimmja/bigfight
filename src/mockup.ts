@@ -99,11 +99,16 @@ syncChrButton();
 // kaze/shade spin finishers, grim/titan slams, nova uppercut).
 const HIT2: Record<CharId, string> = {
   volt: 'jab2', kaze: 'kick', grim: 'jab2', ace: 'jab2',
-  blaze: 'kick', nova: 'jab2', shade: 'kick', titan: 'jab2',
+  blaze: 'kick', nova: 'jab2', shade: 'kick', titan: 'jab2', comet: 'jab2',
 };
 const FINISHERS: Record<CharId, string> = {
   volt: 'finisher', kaze: 'spin', grim: 'slam', ace: 'finisher',
-  blaze: 'finisher', nova: 'uppercut', shade: 'spin', titan: 'slam',
+  blaze: 'finisher', nova: 'uppercut', shade: 'spin', titan: 'slam', comet: 'finisher',
+};
+// The SP (special) button previews each fighter's signature ability animation.
+const SPECIALS: Record<CharId, string> = {
+  volt: 'cast', kaze: 'throw', grim: 'throw', ace: 'lasso',
+  blaze: 'cast', nova: 'cast', shade: 'throw', titan: 'shoot', comet: 'dive',
 };
 document.getElementById('jab')!.addEventListener('click', () => {
   attackQueue = [
@@ -114,7 +119,7 @@ document.getElementById('jab')!.addEventListener('click', () => {
   attackPhase = 0;
 });
 document.getElementById('weapon')!.addEventListener('click', () => {
-  attackQueue = [{ poseId: chr === 'grim' || chr === 'titan' ? 'slam' : 'slash', duration: 0.6 }];
+  attackQueue = [{ poseId: SPECIALS[chr], duration: 0.6 }];
   attackPhase = 0;
 });
 document.getElementById('run')!.addEventListener('click', function (this: HTMLElement) {

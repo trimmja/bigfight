@@ -6,9 +6,53 @@
  * heavier fighters get slower windups and bigger damage.
  */
 
-import type { CharacterDef } from './types';
+import type { AttackDef, CharacterAbilities, CharacterDef, ProjectileDef } from './types';
 
-export const CHARACTERS: readonly CharacterDef[] = [
+// ---------------------------------------------------------------------------
+// Ability authoring helpers — compact AttackDef / ProjectileDef builders so the
+// 36-ability table below stays readable. Only the fields that vary are set.
+// ---------------------------------------------------------------------------
+type AtkOpts = Partial<AttackDef> & { id: string; poseId: string };
+function atk(o: AtkOpts): AttackDef {
+  return {
+    id: o.id,
+    damage: o.damage ?? 0,
+    baseKb: o.baseKb ?? 4,
+    kbGrowth: o.kbGrowth ?? 0.05,
+    angleDeg: o.angleDeg ?? 40,
+    windup: o.windup ?? 0.1,
+    active: o.active ?? 0.08,
+    recover: o.recover ?? 0.2,
+    hitbox: o.hitbox ?? { x: 0, y: 0.9, w: 0, h: 0 },
+    sfx: o.sfx ?? 'hitLight',
+    poseId: o.poseId,
+    projectile: o.projectile,
+    freezeTime: o.freezeTime,
+  };
+}
+type ProjOpts = Partial<ProjectileDef> & { id: string; visual: ProjectileDef['visual']; color: number };
+function proj(o: ProjOpts): ProjectileDef {
+  return {
+    id: o.id,
+    speed: o.speed ?? 16,
+    angleDeg: o.angleDeg ?? 0,
+    gravityScale: o.gravityScale ?? 0,
+    lifetime: o.lifetime ?? 1.2,
+    radius: o.radius ?? 0.3,
+    visual: o.visual,
+    color: o.color,
+    hp: o.hp,
+    explodeRadius: o.explodeRadius,
+    sticky: o.sticky,
+    homing: o.homing,
+    piercing: o.piercing,
+    trailColor: o.trailColor,
+    pull: o.pull,
+    field: o.field,
+  };
+}
+
+const BASE_CHARACTERS: readonly Omit<CharacterDef, 'abilities'>[] = [
   {
     id: 'volt',
     name: 'Volt',
@@ -449,7 +493,262 @@ export const CHARACTERS: readonly CharacterDef[] = [
     ],
     unlock: { type: 'gold', cost: 1200 },
   },
+  {
+    id: 'comet',
+    name: 'Comet',
+    tagline: 'Blast off — the sky is not the limit!',
+    archetype: 'robot',
+    speed: 7.6,
+    power: 0.98,
+    weight: 92,
+    jumpVel: 15.2,
+    jumps: 2,
+    palette: { core: 0xeaf0ff, glow: 0x8a9bff, accent: 0xff8a3c },
+    proportions: { height: 1.8, bulk: 1.02, headSize: 1.05 },
+    combo: [
+      atk({ id: 'cometJab1', damage: 3, baseKb: 3.5, kbGrowth: 0.02, angleDeg: 25, windup: 0.08, active: 0.06, recover: 0.12, hitbox: { x: 0.9, y: 0.9, w: 1.2, h: 1.0 }, sfx: 'hitLight', poseId: 'jab1' }),
+      atk({ id: 'cometJab2', damage: 3, baseKb: 3.5, kbGrowth: 0.02, angleDeg: 25, windup: 0.08, active: 0.06, recover: 0.12, hitbox: { x: 0.9, y: 0.9, w: 1.2, h: 1.0 }, sfx: 'hitLight', poseId: 'jab2' }),
+      atk({ id: 'cometFinisher', damage: 6, baseKb: 7, kbGrowth: 0.14, angleDeg: 45, windup: 0.12, active: 0.08, recover: 0.24, hitbox: { x: 1.0, y: 0.9, w: 1.45, h: 1.25 }, sfx: 'hitHeavy', poseId: 'finisher' }),
+    ],
+    unlock: { type: 'level', level: 4 },
+  },
 ];
+
+// ---------------------------------------------------------------------------
+// Signature abilities — 9 fighters × 4 directional specials (36 total).
+// Role spread per kit: neutral = ranged/zoning · side = approach/pressure ·
+// up = recovery/vertical · down = trap/defense/setup — balanced by cooldown +
+// knockback so no kit dominates. Projectile colors follow each fighter's palette
+// so every character reads with the same vivid pop.
+// ---------------------------------------------------------------------------
+const ABILITIES: Record<string, CharacterAbilities> = {
+  volt: {
+    neutral: {
+      id: 'voltBlaster', name: 'Volt Blaster', slot: 'neutral', cooldown: 1.5, icon: '⚡',
+      blurb: 'Fires a crackling energy bolt.',
+      attack: atk({ id: 'voltBlaster', damage: 7, baseKb: 5, kbGrowth: 0.06, angleDeg: 38, windup: 0.12, active: 0.05, recover: 0.22, sfx: 'bolt', poseId: 'shoot', projectile: proj({ id: 'voltBoltProj', visual: 'bolt', color: 0x8fdcff, speed: 22, radius: 0.28, lifetime: 1.1, trailColor: 0x3fb8ff }) }),
+    },
+    side: {
+      id: 'voltSparkDash', name: 'Spark Dash', slot: 'side', cooldown: 3, icon: '💥',
+      blurb: 'Electric dash that zaps on contact.',
+      attack: atk({ id: 'voltSparkDash', damage: 6, baseKb: 5, kbGrowth: 0.05, angleDeg: 35, windup: 0.08, active: 0.14, recover: 0.2, hitbox: { x: 0.9, y: 0.9, w: 1.6, h: 1.2 }, sfx: 'dash', poseId: 'lunge' }),
+      effect: { kind: 'dash', speed: 16 },
+    },
+    up: {
+      id: 'voltRocketJump', name: 'Rocket Jump', slot: 'up', cooldown: 0.7, icon: '🚀',
+      blurb: 'Thruster launch with a booster blast.',
+      attack: atk({ id: 'voltRocketJump', damage: 5, baseKb: 6, kbGrowth: 0.08, angleDeg: 80, windup: 0.1, active: 0.12, recover: 0.24, hitbox: { x: 0, y: 0.4, w: 1.4, h: 1.4 }, sfx: 'jetpack', poseId: 'uppercut' }),
+      effect: { kind: 'thrust', vy: 16 },
+    },
+    down: {
+      id: 'voltStaticField', name: 'Static Field', slot: 'down', cooldown: 6, icon: '🌩️',
+      blurb: 'Drops a shocking field that trips foes.',
+      attack: atk({ id: 'voltStaticField', damage: 2, baseKb: 3, kbGrowth: 0.01, angleDeg: 70, windup: 0.14, active: 0.05, recover: 0.26, sfx: 'zap', poseId: 'cast', projectile: proj({ id: 'voltStaticProj', visual: 'orb', color: 0x9fe8ff, speed: 5, gravityScale: 1, radius: 0.55, lifetime: 4, sticky: true, field: { tickInterval: 0.45 }, trailColor: 0x3fb8ff }) }),
+    },
+  },
+  kaze: {
+    neutral: {
+      id: 'kazeShuriken', name: 'Shuriken', slot: 'neutral', cooldown: 1, icon: '✳️',
+      blurb: 'Hurls a piercing throwing star.',
+      attack: atk({ id: 'kazeShuriken', damage: 4, baseKb: 3, kbGrowth: 0.03, angleDeg: 30, windup: 0.06, active: 0.04, recover: 0.14, sfx: 'shuriken', poseId: 'throw', projectile: proj({ id: 'kazeShurikenProj', visual: 'slash', color: 0xdfffe6, speed: 24, radius: 0.24, lifetime: 0.8, piercing: true, trailColor: 0x54d964 }) }),
+    },
+    side: {
+      id: 'kazeWindDash', name: 'Wind Dash', slot: 'side', cooldown: 2.5, icon: '🍃',
+      blurb: 'Blinks forward through enemies.',
+      attack: atk({ id: 'kazeWindDash', damage: 5, baseKb: 4, kbGrowth: 0.04, angleDeg: 32, windup: 0.05, active: 0.12, recover: 0.16, hitbox: { x: 0.8, y: 0.9, w: 1.5, h: 1.1 }, sfx: 'dash', poseId: 'lunge' }),
+      effect: { kind: 'dash', speed: 21 },
+    },
+    up: {
+      id: 'kazeGaleLeap', name: 'Gale Leap', slot: 'up', cooldown: 0.6, icon: '🌪️',
+      blurb: 'A towering wind-boosted jump.',
+      attack: atk({ id: 'kazeGaleLeap', damage: 4, baseKb: 5, kbGrowth: 0.06, angleDeg: 85, windup: 0.06, active: 0.1, recover: 0.2, hitbox: { x: 0, y: 0.6, w: 1.1, h: 1.5 }, sfx: 'whoosh', poseId: 'uppercut' }),
+      effect: { kind: 'thrust', vy: 18, vx: 2 },
+    },
+    down: {
+      id: 'kazeSmokeBomb', name: 'Smoke Bomb', slot: 'down', cooldown: 7, icon: '🌫️',
+      blurb: 'Vanish in smoke — briefly untouchable and swift.',
+      attack: atk({ id: 'kazeSmokeBomb', damage: 0, windup: 0.1, active: 0.05, recover: 0.2, sfx: 'cloak', poseId: 'cast' }),
+      effect: { kind: 'buff', buff: 'cloak', duration: 2.2, speedMult: 1.5 },
+    },
+  },
+  grim: {
+    neutral: {
+      id: 'grimBoulder', name: 'Boulder Hurl', slot: 'neutral', cooldown: 3, icon: '🪨',
+      blurb: 'Lobs a heavy rock that bursts on impact.',
+      attack: atk({ id: 'grimBoulder', damage: 10, baseKb: 7, kbGrowth: 0.09, angleDeg: 45, windup: 0.2, active: 0.06, recover: 0.3, sfx: 'boulder', poseId: 'throw', projectile: proj({ id: 'grimBoulderProj', visual: 'orb', color: 0x8a5fd0, speed: 15, angleDeg: 32, gravityScale: 1, radius: 0.42, lifetime: 2.2, explodeRadius: 1.4, trailColor: 0xb06ef5 }) }),
+    },
+    side: {
+      id: 'grimHornCharge', name: 'Horn Charge', slot: 'side', cooldown: 5, icon: '🐗',
+      blurb: 'An armored gore-rush that plows through hits.',
+      attack: atk({ id: 'grimHornCharge', damage: 12, baseKb: 8, kbGrowth: 0.1, angleDeg: 40, windup: 0.16, active: 0.18, recover: 0.3, hitbox: { x: 1.0, y: 0.9, w: 1.8, h: 1.4 }, sfx: 'charge', poseId: 'lunge' }),
+      effect: { kind: 'dash', speed: 15, armor: 0.4 },
+    },
+    up: {
+      id: 'grimBeastLeap', name: 'Beast Leap', slot: 'up', cooldown: 0.8, icon: '💪',
+      blurb: 'A leaping headbutt to the sky.',
+      attack: atk({ id: 'grimBeastLeap', damage: 7, baseKb: 6, kbGrowth: 0.08, angleDeg: 80, windup: 0.12, active: 0.12, recover: 0.26, hitbox: { x: 0.3, y: 1.0, w: 1.3, h: 1.5 }, sfx: 'whoosh', poseId: 'uppercut' }),
+      effect: { kind: 'thrust', vy: 15, vx: 3 },
+    },
+    down: {
+      id: 'grimGroundPound', name: 'Ground Pound', slot: 'down', cooldown: 5, icon: '👊',
+      blurb: 'Slams the earth, shockwaving both ways.',
+      attack: atk({ id: 'grimGroundPound', damage: 6, baseKb: 5, kbGrowth: 0.05, angleDeg: 70, windup: 0.18, active: 0.08, recover: 0.3, hitbox: { x: 0, y: 0.4, w: 1.6, h: 0.9 }, sfx: 'pound', poseId: 'slam' }),
+      effect: { kind: 'slam', vy: 0, shockwave: proj({ id: 'grimPoundProj', visual: 'shockwave', color: 0xb06ef5, speed: 12, radius: 0.6, lifetime: 0.5 }), shockAttack: atk({ id: 'grimPoundHit', damage: 5, baseKb: 6, kbGrowth: 0.07, angleDeg: 60, sfx: 'pound', poseId: 'slam' }) },
+    },
+  },
+  ace: {
+    neutral: {
+      id: 'aceSixShooter', name: 'Six-Shooter', slot: 'neutral', cooldown: 1.2, icon: '🔫',
+      blurb: 'Snappy pistol shots.',
+      attack: atk({ id: 'aceSixShooter', damage: 3, baseKb: 3, kbGrowth: 0.02, angleDeg: 15, windup: 0.06, active: 0.04, recover: 0.12, sfx: 'bullet', poseId: 'shoot', projectile: proj({ id: 'aceBulletProj', visual: 'bullet', color: 0xffd98a, speed: 26, radius: 0.18, lifetime: 0.8 }) }),
+    },
+    side: {
+      id: 'aceLasso', name: 'Lasso', slot: 'side', cooldown: 6, icon: '🤠',
+      blurb: 'Ropes the nearest foe and yanks them in — off the ledge if you can!',
+      attack: atk({ id: 'aceLasso', damage: 0, windup: 0.14, active: 0.06, recover: 0.28, sfx: 'lasso', poseId: 'lasso' }),
+      effect: { kind: 'tether', range: 6, strength: 16, up: 5, damage: 5 },
+    },
+    up: {
+      id: 'aceGrapple', name: 'Grapple Line', slot: 'up', cooldown: 0.7, icon: '🧗',
+      blurb: 'Fires a line and reels sky-high.',
+      attack: atk({ id: 'aceGrapple', damage: 4, baseKb: 4, kbGrowth: 0.05, angleDeg: 80, windup: 0.08, active: 0.1, recover: 0.22, hitbox: { x: 0.2, y: 1.0, w: 1.0, h: 1.4 }, sfx: 'lasso', poseId: 'uppercut' }),
+      effect: { kind: 'thrust', vy: 17, vx: 2 },
+    },
+    down: {
+      id: 'aceDynamite', name: 'Dynamite', slot: 'down', cooldown: 5, icon: '🧨',
+      blurb: 'Tosses a sticky stick that blows sky-high.',
+      attack: atk({ id: 'aceDynamite', damage: 12, baseKb: 8, kbGrowth: 0.1, angleDeg: 50, windup: 0.16, active: 0.05, recover: 0.3, sfx: 'fuse', poseId: 'throw', projectile: proj({ id: 'aceDynamiteProj', visual: 'bomb', color: 0xd4661a, speed: 14, angleDeg: 35, gravityScale: 1, radius: 0.3, lifetime: 1.4, sticky: true, explodeRadius: 1.8, trailColor: 0xffc93e }) }),
+    },
+  },
+  blaze: {
+    neutral: {
+      id: 'blazeFireball', name: 'Fireball', slot: 'neutral', cooldown: 1.8, icon: '🔥',
+      blurb: 'Arcs a rolling ball of flame.',
+      attack: atk({ id: 'blazeFireball', damage: 8, baseKb: 5, kbGrowth: 0.06, angleDeg: 40, windup: 0.12, active: 0.05, recover: 0.22, sfx: 'flame', poseId: 'cast', projectile: proj({ id: 'blazeFireballProj', visual: 'flame', color: 0xff7a3c, speed: 16, angleDeg: 12, gravityScale: 0.4, radius: 0.34, lifetime: 1.4, trailColor: 0xffc93e }) }),
+    },
+    side: {
+      id: 'blazeFlameRush', name: 'Flame Rush', slot: 'side', cooldown: 3.5, icon: '💨',
+      blurb: 'A blazing dashing claw.',
+      attack: atk({ id: 'blazeFlameRush', damage: 9, baseKb: 6, kbGrowth: 0.07, angleDeg: 42, windup: 0.1, active: 0.14, recover: 0.22, hitbox: { x: 0.9, y: 0.9, w: 1.7, h: 1.3 }, sfx: 'flame', poseId: 'slash' }),
+      effect: { kind: 'dash', speed: 17 },
+    },
+    up: {
+      id: 'blazeFireworkLeap', name: 'Firework Leap', slot: 'up', cooldown: 0.7, icon: '🎆',
+      blurb: 'Erupts skyward in a burst of sparks.',
+      attack: atk({ id: 'blazeFireworkLeap', damage: 6, baseKb: 6, kbGrowth: 0.08, angleDeg: 82, windup: 0.1, active: 0.12, recover: 0.24, hitbox: { x: 0, y: 0.6, w: 1.3, h: 1.5 }, sfx: 'flame', poseId: 'uppercut' }),
+      effect: { kind: 'thrust', vy: 16 },
+    },
+    down: {
+      id: 'blazeBurningGround', name: 'Burning Ground', slot: 'down', cooldown: 7, icon: '🔥',
+      blurb: 'Spews fire that clings to the floor and burns.',
+      attack: atk({ id: 'blazeBurningGround', damage: 2, baseKb: 2, kbGrowth: 0.01, angleDeg: 80, windup: 0.16, active: 0.05, recover: 0.28, sfx: 'flame', poseId: 'cast', projectile: proj({ id: 'blazeBurnProj', visual: 'flame', color: 0xff5a2a, speed: 11, gravityScale: 1, radius: 0.7, lifetime: 4.5, sticky: true, field: { tickInterval: 0.35 }, trailColor: 0xffc93e }) }),
+    },
+  },
+  nova: {
+    neutral: {
+      id: 'novaStarBeam', name: 'Star Beam', slot: 'neutral', cooldown: 2.5, icon: '✨',
+      blurb: 'Charges and fires a piercing beam of light.',
+      attack: atk({ id: 'novaStarBeam', damage: 9, baseKb: 5, kbGrowth: 0.06, angleDeg: 20, windup: 0.18, active: 0.06, recover: 0.24, sfx: 'laser', poseId: 'cast', projectile: proj({ id: 'novaBeamProj', visual: 'laser', color: 0x9fe6ff, speed: 28, radius: 0.26, lifetime: 0.9, piercing: true, trailColor: 0x66d9ff }) }),
+    },
+    side: {
+      id: 'novaCometDash', name: 'Comet Dash', slot: 'side', cooldown: 3, icon: '☄️',
+      blurb: 'A diagonal streak of starlight.',
+      attack: atk({ id: 'novaCometDash', damage: 7, baseKb: 5, kbGrowth: 0.06, angleDeg: 45, windup: 0.08, active: 0.12, recover: 0.2, hitbox: { x: 0.8, y: 1.0, w: 1.5, h: 1.4 }, sfx: 'dash', poseId: 'lunge' }),
+      effect: { kind: 'dash', speed: 17, vy: 6 },
+    },
+    up: {
+      id: 'novaAscent', name: 'Nova Ascent', slot: 'up', cooldown: 0.8, icon: '🌟',
+      blurb: 'A radiant, sky-piercing rise.',
+      attack: atk({ id: 'novaAscent', damage: 7, baseKb: 7, kbGrowth: 0.1, angleDeg: 80, windup: 0.1, active: 0.12, recover: 0.26, hitbox: { x: 0, y: 0.8, w: 1.3, h: 1.8 }, sfx: 'whoosh', poseId: 'uppercut' }),
+      effect: { kind: 'thrust', vy: 20 },
+    },
+    down: {
+      id: 'novaLightShield', name: 'Light Shield', slot: 'down', cooldown: 8, icon: '🛡️',
+      blurb: 'A bubble that shrugs off blows and reflects shots.',
+      attack: atk({ id: 'novaLightShield', damage: 0, windup: 0.1, active: 0.05, recover: 0.2, sfx: 'shield', poseId: 'cast' }),
+      effect: { kind: 'buff', buff: 'reflect', duration: 2.5 },
+    },
+  },
+  shade: {
+    neutral: {
+      id: 'shadeShadowBlades', name: 'Shadow Blades', slot: 'neutral', cooldown: 2.5, icon: '🗡️',
+      blurb: 'Throws a homing dark knife.',
+      attack: atk({ id: 'shadeShadowBlades', damage: 4, baseKb: 3, kbGrowth: 0.04, angleDeg: 35, windup: 0.1, active: 0.05, recover: 0.2, sfx: 'shuriken', poseId: 'throw', projectile: proj({ id: 'shadeBladeProj', visual: 'slash', color: 0xff6fe0, speed: 16, radius: 0.24, lifetime: 1.6, homing: 180, trailColor: 0x6f4fd8 }) }),
+    },
+    side: {
+      id: 'shadeShadowStep', name: 'Shadow Step', slot: 'side', cooldown: 4, icon: '🌑',
+      blurb: 'Blinks behind the nearest foe and strikes.',
+      attack: atk({ id: 'shadeShadowStep', damage: 8, baseKb: 6, kbGrowth: 0.08, angleDeg: 45, windup: 0.1, active: 0.1, recover: 0.24, hitbox: { x: 0.9, y: 0.9, w: 1.5, h: 1.3 }, sfx: 'warp', poseId: 'slash' }),
+      effect: { kind: 'teleport', dist: 4, toTarget: true, behind: 1.2, invuln: 0.25 },
+    },
+    up: {
+      id: 'shadeVoidRise', name: 'Void Rise', slot: 'up', cooldown: 0.7, icon: '🌀',
+      blurb: 'Sinks into shadow and reappears above.',
+      attack: atk({ id: 'shadeVoidRise', damage: 3, baseKb: 3, kbGrowth: 0.03, angleDeg: 80, windup: 0.08, active: 0.08, recover: 0.22, hitbox: { x: 0, y: 0.8, w: 1.0, h: 1.4 }, sfx: 'warp', poseId: 'uppercut' }),
+      effect: { kind: 'teleport', dist: 5, invuln: 0.4 },
+    },
+    down: {
+      id: 'shadeDecoy', name: 'Decoy', slot: 'down', cooldown: 8, icon: '👤',
+      blurb: 'Leaves a shadow clone that detonates.',
+      attack: atk({ id: 'shadeDecoy', damage: 9, baseKb: 7, kbGrowth: 0.08, angleDeg: 50, windup: 0.12, active: 0.05, recover: 0.24, sfx: 'warp', poseId: 'cast', projectile: proj({ id: 'shadeDecoyProj', visual: 'orb', color: 0x6f4fd8, speed: 0, gravityScale: 1, radius: 0.4, lifetime: 3.5, sticky: true, explodeRadius: 1.8, trailColor: 0xff4fd8 }) }),
+    },
+  },
+  titan: {
+    neutral: {
+      id: 'titanPistonCannon', name: 'Piston Cannon', slot: 'neutral', cooldown: 4, icon: '💣',
+      blurb: 'Fires a heavy explosive shell.',
+      attack: atk({ id: 'titanPistonCannon', damage: 12, baseKb: 7, kbGrowth: 0.09, angleDeg: 38, windup: 0.2, active: 0.06, recover: 0.32, sfx: 'cannon', poseId: 'shoot', projectile: proj({ id: 'titanShellProj', visual: 'rocket', color: 0xff8a3c, speed: 16, radius: 0.34, lifetime: 1.6, explodeRadius: 1.6, trailColor: 0xffc93e }) }),
+    },
+    side: {
+      id: 'titanFreightCharge', name: 'Freight Charge', slot: 'side', cooldown: 6, icon: '🚂',
+      blurb: 'An unstoppable armored shoulder-check.',
+      attack: atk({ id: 'titanFreightCharge', damage: 13, baseKb: 9, kbGrowth: 0.11, angleDeg: 40, windup: 0.2, active: 0.2, recover: 0.34, hitbox: { x: 1.0, y: 0.9, w: 1.9, h: 1.5 }, sfx: 'charge', poseId: 'lunge' }),
+      effect: { kind: 'dash', speed: 14, armor: 0.55 },
+    },
+    up: {
+      id: 'titanJetStomp', name: 'Jet Stomp', slot: 'up', cooldown: 0.9, icon: '🦿',
+      blurb: 'A thruster hop with a heavy boot.',
+      attack: atk({ id: 'titanJetStomp', damage: 8, baseKb: 6, kbGrowth: 0.08, angleDeg: 85, windup: 0.12, active: 0.12, recover: 0.28, hitbox: { x: 0.2, y: 0.9, w: 1.4, h: 1.6 }, sfx: 'jetpack', poseId: 'uppercut' }),
+      effect: { kind: 'thrust', vy: 14, vx: 2 },
+    },
+    down: {
+      id: 'titanQuake', name: 'Quake', slot: 'down', cooldown: 7, icon: '🌋',
+      blurb: 'A colossal stomp that quakes both ways.',
+      attack: atk({ id: 'titanQuake', damage: 7, baseKb: 5, kbGrowth: 0.05, angleDeg: 70, windup: 0.22, active: 0.08, recover: 0.34, hitbox: { x: 0, y: 0.4, w: 1.9, h: 0.9 }, sfx: 'quake', poseId: 'slam' }),
+      effect: { kind: 'slam', vy: 0, shockwave: proj({ id: 'titanQuakeProj', visual: 'shockwave', color: 0xff8a3c, speed: 13, radius: 0.7, lifetime: 0.6 }), shockAttack: atk({ id: 'titanQuakeHit', damage: 7, baseKb: 7, kbGrowth: 0.08, angleDeg: 55, sfx: 'quake', poseId: 'slam' }) },
+    },
+  },
+  comet: {
+    neutral: {
+      id: 'cometGravityGrenade', name: 'Gravity Grenade', slot: 'neutral', cooldown: 6, icon: '🕳️',
+      blurb: 'Lobs a mini black hole that drags foes in.',
+      attack: atk({ id: 'cometGravityGrenade', damage: 2, baseKb: 2, kbGrowth: 0.01, angleDeg: 60, windup: 0.14, active: 0.05, recover: 0.26, sfx: 'gravity', poseId: 'throw', projectile: proj({ id: 'cometGravProj', visual: 'orb', color: 0x8a9bff, speed: 12, angleDeg: 20, gravityScale: 0.6, radius: 0.4, lifetime: 3, sticky: true, pull: { radius: 3.5, strength: 9 }, field: { tickInterval: 0.4 }, trailColor: 0xff8a3c }) }),
+    },
+    side: {
+      id: 'cometStarDash', name: 'Star Dash', slot: 'side', cooldown: 3, icon: '⭐',
+      blurb: 'A stardust boost-dash.',
+      attack: atk({ id: 'cometStarDash', damage: 6, baseKb: 5, kbGrowth: 0.06, angleDeg: 40, windup: 0.08, active: 0.12, recover: 0.2, hitbox: { x: 0.8, y: 0.9, w: 1.5, h: 1.2 }, sfx: 'dash', poseId: 'lunge' }),
+      effect: { kind: 'dash', speed: 18 },
+    },
+    up: {
+      id: 'cometJetpack', name: 'Jetpack', slot: 'up', cooldown: 0, holdable: true, icon: '🚀',
+      blurb: 'HOLD to fly — but the fuel runs out fast!',
+      attack: atk({ id: 'cometJetpack', damage: 0, windup: 0.02, active: 0.02, recover: 0.04, sfx: 'jetpack', poseId: 'jetpack' }),
+      effect: { kind: 'fly', accel: 60, maxRise: 9 },
+    },
+    down: {
+      id: 'cometMeteorDrop', name: 'Meteor Drop', slot: 'down', cooldown: 5, icon: '☄️',
+      blurb: 'Airborne — slam down as a meteor and crater the ground.',
+      attack: atk({ id: 'cometMeteorDrop', damage: 5, baseKb: 5, kbGrowth: 0.06, angleDeg: 270, windup: 0.08, active: 0.3, recover: 0.2, hitbox: { x: 0, y: 0.5, w: 1.3, h: 1.6 }, sfx: 'meteor', poseId: 'dive' }),
+      effect: { kind: 'slam', vy: -26, shockwave: proj({ id: 'cometMeteorProj', visual: 'shockwave', color: 0xff8a3c, speed: 14, radius: 0.7, lifetime: 0.6 }), shockAttack: atk({ id: 'cometMeteorHit', damage: 11, baseKb: 8, kbGrowth: 0.1, angleDeg: 50, sfx: 'meteor', poseId: 'dive' }) },
+    },
+  },
+};
+
+export const CHARACTERS: readonly CharacterDef[] = BASE_CHARACTERS.map((c) => ({
+  ...c,
+  abilities: ABILITIES[c.id]!,
+}));
 
 /** Look up a character by id; throws on unknown id. */
 export function characterById(id: string): CharacterDef {

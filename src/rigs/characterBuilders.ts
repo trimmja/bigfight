@@ -442,6 +442,40 @@ const BUILDERS: Record<string, Builder> = {
     limb(j.legL, j.shinL, dark, steel, 0.17, 0.48, 0.46, 1.6, false);
     limb(j.legR, j.shinR, dark, steel, 0.17, 0.48, 0.46, 1.6, false);
   },
+
+  comet(rig) {
+    // Space cadet: puffy white suit, bubble-helmet with a glowing visor, an
+    // orange-nozzled jetpack backpack, orange gloves & boots.
+    const s: Skeleton = { legLen: 1.02, torsoH: 0.7, depth: 0.28, limbR: 0.12, upperArm: 0.4, foreArm: 0.38, thigh: 0.5, shin: 0.48, shoulderY: 0.62, shoulderZ: 0.42, legZ: 0.17 };
+    buildSkeleton(rig, s);
+    const suit = rig.toon(0xeaf0ff), shell = rig.toon(0xc7d0f2), blue = rig.toon(0x8a9bff), orange = rig.toon(0xff8a3c), visor = rig.toon(0x2b3a6b), glow = rig.toon(0x9fe6ff), skin = rig.toon(0xffe0bd);
+    const j = rig.joints;
+    // Puffy suit torso + chest yoke + control panel.
+    ball(j.torso, suit, 0.42, 0.46, 0.4, 0, 0.4, 0);
+    box(j.torso, blue, 0.5, 0.1, 0.42, 0, 0.62, 0);
+    box(j.torso, orange, 0.16, 0.16, 0.08, 0.28, 0.42, 0);
+    ball(j.torso, glow, 0.05, 0.05, 0.03, 0.34, 0.46, 0);
+    box(j.hips, blue, 0.44, 0.14, 0.36, 0, 0, 0);
+    // Jetpack backpack + twin downward nozzles.
+    box(j.torso, shell, 0.24, 0.44, 0.32, -0.34, 0.42, 0);
+    box(j.torso, orange, 0.12, 0.1, 0.14, -0.34, 0.56, 0);
+    for (const zz of [-0.13, 0.13]) cone(j.torso, orange, 0.07, 0.16, -0.42, 0.14, zz, Math.PI, 0);
+    // Bubble helmet: shell set slightly back, face + glowing visor at the front.
+    j.head.position.y = 0.86;
+    ball(j.head, shell, 0.23, 0.23, 0.23, -0.03, 0.02, 0);
+    ball(j.head, skin, 0.15, 0.16, 0.15, 0.11, -0.02, 0);
+    box(j.head, visor, 0.14, 0.12, 0.3, 0.12, 0.05, 0);
+    box(j.head, glow, 0.1, 0.06, 0.26, 0.16, 0.05, 0);
+    box(j.head, orange, 0.18, 0.06, 0.24, -0.05, 0.2, 0);
+    ball(j.head, orange, 0.045, 0.045, 0.045, -0.03, 0.25, 0);
+    // Limbs: white suit, orange gloves & boots, blue shoulder pads.
+    limb(j.armL, j.foreArmL, suit, orange, 0.12, 0.4, 0.38, 1.5, true);
+    limb(j.armR, j.foreArmR, suit, orange, 0.12, 0.4, 0.38, 1.5, true);
+    limb(j.legL, j.shinL, suit, orange, 0.13, 0.5, 0.48, 1.6, false);
+    limb(j.legR, j.shinR, suit, orange, 0.13, 0.5, 0.48, 1.6, false);
+    ball(j.armL, blue, 0.14, 0.12, 0.14, 0, 0.03, 0);
+    ball(j.armR, blue, 0.14, 0.12, 0.14, 0, 0.03, 0);
+  },
 };
 
 /** Build a playable character's rig (falls back to volt's builder shape). */

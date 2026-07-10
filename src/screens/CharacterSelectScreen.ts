@@ -20,6 +20,7 @@ export class CharacterSelectScreen implements Screen {
   private nameEl: HTMLElement | null = null;
   private tagEl: HTMLElement | null = null;
   private statsEl: HTMLElement | null = null;
+  private abilitiesEl: HTMLElement | null = null;
 
   constructor(
     private readonly callbacks: {
@@ -60,6 +61,12 @@ export class CharacterSelectScreen implements Screen {
       side,
     );
     this.statsEl = el('div', 'bf-select-stats', side);
+    const abilitiesLabel = el('div', 'bf-select-abilities-label', side);
+    abilitiesLabel.textContent = 'SIGNATURE MOVES';
+    abilitiesLabel.style.cssText =
+      'font-weight:800;font-size:0.72rem;letter-spacing:0.08em;opacity:0.7;margin:0.5rem 0 0.3rem;';
+    this.abilitiesEl = el('div', 'bf-select-abilities', side);
+    this.abilitiesEl.style.cssText = 'display:flex;flex-direction:column;gap:0.28rem;margin-bottom:0.5rem;';
     button('FIGHT! ▶', () => this.callbacks.onPick(this.selectedId), 'bf-button bf-button-green bf-button-big', side);
 
     this.select(game, this.selectedId, false);
@@ -80,6 +87,41 @@ export class CharacterSelectScreen implements Screen {
       this.statBar('WEIGHT', (def.weight - 80) / 40);
       this.statBar('JUMP', (def.jumpVel - 12) / 4.5);
     }
+    if (this.abilitiesEl) {
+      this.abilitiesEl.replaceChildren();
+      const glow = `#${(def.palette.glow >>> 0).toString(16).padStart(6, '0')}`;
+      if (def.abilities) {
+        const slots = [
+          { dir: 'B', a: def.abilities.neutral },
+          { dir: '→B', a: def.abilities.side },
+          { dir: '↑B', a: def.abilities.up },
+          { dir: '↓B', a: def.abilities.down },
+        ];
+        for (const { dir, a } of slots) this.abilityCard(dir, a.icon, a.name, a.blurb, glow);
+      }
+    }
+  }
+
+  private abilityCard(dir: string, icon: string, name: string, blurb: string, glow: string): void {
+    if (!this.abilitiesEl) return;
+    const row = el('div', 'bf-ability-card', this.abilitiesEl);
+    row.style.cssText =
+      `display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.5rem;border-radius:0.5rem;`
+      + `background:rgba(8,10,22,0.42);border-left:3px solid ${glow};`;
+    row.title = blurb;
+    const ico = el('span', 'bf-ability-icon', row);
+    ico.textContent = icon;
+    ico.style.cssText = 'font-size:1.1rem;line-height:1;';
+    const txt = el('div', 'bf-ability-text', row);
+    txt.style.cssText = 'display:flex;flex-direction:column;min-width:0;';
+    const nm = el('span', 'bf-ability-name', txt);
+    nm.textContent = name;
+    nm.style.cssText = 'font-weight:800;font-size:0.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    const badge = el('span', 'bf-ability-dir', row);
+    badge.textContent = dir;
+    badge.style.cssText =
+      `margin-left:auto;font-weight:900;font-size:0.7rem;padding:0.1rem 0.34rem;border-radius:0.32rem;`
+      + `background:${glow};color:#0a0a14;letter-spacing:0.03em;`;
   }
 
   private statBar(label: string, frac: number): void {

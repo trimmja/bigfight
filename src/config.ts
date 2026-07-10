@@ -59,6 +59,16 @@ export const ATTACK_TOKENS = 2;
 export const SPAWN_TELEGRAPH = 0.8;
 export const SPAWN_STAGGER = 0.3;
 
+// ---- signature abilities (directional specials) ----
+/** Stick magnitude past which a Special press counts as a directional variant. */
+export const SPECIAL_DEADZONE = 0.4;
+/** Comet's jetpack: full tank in seconds of continuous thrust. */
+export const JETPACK_FUEL_MAX = 1.25;
+/** Jetpack refuel rate (units of fuel per second) while grounded. */
+export const JETPACK_REFUEL = 0.9;
+/** A recovery move used in the air can't refresh until this much airtime cooldown. */
+export const ABILITY_AIR_COOLDOWN_MIN = 0.35;
+
 // ---- powerups ----
 /** Seconds between powerup drop attempts once any are unlocked. */
 export const POWERUP_DROP_INTERVAL = 14;

@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const CHARACTERS = ['volt', 'kaze', 'grim', 'ace', 'blaze', 'nova', 'shade', 'titan'];
+const CHARACTERS = ['volt', 'kaze', 'grim', 'ace', 'blaze', 'nova', 'shade', 'titan', 'comet'];
 
 /** Every voice id, in the order they appear in VOICE_DATA. Must match the VoiceId type. */
 const VOICE_IDS = [

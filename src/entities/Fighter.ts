@@ -1,16 +1,32 @@
 import * as THREE from 'three';
 import { LAUNCH_THRESHOLD } from '../config';
 import {
+  ABILITY_AIR_COOLDOWN_MIN,
   AIR_CONTROL,
   DROP_THROUGH_TIME,
   FRICTION_GROUND,
+  JETPACK_FUEL_MAX,
+  JETPACK_REFUEL,
   LANDING_LAG,
+  SPECIAL_DEADZONE,
   TUMBLE_AIR_CONTROL,
 } from '../config';
 import type { ActiveHitbox, HitResult, Hurtbox, Rect } from '../combat/types';
 import { events } from '../core/events';
 import { clamp } from '../core/math';
-import type { AttackDef, CharacterDef, Faction, Facing, FighterStateName, Vec2, WeaponDef } from '../data/types';
+import { hypot } from '../core/simmath';
+import type {
+  AbilityDef,
+  AbilityEffect,
+  AttackDef,
+  CharacterDef,
+  Faction,
+  Facing,
+  FighterStateName,
+  ProjectileDef,
+  Vec2,
+  WeaponDef,
+} from '../data/types';
 import { simPhase } from '../net/simPhase';
 import { netIdOf, restoreIdSet, type SimRegistry, type StateIO } from '../net/snapshots';
 import { Body } from '../physics/Body';
@@ -20,6 +36,7 @@ import {
   poseFall,
   poseHit,
   poseIdle,
+  poseJetpack,
   poseJump,
   poseKO,
   poseLanding,
@@ -35,7 +52,18 @@ export interface FighterIntent {
   jumpPressed: boolean;
   attackPressed: boolean;
   weaponPressed: boolean;
+  /** Level-triggered Special/PWR — needed for held abilities (jetpack). */
+  weaponHeld: boolean;
 }
+
+/** Directional-special slot order: index === encoded slot (neutral/side/up/down). */
+const ABILITY_SLOT_KEYS = ['neutral', 'side', 'up', 'down'] as const;
+/** Self-buff kinds as small ints for snapshotting. */
+const BUFF_NONE = 0;
+const BUFF_ARMOR = 1;
+const BUFF_CLOAK = 2;
+const BUFF_REFLECT = 3;
+const BUFF_RAGE = 4;
 
 const HURTBOX_PAD_X = 0.02;
 const ATTACK_CHAIN_RESET = 0.4;
@@ -70,10 +98,14 @@ const STATE_NAMES: readonly FighterStateName[] = [
   'respawning',
 ];
 
-/** currentAttack wire codes: -1 none · 0-2 combo · 3 weapon ability · 4 custom. */
+/**
+ * currentAttack wire codes: -1 none · 0-2 combo · 3 weapon ability · 4 custom ·
+ * 10-13 signature ability slots (neutral/side/up/down).
+ */
 const ATTACK_CODE_NONE = -1;
 const ATTACK_CODE_WEAPON = 3;
 const ATTACK_CODE_CUSTOM = 4;
+const ATTACK_CODE_ABILITY_BASE = 10;
 
 export class Fighter extends Entity {
   readonly def: CharacterDef;
@@ -90,6 +122,7 @@ export class Fighter extends Entity {
     jumpPressed: false,
     attackPressed: false,
     weaponPressed: false,
+    weaponHeld: false,
   };
 
   damage = 0;
@@ -108,6 +141,25 @@ export class Fighter extends Entity {
   currentAttack: AttackDef | null = null;
   attackPhaseTime = 0;
   weaponCooldown = 0;
+
+  // ---- signature abilities (directional specials) ----
+  /** Active ability slot (0-3), or -1 when the current action isn't an ability. */
+  currentAbilitySlot = -1;
+  /** Per-slot cooldowns, seconds. */
+  readonly abilityCooldowns: [number, number, number, number] = [0, 0, 0, 0];
+  /** Jetpack fuel (Comet); refuels on the ground. */
+  thrustFuel = JETPACK_FUEL_MAX;
+  /** Self-buff (armor/cloak/reflect/rage) timer + kind. */
+  buffTimer = 0;
+  buffKind = BUFF_NONE;
+  /** Movement-speed multiplier from a buff (cloak) — applied to run/air move. */
+  speedMult = 1;
+  /** True between a `slam` cast in the air and its landing shockwave. */
+  meteorActive = false;
+  private abilityEffectFired = false;
+  private jetpackSfxTimer = 0;
+  /** View-only: true on frames the jetpack is thrusting (drives the fly pose). */
+  private flying = false;
 
   private readonly hurtRect: Rect = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
   private readonly activeRect: Rect = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
@@ -186,6 +238,7 @@ export class Fighter extends Entity {
     this.intents.jumpPressed = io.bool(this.intents.jumpPressed);
     this.intents.attackPressed = io.bool(this.intents.attackPressed);
     this.intents.weaponPressed = io.bool(this.intents.weaponPressed);
+    this.intents.weaponHeld = io.bool(this.intents.weaponHeld);
     this.damage = io.f64(this.damage);
     this.damageScale = io.f64(this.damageScale);
     this.kbImmune = io.bool(this.kbImmune);
@@ -204,6 +257,16 @@ export class Fighter extends Entity {
     this.currentAttackIsWeapon = io.bool(this.currentAttackIsWeapon);
     this.attackPhaseTime = io.f64(this.attackPhaseTime);
     this.weaponCooldown = io.f64(this.weaponCooldown);
+    this.abilityCooldowns[0] = io.f64(this.abilityCooldowns[0]);
+    this.abilityCooldowns[1] = io.f64(this.abilityCooldowns[1]);
+    this.abilityCooldowns[2] = io.f64(this.abilityCooldowns[2]);
+    this.abilityCooldowns[3] = io.f64(this.abilityCooldowns[3]);
+    this.thrustFuel = io.f64(this.thrustFuel);
+    this.buffTimer = io.f64(this.buffTimer);
+    this.buffKind = io.i32(this.buffKind);
+    this.speedMult = io.f64(this.speedMult);
+    this.meteorActive = io.bool(this.meteorActive);
+    this.abilityEffectFired = io.bool(this.abilityEffectFired);
     this.projectileFired = io.bool(this.projectileFired);
     this.slashWaveFired = io.bool(this.slashWaveFired);
     this.comboResetTimer = io.f64(this.comboResetTimer);
@@ -230,6 +293,7 @@ export class Fighter extends Entity {
   private encodeAttack(): number {
     const attack = this.currentAttack;
     if (!attack) return ATTACK_CODE_NONE;
+    if (this.currentAbilitySlot >= 0) return ATTACK_CODE_ABILITY_BASE + this.currentAbilitySlot;
     for (let i = 0; i < this.def.combo.length; i += 1) {
       if (this.def.combo[i] === attack) return i;
     }
@@ -239,10 +303,27 @@ export class Fighter extends Entity {
 
   /** Custom attacks (code 4) resolve in subclasses (Player: giant hammer). */
   protected attackForCode(code: number): AttackDef | null {
+    if (code >= ATTACK_CODE_ABILITY_BASE) {
+      const slot = code - ATTACK_CODE_ABILITY_BASE;
+      this.currentAbilitySlot = slot;
+      return this.abilityAttackForSlot(slot);
+    }
+    this.currentAbilitySlot = -1;
     if (code === ATTACK_CODE_NONE) return null;
     if (code >= 0 && code < this.def.combo.length) return this.def.combo[code] ?? null;
     if (code === ATTACK_CODE_WEAPON) return this.equippedWeapon?.ability ?? null;
     return this.def.combo[0] ?? null;
+  }
+
+  /** The AbilityDef for a directional slot (0=neutral…3=down), or null. */
+  private abilityDefForSlot(slot: number): AbilityDef | null {
+    const key = ABILITY_SLOT_KEYS[slot];
+    if (!key) return null;
+    return this.def.abilities?.[key] ?? null;
+  }
+
+  private abilityAttackForSlot(slot: number): AttackDef | null {
+    return this.abilityDefForSlot(slot)?.attack ?? null;
   }
 
   /** Sim-only weapon assignment (rollback restore — no model work here). */
@@ -287,6 +368,17 @@ export class Fighter extends Entity {
       this.comboResetTimer,
       this.freezeTimer,
       this.teamId,
+      this.currentAbilitySlot,
+      this.abilityCooldowns[0],
+      this.abilityCooldowns[1],
+      this.abilityCooldowns[2],
+      this.abilityCooldowns[3],
+      this.thrustFuel,
+      this.buffTimer,
+      this.buffKind,
+      this.speedMult,
+      this.meteorActive ? 1 : 0,
+      this.abilityEffectFired ? 1 : 0,
     );
   }
 
@@ -316,7 +408,15 @@ export class Fighter extends Entity {
   }
 
   update(ctx: WorldCtx, dt: number): void {
+    this.flying = false;
     if (this.weaponCooldown > 0) this.weaponCooldown = Math.max(0, this.weaponCooldown - dt);
+    for (let i = 0; i < 4; i += 1) {
+      if (this.abilityCooldowns[i]! > 0) this.abilityCooldowns[i] = Math.max(0, this.abilityCooldowns[i]! - dt);
+    }
+    if (this.buffTimer > 0) {
+      this.buffTimer = Math.max(0, this.buffTimer - dt);
+      if (this.buffTimer === 0) this.expireBuff();
+    }
 
     if (this.hitstopTimer > 0) {
       this.hitstopTimer = Math.max(0, this.hitstopTimer - dt);
@@ -385,6 +485,15 @@ export class Fighter extends Entity {
     if (landed) {
       this.jumpsUsed = 0;
       this.body.fastFalling = false;
+      // Meteor/slam impact: shockwave both ways the instant we touch down.
+      if (this.meteorActive) {
+        this.meteorActive = false;
+        const slam = this.slamEffect();
+        if (slam) this.fireGroundShock(ctx, slam.shockwave, slam.shockAttack);
+        if (!simPhase.resimulating) {
+          ctx.particles.burst(this.body.pos.x, this.body.pos.y + 0.1, this.def.palette.accent, 22, 7); // det-ok: view-only
+        }
+      }
       if (!simPhase.resimulating) {
         ctx.particles.burst(this.body.pos.x, this.body.pos.y + 0.08, this.def.palette.glow, 8, 3.5);
       }
@@ -409,8 +518,16 @@ export class Fighter extends Entity {
   }
 
   onHit(result: HitResult): void {
+    if (!simPhase.resimulating) this.rig.flashColor(0xffffff, 0.06);
+    this.hitFlashTimer = 0.06;
+    // Super-armor (armored charges, Light Shield): the damage is already applied
+    // by HitResolver — absorb it and keep the current action going.
+    if (this.kbImmune) return;
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
+    this.currentAbilitySlot = -1;
+    this.abilityEffectFired = false;
+    this.meteorActive = false;
     this.projectileFired = false;
     this.slashWaveFired = false;
     this.comboQueued = false;
@@ -418,8 +535,6 @@ export class Fighter extends Entity {
     this.body.fastFalling = false;
     this.state = result.launched ? 'launched' : 'hitstun';
     this.stateTime = -result.hitstun;
-    if (!simPhase.resimulating) this.rig.flashColor(0xffffff, 0.06);
-    this.hitFlashTimer = 0.06;
     if (result.kb <= LAUNCH_THRESHOLD) {
       this.trail?.setActive(false);
     }
@@ -442,6 +557,9 @@ export class Fighter extends Entity {
     this.freezeTimer = Math.max(this.freezeTimer, seconds);
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
+    this.currentAbilitySlot = -1;
+    this.abilityEffectFired = false;
+    this.meteorActive = false;
     this.projectileFired = false;
     this.slashWaveFired = false;
     this.comboQueued = false;
@@ -485,6 +603,8 @@ export class Fighter extends Entity {
   startCustomAttack(def: AttackDef): void {
     this.currentAttack = def;
     this.currentAttackIsWeapon = true;
+    this.currentAbilitySlot = -1;
+    this.abilityEffectFired = false;
     this.projectileFired = false;
     this.slashWaveFired = false;
     this.comboQueued = false;
@@ -519,6 +639,17 @@ export class Fighter extends Entity {
     this.jumpsUsed = 0;
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
+    this.currentAbilitySlot = -1;
+    this.abilityEffectFired = false;
+    this.meteorActive = false;
+    this.abilityCooldowns[0] = 0;
+    this.abilityCooldowns[1] = 0;
+    this.abilityCooldowns[2] = 0;
+    this.abilityCooldowns[3] = 0;
+    this.thrustFuel = JETPACK_FUEL_MAX;
+    this.buffTimer = 0;
+    this.buffKind = BUFF_NONE;
+    this.speedMult = 1;
     this.projectileFired = false;
     this.slashWaveFired = false;
     this.comboQueued = false;
@@ -537,6 +668,12 @@ export class Fighter extends Entity {
     this.stateTime = 0;
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
+    this.currentAbilitySlot = -1;
+    this.abilityEffectFired = false;
+    this.meteorActive = false;
+    this.buffTimer = 0;
+    this.buffKind = BUFF_NONE;
+    this.speedMult = 1;
     this.projectileFired = false;
     this.slashWaveFired = false;
     this.comboQueued = false;
@@ -564,9 +701,12 @@ export class Fighter extends Entity {
   private updateGrounded(ctx: WorldCtx, dt: number): void {
     this.stateTime += dt;
     this.body.fastFalling = false;
+    this.refuelJetpack(dt);
     this.handleFacing();
+    // Special wins over jump when the button is pressed this frame (up-specials
+    // share the Up direction with the jump key).
+    if (this.tryStartSpecial(ctx)) return;
     if (this.tryStartJump()) return;
-    if (this.tryStartWeaponAbility()) return;
     if (this.tryStartAttack()) return;
     this.applyGroundMove(dt);
     this.state = Math.abs(this.body.vel.x) > 0.2 || Math.abs(this.intents.moveX) > 0.1 ? 'run' : 'idle';
@@ -574,10 +714,11 @@ export class Fighter extends Entity {
     this.keepInsideStageHint(ctx);
   }
 
-  private updateAir(_ctx: WorldCtx, dt: number): void {
+  private updateAir(ctx: WorldCtx, dt: number): void {
     this.stateTime += dt;
+    if (this.tryFly(ctx, dt)) return;
+    if (this.tryStartSpecial(ctx)) return;
     if (this.tryStartJump()) return;
-    if (this.tryStartWeaponAbility()) return;
     if (this.tryStartAttack()) return;
     this.applyAirMove(dt, AIR_CONTROL);
     if (this.intents.moveY < -0.5 && this.body.vel.y < 0) this.body.fastFalling = true;
@@ -611,6 +752,14 @@ export class Fighter extends Entity {
     const activeOrLater = this.attackPhaseTime >= activeStart;
     if (!this.currentAttackIsWeapon && this.intents.attackPressed && activeOrLater && this.comboIndex < 2) {
       this.comboQueued = true;
+    }
+    // Signature-ability special effect (dash / thrust / tether / teleport /
+    // buff / slam) fires once at the active frame — BEFORE the hitbox, so a
+    // teleport repositions us before the strike reads our position.
+    if (this.currentAbilitySlot >= 0 && activeOrLater && !this.abilityEffectFired) {
+      this.abilityEffectFired = true;
+      const ability = this.abilityDefForSlot(this.currentAbilitySlot);
+      if (ability?.effect) this.applyAbilityEffect(ctx, ability.effect);
     }
     if (attack.projectile && activeOrLater && !this.projectileFired) {
       this.fireProjectileAttack(ctx, attack);
@@ -728,10 +877,302 @@ export class Fighter extends Entity {
     return true;
   }
 
-  private tryStartWeaponAbility(): boolean {
-    if (!this.intents.weaponPressed || this.weaponCooldown > 0 || !this.equippedWeapon) return false;
-    this.startWeaponAbility(this.equippedWeapon);
+  /**
+   * Directional-special dispatch. Neutral fires the equipped weapon (if any) or
+   * the neutral signature; side/up/down fire the matching signature. Jetpack-
+   * style held abilities are driven by tryFly, not this press.
+   */
+  private tryStartSpecial(ctx: WorldCtx): boolean {
+    if (!this.intents.weaponPressed) return false;
+    const slot = this.classifySpecialSlot();
+    if (slot === 0 && this.equippedWeapon && this.weaponCooldown <= 0) {
+      this.startWeaponAbility(this.equippedWeapon);
+      return true;
+    }
+    const ability = this.abilityDefForSlot(slot);
+    if (!ability || ability.holdable) return false;
+    if (this.abilityCooldowns[slot]! > 0) return false;
+    if (slot === 1) {
+      if (this.intents.moveX > 0.15) this.facing = 1;
+      else if (this.intents.moveX < -0.15) this.facing = -1;
+    }
+    this.startAbility(ctx, slot, ability);
     return true;
+  }
+
+  /** Classify the stick into a directional-special slot: 0=N 1=S 2=U 3=D. */
+  private classifySpecialSlot(): number {
+    const ax = this.intents.moveX;
+    const ay = this.intents.moveY;
+    if (ay > SPECIAL_DEADZONE && ay >= Math.abs(ax)) return 2;
+    if (ay < -SPECIAL_DEADZONE && -ay >= Math.abs(ax)) return 3;
+    if (Math.abs(ax) > SPECIAL_DEADZONE) return 1;
+    return 0;
+  }
+
+  private startAbility(ctx: WorldCtx, slot: number, ability: AbilityDef): void {
+    this.comboQueued = false;
+    this.currentAttack = ability.attack;
+    this.currentAttackIsWeapon = true;
+    this.currentAbilitySlot = slot;
+    this.projectileFired = false;
+    this.slashWaveFired = false;
+    this.abilityEffectFired = false;
+    this.attackPhaseTime = 0;
+    this.stateTime = 0;
+    this.state = 'weaponAbility';
+    this.comboResetTimer = 0;
+    // Recovery moves used airborne keep at least a small cooldown so up-specials
+    // can't be chained into infinite height.
+    this.abilityCooldowns[slot] = this.body.grounded
+      ? ability.cooldown
+      : Math.max(ability.cooldown, ABILITY_AIR_COOLDOWN_MIN);
+    this.alreadyHit.clear();
+    // Cast POP (view-only): a palette-colored spark burst + accent flash +
+    // shake scaled to how heavy the move is, so every character's specials feel
+    // juicy and consistent. Non-projectile abilities also emit their cast SFX.
+    if (!simPhase.resimulating) {
+      const pop = clamp(0.35 + ability.cooldown * 0.12, 0.35, 1);
+      ctx.particles.burst(
+        this.body.pos.x + this.facing * 0.4,
+        this.body.pos.y + this.body.height * 0.55,
+        this.def.palette.glow,
+        Math.round(8 + ability.cooldown * 1.5),
+        4 + ability.cooldown, // det-ok: view-only
+      );
+      this.rig.flashColor(this.def.palette.accent, 0.08);
+      events.emit('screenShake', { amount: 0.05 + pop * 0.08 });
+      if (!ability.attack.projectile) {
+        events.emit('shoot', {
+          kind: ability.attack.sfx,
+          pos: { x: this.body.pos.x, y: this.body.pos.y + this.body.height * 0.55 },
+        });
+      }
+    }
+  }
+
+  /** Apply a signature ability's special behaviour at its active frame. */
+  private applyAbilityEffect(ctx: WorldCtx, effect: AbilityEffect): void {
+    switch (effect.kind) {
+      case 'dash':
+        this.body.vel.x = this.facing * effect.speed;
+        if (effect.vy !== undefined) {
+          this.body.vel.y = effect.vy;
+          this.body.grounded = false;
+        }
+        if (effect.armor) this.applyBuff('armor', effect.armor);
+        break;
+      case 'thrust':
+        this.body.vel.y = effect.vy;
+        if (effect.vx !== undefined) this.body.vel.x = this.facing * effect.vx;
+        this.body.grounded = false;
+        this.body.fastFalling = false;
+        if (effect.armor) this.applyBuff('armor', effect.armor);
+        break;
+      case 'tether':
+        this.applyTether(ctx, effect.range, effect.strength, effect.up ?? 4, effect.damage ?? 3);
+        break;
+      case 'teleport':
+        this.applyTeleport(ctx, effect.dist, effect.toTarget === true, effect.behind ?? 1.3, effect.invuln ?? 0);
+        break;
+      case 'buff':
+        this.applyBuff(effect.buff, effect.duration, effect.speedMult);
+        break;
+      case 'slam':
+        if (!this.body.grounded) {
+          this.body.vel.y = effect.vy;
+          if (effect.vy < 0) {
+            this.body.vel.x *= 0.3;
+            this.body.fastFalling = true;
+          }
+          this.meteorActive = true;
+        } else {
+          this.fireGroundShock(ctx, effect.shockwave, effect.shockAttack);
+        }
+        break;
+      case 'fly':
+        break; // handled by tryFly
+    }
+  }
+
+  private applyTether(ctx: WorldCtx, range: number, strength: number, up: number, damage: number): void {
+    const target = this.nearestOpponent(ctx, range);
+    if (!target) return;
+    const grabbed = target.receiveTether(
+      this.body.pos.x,
+      this.body.pos.y + this.body.height * 0.4,
+      strength,
+      up,
+      damage,
+    );
+    if (grabbed && !simPhase.resimulating) {
+      events.emit('shoot', {
+        kind: 'lassosnap',
+        pos: { x: target.body.pos.x, y: target.body.pos.y + 0.8 },
+      });
+    }
+  }
+
+  /** Yanked by an opposing tether (lasso/vine): dragged toward the caster. */
+  receiveTether(fromX: number, fromY: number, strength: number, up: number, damage: number): boolean {
+    if (!this.alive || this.isInvulnerable || this.kbImmune) return false;
+    const dx = fromX - this.body.pos.x;
+    const dy = fromY - this.body.pos.y;
+    const len = Math.max(0.001, hypot(dx, dy));
+    this.body.vel.x = (dx / len) * strength;
+    this.body.vel.y = up + (dy / len) * strength * 0.35;
+    this.body.grounded = false;
+    this.body.fastFalling = false;
+    this.damage += damage;
+    this.state = 'hitstun';
+    this.stateTime = -0.32;
+    this.currentAttack = null;
+    this.currentAttackIsWeapon = false;
+    this.currentAbilitySlot = -1;
+    this.comboQueued = false;
+    this.projectileFired = false;
+    this.slashWaveFired = false;
+    return true;
+  }
+
+  private applyTeleport(ctx: WorldCtx, dist: number, toTarget: boolean, behind: number, invuln: number): void {
+    if (toTarget) {
+      const target = this.nearestOpponent(ctx, Infinity);
+      if (target) {
+        this.facing = target.body.pos.x >= this.body.pos.x ? 1 : -1;
+        this.body.pos.x = target.body.pos.x - this.facing * behind;
+        this.body.pos.y = target.body.pos.y;
+      } else {
+        this.body.pos.x += this.facing * dist;
+      }
+    } else {
+      const ax = this.intents.moveX;
+      const ay = this.intents.moveY;
+      if (Math.abs(ax) > 0.3) this.facing = ax > 0 ? 1 : -1;
+      if (ay > 0.3) {
+        this.body.pos.y += dist; // up-blink recovery (Void Rise)
+        this.body.pos.x += this.facing * dist * 0.35;
+      } else {
+        this.body.pos.x += this.facing * dist;
+      }
+    }
+    this.body.vel.x = 0;
+    if (this.body.vel.y < 0) this.body.vel.y = 0;
+    this.body.grounded = false;
+    if (invuln > 0) this.invulnTimer = Math.max(this.invulnTimer, invuln);
+  }
+
+  /** Nearest alive opposing fighter (stable slot order) within `maxRange`. */
+  private nearestOpponent(ctx: WorldCtx, maxRange: number): Fighter | null {
+    let best: Fighter | null = null;
+    let bestSq = maxRange === Infinity ? Infinity : maxRange * maxRange;
+    const me = this.body.pos;
+    const players = ctx.players;
+    for (let i = 0; i < players.length; i += 1) {
+      const p = players[i]!;
+      if (p === this || !p.alive || p.teamId === this.teamId || p.isInvulnerable) continue;
+      const dx = p.body.pos.x - me.x;
+      const dy = p.body.pos.y - me.y;
+      const dsq = dx * dx + dy * dy;
+      if (dsq < bestSq) {
+        bestSq = dsq;
+        best = p;
+      }
+    }
+    return best;
+  }
+
+  private fireGroundShock(ctx: WorldCtx, shockwave: ProjectileDef, shockAttack: AttackDef): void {
+    const y = this.body.pos.y + 0.25;
+    const off = this.body.halfW + shockwave.radius;
+    const power = this.power * this.attackMult;
+    ctx.fireProjectile(shockwave, shockAttack, this.body.pos.x + off, y, 1, this.faction, this.teamId, power, this.slotIndex);
+    ctx.fireProjectile(shockwave, shockAttack, this.body.pos.x - off, y, -1 as Facing, this.faction, this.teamId, power, this.slotIndex);
+  }
+
+  /** The slam shockwave to fire on landing (reconstructed from the def). */
+  private slamEffect(): { shockwave: ProjectileDef; shockAttack: AttackDef } | null {
+    for (let slot = 0; slot < 4; slot += 1) {
+      const e = this.abilityDefForSlot(slot)?.effect;
+      if (e && e.kind === 'slam') return { shockwave: e.shockwave, shockAttack: e.shockAttack };
+    }
+    return null;
+  }
+
+  private applyBuff(buff: 'armor' | 'cloak' | 'reflect' | 'rage', duration: number, speedMult?: number): void {
+    this.buffTimer = Math.max(this.buffTimer, duration);
+    switch (buff) {
+      case 'armor':
+        this.buffKind = BUFF_ARMOR;
+        this.kbImmune = true;
+        this.damageScale = 0.6;
+        break;
+      case 'cloak':
+        this.buffKind = BUFF_CLOAK;
+        this.invulnTimer = Math.max(this.invulnTimer, duration);
+        this.speedMult = speedMult ?? 1.5;
+        break;
+      case 'reflect':
+        this.buffKind = BUFF_REFLECT;
+        this.kbImmune = true;
+        this.damageScale = 0.5;
+        break;
+      case 'rage':
+        this.buffKind = BUFF_RAGE;
+        this.attackMult = 1.4;
+        break;
+    }
+  }
+
+  private expireBuff(): void {
+    switch (this.buffKind) {
+      case BUFF_ARMOR:
+      case BUFF_REFLECT:
+        this.kbImmune = false;
+        this.damageScale = 1;
+        break;
+      case BUFF_CLOAK:
+        this.speedMult = 1;
+        break;
+      case BUFF_RAGE:
+        this.attackMult = 1;
+        break;
+    }
+    this.buffKind = BUFF_NONE;
+  }
+
+  /** True while Nova's Light Shield is up — projectiles deflect off it. */
+  get isReflecting(): boolean {
+    return this.buffKind === BUFF_REFLECT && this.buffTimer > 0;
+  }
+
+  /** Sustained jetpack thrust (Comet's up-special). Returns true if flying. */
+  private tryFly(ctx: WorldCtx, dt: number): boolean {
+    const up = this.abilityDefForSlot(2);
+    if (!up || up.effect?.kind !== 'fly') return false;
+    if (!this.intents.weaponHeld || this.intents.moveY <= SPECIAL_DEADZONE || this.thrustFuel <= 0) return false;
+    const eff = up.effect;
+    this.thrustFuel = Math.max(0, this.thrustFuel - dt);
+    this.body.vel.y = Math.min(this.body.vel.y + eff.accel * dt, eff.maxRise);
+    this.body.fastFalling = false;
+    this.applyAirMove(dt, AIR_CONTROL);
+    this.state = 'jump';
+    this.flying = true;
+    if (!simPhase.resimulating) {
+      this.jetpackSfxTimer -= dt;
+      if (this.jetpackSfxTimer <= 0) {
+        this.jetpackSfxTimer = 0.16;
+        events.emit('shoot', { kind: 'jetpack', pos: { x: this.body.pos.x, y: this.body.pos.y } });
+      }
+      ctx.particles.burst(this.body.pos.x, this.body.pos.y + 0.05, this.def.palette.accent, 3, 4); // det-ok: view-only
+    }
+    return true;
+  }
+
+  private refuelJetpack(dt: number): void {
+    if (this.thrustFuel < JETPACK_FUEL_MAX) {
+      this.thrustFuel = Math.min(JETPACK_FUEL_MAX, this.thrustFuel + JETPACK_REFUEL * dt);
+    }
   }
 
   private startAttack(index: number): void {
@@ -747,6 +1188,8 @@ export class Fighter extends Entity {
     this.comboQueued = false;
     this.currentAttack = attack;
     this.currentAttackIsWeapon = false;
+    this.currentAbilitySlot = -1;
+    this.abilityEffectFired = false;
     this.projectileFired = false;
     this.slashWaveFired = false;
     this.attackPhaseTime = 0;
@@ -760,6 +1203,8 @@ export class Fighter extends Entity {
     this.comboQueued = false;
     this.currentAttack = weapon.ability;
     this.currentAttackIsWeapon = true;
+    this.currentAbilitySlot = -1;
+    this.abilityEffectFired = false;
     this.projectileFired = false;
     this.slashWaveFired = false;
     this.attackPhaseTime = 0;
@@ -774,6 +1219,8 @@ export class Fighter extends Entity {
     const wasWeapon = this.currentAttackIsWeapon;
     this.currentAttack = null;
     this.currentAttackIsWeapon = false;
+    this.currentAbilitySlot = -1;
+    this.abilityEffectFired = false;
     this.projectileFired = false;
     this.slashWaveFired = false;
     this.comboQueued = false;
@@ -786,12 +1233,12 @@ export class Fighter extends Entity {
   }
 
   private applyGroundMove(dt: number): void {
-    const target = this.intents.moveX * this.def.speed;
+    const target = this.intents.moveX * this.def.speed * this.speedMult;
     this.body.vel.x = moveToward(this.body.vel.x, target, FRICTION_GROUND * dt);
   }
 
   private applyAirMove(dt: number, accel: number): void {
-    const target = this.intents.moveX * this.def.speed;
+    const target = this.intents.moveX * this.def.speed * this.speedMult;
     this.body.vel.x = moveToward(this.body.vel.x, target, accel * dt);
   }
 
@@ -846,7 +1293,7 @@ export class Fighter extends Entity {
       case 'run':
         return poseRun(t, Math.abs(this.body.vel.x) / Math.max(0.0001, this.def.speed));
       case 'jump':
-        return poseJump();
+        return this.flying ? poseJetpack(t) : poseJump();
       case 'fall':
         return poseFall();
       case 'attack':

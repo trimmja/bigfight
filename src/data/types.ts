@@ -161,6 +161,85 @@ export interface Proportions {
   headSize: number;
 }
 
+// ---------------------------------------------------------------------------
+// Signature abilities (directional specials — Smash-style)
+// ---------------------------------------------------------------------------
+
+/**
+ * Which directional-special slot an ability lives in. Selected at press time
+ * from the movement stick + the Special (PWR) button:
+ *   neutral = stick centered · side = ←/→ · up = ↑ · down = ↓
+ * Neutral is overridden by an equipped crafted weapon (weapon = B).
+ */
+export type AbilitySlot = 'neutral' | 'side' | 'up' | 'down';
+
+/** Timed self-status an ability can grant (see Fighter.applyBuff). */
+export type AbilityBuff =
+  /** Super-armor: ignore knockback + take reduced damage for the duration. */
+  | 'armor'
+  /** Vanish: invulnerable + a burst of speed (smoke bomb). */
+  | 'cloak'
+  /** Reflective bubble: deflects incoming projectiles back at the shooter. */
+  | 'reflect'
+  /** Berserk: attacks deal extra damage (rage). */
+  | 'rage';
+
+/**
+ * Extra deterministic behavior applied at an ability's ACTIVE frame, layered on
+ * top of the AbilityDef.attack's own melee hitbox / projectile. Movement kinds
+ * are one-shot impulses; `fly` is the sustained jetpack (drains fuel, held).
+ * Every field here is plain data so the whole ability set stays serializable.
+ */
+export type AbilityEffect =
+  /** Horizontal burst dash forward (+ optional lift / super-armor window). */
+  | { kind: 'dash'; speed: number; vy?: number; armor?: number }
+  /** One-shot launch — recovery leaps (Rocket/Gale/Beast/Firework/Nova/Jet). */
+  | { kind: 'thrust'; vy: number; vx?: number; armor?: number }
+  /** Held jetpack: adds `accel` u/s² upward toward `maxRise`, drains fuel. */
+  | { kind: 'fly'; accel: number; maxRise: number }
+  /** Yank the nearest opposing fighter within `range` toward the caster. */
+  | { kind: 'tether'; range: number; strength: number; up?: number; damage?: number }
+  /** Blink to just behind the nearest foe (`toTarget`) or a fixed `dist`. */
+  | { kind: 'teleport'; dist: number; toTarget?: boolean; behind?: number; invuln?: number }
+  /** Grant a timed self-status (armor / cloak / reflect / rage). */
+  | { kind: 'buff'; buff: AbilityBuff; duration: number; speedMult?: number }
+  /**
+   * Ground slam that spits a shockwave both ways on impact. `vy < 0` dives
+   * (Comet's meteor); `vy = 0` stomps in place (Grim's pound / Titan's quake).
+   * Airborne casts dive, then shockwave the instant they land.
+   */
+  | { kind: 'slam'; vy: number; shockwave: ProjectileDef; shockAttack: AttackDef };
+
+export interface AbilityDef {
+  id: string;
+  /** Display name for the character-select ability card. */
+  name: string;
+  slot: AbilitySlot;
+  /**
+   * Timing (windup/active/recover), pose, SFX, and — when set — a melee hitbox
+   * and/or a spawned projectile. Drives the animation and the base hit.
+   */
+  attack: AttackDef;
+  /** Special behavior applied at the active frame (movement/tether/teleport/buff). */
+  effect?: AbilityEffect;
+  /** Cooldown between uses, seconds. Holdable (fly) abilities ignore this. */
+  cooldown: number;
+  /** Fires continuously WHILE HELD, consuming jetpack fuel (Comet's up). */
+  holdable?: boolean;
+  /** One-line description for the ability card. */
+  blurb: string;
+  /** Emoji glyph for the ability card. */
+  icon: string;
+}
+
+/** A character's four signature abilities, one per directional-special slot. */
+export interface CharacterAbilities {
+  neutral: AbilityDef;
+  side: AbilityDef;
+  up: AbilityDef;
+  down: AbilityDef;
+}
+
 export interface CharacterDef {
   id: string;
   name: string;
@@ -179,8 +258,14 @@ export interface CharacterDef {
   jumps: number;
   palette: Palette;
   proportions: Proportions;
-  /** 3-hit regular combo chain. */
+  /** 3-hit regular combo chain (the ATTACK button). */
   combo: [AttackDef, AttackDef, AttackDef];
+  /**
+   * Four signature abilities (the SPECIAL button + direction). Always present
+   * on the playable roster; omitted for synthetic defs (bosses/mobs reuse
+   * CharacterDef but never fire specials).
+   */
+  abilities?: CharacterAbilities;
   unlock: UnlockRule;
 }
 

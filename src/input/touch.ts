@@ -97,7 +97,9 @@ export class TouchInput {
     attack.style.bottom = 'calc(var(--safe-b) + 26px)';
     this.bindButton(attack, 'attack');
 
-    const weapon = this.createButton('PWR', 'var(--neon-yellow)', 74);
+    // Special button: fires the character's signature (hold a direction for
+    // the side/up/down variant). Still shows the crafted-weapon cooldown ring.
+    const weapon = this.createButton('SP', 'var(--neon-yellow)', 74);
     weapon.style.right = 'calc(var(--safe-r) + 33px)';
     weapon.style.bottom = 'calc(var(--safe-b) + 136px)';
     weapon.style.setProperty('--cooldown-frac', '0');

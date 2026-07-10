@@ -8,6 +8,7 @@ import { events } from '../core/events';
 import { clamp, degToRad } from '../core/math';
 import { atan2 } from '../core/simmath';
 import { aabbOverlap } from '../physics/collision';
+import type { Faction } from '../data/types';
 import { computeKnockback, hitstunFor, launchVelocity, resolveAngleDeg } from './knockback';
 import type { ActiveHitbox, FighterLike, Rect } from './types';
 
@@ -62,6 +63,17 @@ export class HitResolver {
         hitbox.alreadyHit.add(victim);
         const x = overlapCenter(attackRect.minX, attackRect.maxX, victimRect.minX, victimRect.maxX);
         const y = overlapCenter(attackRect.minY, attackRect.maxY, victimRect.minY, victimRect.maxY);
+        // Nova's Light Shield: reflect incoming PROJECTILES (only projectile
+        // attackers expose reflect) back at the shooter, unharmed.
+        const reflectingVictim = victim as { isReflecting?: boolean };
+        const reflectableAttacker = hitbox.attacker as { reflect?: (teamId: number, faction: Faction) => void };
+        if (reflectingVictim.isReflecting === true && reflectableAttacker.reflect) {
+          reflectableAttacker.reflect(victim.teamId, victim.faction);
+          events.emit('hit', { pos: { x, y }, damage: 0, kb: 0, victimIsPlayer: victim.faction === 'player' });
+          events.emit('screenShake', { amount: 0.12 });
+          if (notifyResolvedHit(hitbox)) break;
+          continue;
+        }
         const shieldedVictim = victim as ShieldedVictim;
         if ((shieldedVictim.shieldHits ?? 0) > 0) {
           shieldedVictim.shieldHits = Math.max(0, (shieldedVictim.shieldHits ?? 0) - 1);

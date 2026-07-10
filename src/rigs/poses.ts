@@ -58,14 +58,21 @@ const scratch: FullPose = {
  */
 export function poseIdle(t: number): Pose {
   reset();
-  const breathe = Math.sin(t * 2.4);
-  scratch.hips.z = -breathe * 0.035;
-  scratch.torso.z = 0.08 - breathe * 0.045;
-  scratch.head.z = -scratch.torso.z * 0.45;
-  scratch.armL.x = 0.12 + Math.sin(t * 2.1) * 0.08;
-  scratch.armR.x = -0.12 - Math.sin(t * 2.1 + 0.6) * 0.08;
-  scratch.foreArmL.z = 0.18 - breathe * 0.05;
-  scratch.foreArmR.z = 0.18 + breathe * 0.05;
+  // Layered breathing: a slow chest swell + a faster subtle flutter so the
+  // stand reads alive, not metronomic. A very slow weight-shift sway rocks the
+  // hips side-to-side (sagittal roll) every few seconds.
+  const breathe = Math.sin(t * 2.4) * 0.8 + Math.sin(t * 4.9 + 1.3) * 0.2;
+  const sway = Math.sin(t * 0.9);
+  scratch.hips.z = -breathe * 0.04 - sway * 0.03;
+  scratch.torso.z = 0.08 - breathe * 0.05 + sway * 0.02;
+  scratch.head.z = -scratch.torso.z * 0.45 + sway * 0.04;
+  // Arms drift with the breath and lag the sway a touch (secondary motion).
+  scratch.armL.x = 0.12 + Math.sin(t * 2.1) * 0.09 + sway * 0.05;
+  scratch.armR.x = -0.12 - Math.sin(t * 2.1 + 0.6) * 0.09 + sway * 0.05;
+  scratch.armL.z = 0.04 + breathe * 0.03;
+  scratch.armR.z = -0.04 - breathe * 0.03;
+  scratch.foreArmL.z = 0.2 - breathe * 0.06;
+  scratch.foreArmR.z = 0.2 + breathe * 0.06;
   return scratch;
 }
 
@@ -106,68 +113,92 @@ export function poseFightStance(t: number): Pose {
 export function poseRun(t: number, speedNorm: number): Pose {
   reset();
   const speed = clamp(speedNorm, 0.15, 1.35);
-  const stride = Math.sin(t * 10 * speed);
-  const counter = Math.cos(t * 10 * speed);
-  scratch.root.z = -0.06 * stride;
-  scratch.hips.z = -0.08 * counter;
-  scratch.torso.z = 0.28;
-  scratch.head.z = -0.12;
-  scratch.legL.z = -0.78 * stride;
-  scratch.legR.z = 0.78 * stride;
-  scratch.shinL.z = 0.1 - Math.max(0, -stride) * 0.75;
-  scratch.shinR.z = 0.1 - Math.max(0, stride) * 0.75;
-  scratch.armL.z = 0.85 * stride;
-  scratch.armR.z = -0.85 * stride;
-  scratch.foreArmL.z = 0.38 - Math.max(0, stride) * 0.35;
-  scratch.foreArmR.z = 0.38 - Math.max(0, -stride) * 0.35;
+  const phase = t * 10 * speed;
+  const stride = Math.sin(phase);
+  const counter = Math.cos(phase);
+  // Springy 2-per-stride bob: the body dips at each foot-plant and lifts at
+  // mid-stance. Rotation-only rig, so we sell "bounce" as a torso/head pitch
+  // pulse (|counter| peaks twice per full cycle) layered on the forward drive.
+  const bob = Math.abs(counter);
+  const lean = 0.22 + 0.16 * speed; // faster = harder forward drive
+  scratch.root.z = -0.05 * stride; // subtle whole-body sway
+  scratch.hips.z = -0.12 * counter; // pelvis counter-rotates against shoulders
+  scratch.torso.z = lean - 0.07 * bob; // drive + spring pulse
+  scratch.head.z = -0.15 + 0.07 * bob; // head leads the bounce, stays level-ish
+  // Legs: bigger stride; forward thigh drives while the shin snaps up into a
+  // knee-lift, the rear leg extends through push-off.
+  scratch.legL.z = -0.92 * stride;
+  scratch.legR.z = 0.92 * stride;
+  scratch.shinL.z = 0.12 - Math.max(0, -stride) * 1.0;
+  scratch.shinR.z = 0.12 - Math.max(0, stride) * 1.0;
+  // Arms: strong counter-swing to the legs, slight outward flare so the fists
+  // clear the torso at speed.
+  scratch.armL.z = 1.0 * stride;
+  scratch.armR.z = -1.0 * stride;
+  scratch.armL.x = 0.1;
+  scratch.armR.x = -0.1;
+  // Forearms whip through — elbow bends hardest at the back of each swing
+  // (phase-lagged against the upper arm) for an energetic follow-through.
+  scratch.foreArmL.z = 0.42 - Math.max(0, stride) * 0.55;
+  scratch.foreArmR.z = 0.42 - Math.max(0, -stride) * 0.55;
   return scratch;
 }
 
 export function poseJump(): Pose {
   reset();
-  scratch.torso.z = 0.18;
-  scratch.armL.z = 1.25;
-  scratch.armR.z = 1.35;
-  scratch.armL.x = 0.22;
-  scratch.armR.x = -0.22;
-  scratch.foreArmL.z = 0.4;
-  scratch.foreArmR.z = 0.4;
-  scratch.legL.z = 0.45;
-  scratch.legR.z = 0.25;
-  scratch.shinL.z = -0.65;
-  scratch.shinR.z = -0.45;
+  // Explosive launch: arms thrown UP, chest stretched, eyes up, legs snapped
+  // into an asymmetric tuck (leading knee high) — a bold rising silhouette.
+  scratch.torso.z = 0.1;
+  scratch.head.z = 0.16;
+  scratch.armL.z = 1.55;
+  scratch.armR.z = 1.72;
+  scratch.armL.x = 0.28;
+  scratch.armR.x = -0.28;
+  scratch.foreArmL.z = 0.5;
+  scratch.foreArmR.z = 0.5;
+  scratch.legL.z = 0.64;
+  scratch.legR.z = 0.32;
+  scratch.shinL.z = -0.98;
+  scratch.shinR.z = -0.56;
   return scratch;
 }
 
 export function poseFall(): Pose {
   reset();
-  scratch.torso.z = -0.18;
-  scratch.armL.z = 1.05;
-  scratch.armR.z = 0.95;
-  scratch.armL.x = 0.35;
-  scratch.armR.x = -0.35;
-  scratch.foreArmL.z = 0.2;
-  scratch.foreArmR.z = 0.2;
-  scratch.legL.z = -0.32;
-  scratch.legR.z = -0.22;
-  scratch.shinL.z = 0.2;
-  scratch.shinR.z = 0.28;
+  // Falling: arms flung WIDE for balance, legs reaching down for the ground,
+  // a glance downward — anticipating the landing.
+  scratch.torso.z = -0.14;
+  scratch.head.z = -0.12;
+  scratch.armL.z = 1.15;
+  scratch.armR.z = 1.0;
+  scratch.armL.x = 0.5;
+  scratch.armR.x = -0.5;
+  scratch.foreArmL.z = 0.28;
+  scratch.foreArmR.z = 0.24;
+  scratch.legL.z = -0.4;
+  scratch.legR.z = -0.26;
+  scratch.shinL.z = 0.34;
+  scratch.shinR.z = 0.44;
   return scratch;
 }
 
 export function poseLanding(): Pose {
   reset();
-  scratch.hips.z = -0.32;
-  scratch.torso.z = -0.48;
-  scratch.head.z = 0.26;
-  scratch.armL.z = -0.62;
-  scratch.armR.z = -0.62;
-  scratch.armL.x = 0.34;
-  scratch.armR.x = -0.34;
-  scratch.legL.z = 0.75;
-  scratch.legR.z = 0.75;
-  scratch.shinL.z = -1.05;
-  scratch.shinR.z = -1.05;
+  // Impact squash: deep knee compression, hips sink, head tucks, arms fling
+  // wide and low to absorb the hit — reads as a satisfying *thud*.
+  scratch.hips.z = -0.28;
+  scratch.torso.z = -0.52;
+  scratch.head.z = 0.3;
+  scratch.armL.z = -0.5;
+  scratch.armR.z = -0.5;
+  scratch.armL.x = 0.55;
+  scratch.armR.x = -0.55;
+  scratch.foreArmL.z = 0.5;
+  scratch.foreArmR.z = 0.5;
+  scratch.legL.z = 0.86;
+  scratch.legR.z = 0.86;
+  scratch.shinL.z = -1.2;
+  scratch.shinR.z = -1.2;
   return scratch;
 }
 
@@ -223,6 +254,25 @@ export function poseKO(): Pose {
 export function poseAttack(poseId: string, phase: number): Pose {
   const frames = attackFrames[poseId] ?? attackFrames.finisher!;
   return blendFrames(frames, phase);
+}
+
+/** Jetpack flight lean: chest up, arms flared back, legs trailing. */
+export function poseJetpack(t: number): Pose {
+  reset();
+  const wobble = Math.sin(t * 18) * 0.05;
+  scratch.torso.z = 0.16;
+  scratch.head.z = 0.1;
+  scratch.armL.z = 1.7 + wobble;
+  scratch.armR.z = 1.7 - wobble;
+  scratch.armL.x = 0.45;
+  scratch.armR.x = -0.45;
+  scratch.foreArmL.z = 0.3;
+  scratch.foreArmR.z = 0.3;
+  scratch.legL.z = -0.5 + wobble;
+  scratch.legR.z = -0.35 - wobble;
+  scratch.shinL.z = 0.35;
+  scratch.shinR.z = 0.5;
+  return scratch;
 }
 
 const attackFrames: Record<string, readonly AttackKeyframe[]> = {
@@ -289,9 +339,12 @@ const attackFrames: Record<string, readonly AttackKeyframe[]> = {
     { at: 0.5, pose: { root: { z: -0.28 }, torso: { z: 1.05 }, armL: { z: 1.65, x: 0.25 }, armR: { z: 1.65, x: -0.25 }, legL: { z: -0.82 }, legR: { z: -0.7 } } },
     { at: 1, pose: { torso: { z: -0.1 }, armL: { z: 0.2, x: 0.2 }, armR: { z: 0.2, x: -0.2 } } },
   ],
+  // Shoot: raise & aim → SNAP the arm level and fire → RECOIL kicks the arm up
+  // and rocks the torso back → settle to guard. Off-hand braces across the body.
   shoot: [
-    { at: 0, pose: { torso: { z: 0.12, x: 0.18 }, armR: { z: -0.1, x: -0.22 }, foreArmR: { z: 0.85 }, armL: { z: -0.45, x: 0.32 } } },
-    { at: 0.35, pose: { torso: { z: 0.18, x: -0.08 }, armR: { z: 1.48, x: -0.02 }, foreArmR: { z: 0.05 }, armL: { z: 0.75, x: 0.18 }, foreArmL: { z: 0.5 } } },
+    { at: 0, pose: { torso: { z: 0.14, x: 0.18 }, hips: { z: 0.06 }, armR: { z: -0.15, x: -0.22 }, foreArmR: { z: 0.95 }, armL: { z: -0.45, x: 0.32 }, foreArmL: { z: 0.7 } } },
+    { at: 0.28, pose: { torso: { z: 0.2, x: -0.08 }, hips: { z: -0.04 }, armR: { z: 1.5, x: -0.02 }, foreArmR: { z: 0.03 }, armL: { z: 0.8, x: 0.18 }, foreArmL: { z: 0.45 } } },
+    { at: 0.44, pose: { root: { z: 0.05 }, torso: { z: 0.04, x: -0.05 }, head: { z: 0.08 }, armR: { z: 1.85, x: -0.05 }, foreArmR: { z: 0.18 }, armL: { z: 0.72, x: 0.2 }, foreArmL: { z: 0.5 } } },
     { at: 1, pose: { torso: { z: -0.08 }, armR: { z: 0.8, x: -0.02 }, foreArmR: { z: 0.15 }, armL: { z: -0.05 } } },
   ],
   slash: [
@@ -308,6 +361,21 @@ const attackFrames: Record<string, readonly AttackKeyframe[]> = {
     { at: 0, pose: { torso: { z: 0.12 }, armL: { z: -0.35, x: 0.45 }, armR: { z: -0.35, x: -0.45 }, foreArmL: { z: 0.85 }, foreArmR: { z: 0.85 } } },
     { at: 0.45, pose: { torso: { z: 0.35 }, armL: { z: 1.35, x: 0.18 }, armR: { z: 1.35, x: -0.18 }, foreArmL: { z: 0.05 }, foreArmR: { z: 0.05 }, head: { z: 0.14 } } },
     { at: 1, pose: { torso: { z: -0.08 }, armL: { z: 0.55, x: 0.2 }, armR: { z: 0.55, x: -0.2 }, foreArmL: { z: 0.25 }, foreArmR: { z: 0.25 } } },
+  ],
+  // Lasso: twirl the rope OVERHEAD (arm high, coil torso back), then whip it
+  // forward on the throw and settle to a one-handed follow-through.
+  lasso: [
+    { at: 0, pose: { torso: { z: 0.34 }, hips: { z: 0.14 }, armR: { z: 2.5, x: -0.3 }, foreArmR: { z: 0.9 }, armL: { z: -0.2, x: 0.3 }, foreArmL: { z: 0.6 }, legR: { z: 0.18 } } },
+    { at: 0.42, pose: { root: { z: -0.06 }, torso: { z: -0.16 }, hips: { z: -0.1 }, head: { z: 0.08 }, armR: { z: 1.0, x: -0.08 }, foreArmR: { z: 0.15 }, armL: { z: -0.32, x: 0.25 }, legL: { z: -0.28 }, legR: { z: 0.24 } } },
+    { at: 0.62, pose: { torso: { z: -0.12 }, armR: { z: 0.85, x: -0.05 }, foreArmR: { z: 0.3 }, armL: { z: -0.28, x: 0.22 } } },
+    { at: 1, pose: { torso: { z: 0.05 }, armR: { z: 0.35, x: -0.1 }, foreArmR: { z: 1.2 }, armL: { z: 0.3 }, foreArmL: { z: 1.3 } } },
+  ],
+  // Meteor dive: gather with arms thrown up, then streamline into a compact
+  // downward drill, legs tucked straight, head leading the plunge.
+  dive: [
+    { at: 0, pose: { torso: { z: 0.32 }, head: { z: 0.2 }, armL: { z: 2.2, x: 0.22 }, armR: { z: 2.2, x: -0.22 }, foreArmL: { z: 0.4 }, foreArmR: { z: 0.4 }, legL: { z: 0.25 }, legR: { z: 0.25 }, shinL: { z: -0.4 }, shinR: { z: -0.4 } } },
+    { at: 0.3, pose: { torso: { z: -0.06 }, head: { z: -0.28 }, armL: { z: 2.7, x: 0.16 }, armR: { z: 2.7, x: -0.16 }, foreArmL: { z: 0.1 }, foreArmR: { z: 0.1 }, legL: { z: -0.14 }, legR: { z: -0.14 }, shinL: { z: 0.08 }, shinR: { z: 0.08 } } },
+    { at: 1, pose: { torso: { z: -0.04 }, head: { z: -0.22 }, armL: { z: 2.55, x: 0.16 }, armR: { z: 2.55, x: -0.16 }, legL: { z: -0.1 }, legR: { z: -0.1 } } },
   ],
 };
 
