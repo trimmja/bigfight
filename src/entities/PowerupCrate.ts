@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GRAVITY, POWERUP_DROP_CHANCE, POWERUP_DROP_INTERVAL } from '../config';
 import { events } from '../core/events';
+import type { SimRng } from '../core/rng';
 import type { PowerupDef, PowerupId } from '../data/types';
 import { powerupById } from '../data/powerups';
 import { aabbOverlap } from '../physics/collision';
@@ -170,7 +171,7 @@ class PowerupSlot {
   private syncVisual(): void {
     this.group.position.set(this.x, this.y, 0.42);
     this.group.rotation.y += 0.05;
-    this.group.rotation.z = Math.sin(this.age * 3) * 0.08;
+    this.group.rotation.z = Math.sin(this.age * 3) * 0.08; // det-ok: view-only
   }
 
   private makeToon(color: number): THREE.MeshToonMaterial {
@@ -187,6 +188,8 @@ export class PowerupSpawner {
   constructor(
     private readonly scene: THREE.Scene,
     private readonly unlockedIds: readonly PowerupId[],
+    /** Sim rng (`drops` stream): drop rolls, contents, and X are sim state. */
+    private readonly rng: SimRng,
   ) {
     for (let i = 0; i < MAX_CRATES; i += 1) {
       const slot = new PowerupSlot();
@@ -207,7 +210,7 @@ export class PowerupSpawner {
     this.dropTimer = Math.max(0, this.dropTimer - dt);
     if (this.dropTimer > 0) return;
     this.dropTimer = POWERUP_DROP_INTERVAL;
-    if (Math.random() > POWERUP_DROP_CHANCE) return;
+    if (this.rng.next() > POWERUP_DROP_CHANCE) return;
     this.spawn(ctx);
   }
 
@@ -225,11 +228,11 @@ export class PowerupSpawner {
       break;
     }
     if (!slot) return;
-    const id = this.unlockedIds[Math.floor(Math.random() * this.unlockedIds.length)];
+    const id = this.unlockedIds[this.rng.nextInt(this.unlockedIds.length)];
     if (!id) return;
     const blast = ctx.stage.blast;
     const margin = 1.5;
-    const x = blast.left + margin + Math.random() * Math.max(1, blast.right - blast.left - margin * 2);
+    const x = blast.left + margin + this.rng.next() * Math.max(1, blast.right - blast.left - margin * 2);
     const y = blast.top - 1;
     slot.spawn(powerupById(id), x, y);
   }

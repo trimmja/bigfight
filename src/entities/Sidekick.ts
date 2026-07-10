@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { atan2, sin } from '../core/simmath';
 import type { AttackDef, ProjectileDef, SidekickDef } from '../data/types';
 import { Body } from '../physics/Body';
 import { attachGlow } from '../render/GlowSprites';
@@ -89,7 +90,8 @@ export class Sidekick extends Entity {
   private updateHover(dt: number): void {
     const owner = this.owner;
     const behind = -owner.facing;
-    const bob = Math.sin(this.animTime * 3.2) * 0.16 + this.recoil;
+    // simmath.sin: hover position feeds projectile spawn points — sim state.
+    const bob = sin(this.animTime * 3.2) * 0.16 + this.recoil;
     const targetX = owner.body.pos.x + behind * 1.18;
     const targetY = owner.body.pos.y + owner.body.height * 0.8 + 0.55 + bob;
     const dx = targetX - this.body.pos.x;
@@ -111,11 +113,11 @@ export class Sidekick extends Entity {
     const wingL = this.rigParts.wingL;
     const wingR = this.rigParts.wingR;
     if (wingL && wingR) {
-      const flap = Math.sin(this.animTime * 12) * 0.55;
+      const flap = Math.sin(this.animTime * 12) * 0.55; // det-ok: view-only
       wingL.rotation.x = -0.35 + flap;
       wingR.rotation.x = 0.35 - flap;
     }
-    this.rigParts.bobRoot.rotation.z = Math.sin(this.animTime * 2.4) * 0.08;
+    this.rigParts.bobRoot.rotation.z = Math.sin(this.animTime * 2.4) * 0.08; // det-ok: view-only
   }
 
   private findTarget(): Fighter | null {
@@ -124,7 +126,7 @@ export class Sidekick extends Entity {
     let bestDist = FIRE_RANGE_SQ;
     for (let i = 0; i < targets.length; i += 1) {
       const target = targets[i]!;
-      if (!target.alive || target.faction === 'player') continue;
+      if (!target.alive || target.teamId === this.owner.teamId) continue;
       const dx = target.body.pos.x - this.body.pos.x;
       const dy = target.body.pos.y + target.body.height * 0.5 - this.body.pos.y;
       const dist = dx * dx + dy * dy;
@@ -140,14 +142,15 @@ export class Sidekick extends Entity {
     const dx = target.body.pos.x - this.body.pos.x;
     const dy = target.body.pos.y + target.body.height * 0.55 - this.body.pos.y;
     const facing = dx >= 0 ? 1 : -1;
-    this.aimProjectile.angleDeg = Math.max(0, Math.min(80, Math.atan2(dy, Math.max(0.05, Math.abs(dx))) * 180 / Math.PI));
+    this.aimProjectile.angleDeg = Math.max(0, Math.min(80, atan2(dy, Math.max(0.05, Math.abs(dx))) * 180 / Math.PI));
     this.attack.angleDeg = this.def.attack.angleDeg;
     this.projectiles.fire(
       this.aimProjectile,
       this.body.pos.x + facing * 0.28,
       this.body.pos.y,
       facing,
-      'player',
+      this.owner.faction,
+      this.owner.teamId,
       1,
       this.attack,
     );

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hypot, sin } from '../../core/simmath';
 import type { AttackDef, ProjectileDef } from '../../data/types';
 import { makeToonMaterial } from '../../render/toon';
 import { Boss, type BossDefeatedCallback, type BossDropCallback, type BossRequestMinionCallback } from '../Boss';
@@ -146,13 +147,13 @@ export class GiantGhost extends Boss {
     this.setIntangible(true, 0.58);
     this.setAngry(this.isBelowHp(0.5));
     const range = Math.min(8, Math.max(4, (ctx.stage.blast.right - ctx.stage.blast.left) * 0.16));
-    const targetX = Math.sin(this.hoverTime * 0.58) * range;
+    const targetX = sin(this.hoverTime * 0.58) * range;
     const upperY = Math.min(
       ctx.stage.blast.top - this.body.height - 1.2,
-      8.1 + Math.sin(this.hoverTime * 1.16) * 1.35,
+      8.1 + sin(this.hoverTime * 1.16) * 1.35,
     );
     this.steerTo(targetX, upperY, 5.1, 20, dt);
-    this.requestAttackPose('cast', 0.18 + Math.sin(this.hoverTime * 2.2) * 0.04);
+    this.requestAttackPose('cast', 0.18 + sin(this.hoverTime * 2.2) * 0.04);
   }
 
   private updateVolley(ctx: WorldCtx, dt: number): void {
@@ -179,6 +180,7 @@ export class GiantGhost extends Boss {
       this.body.pos.y + this.body.height * 0.56 + spreadY,
       facing,
       'enemy',
+      this.teamId,
       this.power,
     );
     this.telegraphFlash(0x7adfff, 0.08);
@@ -245,7 +247,7 @@ export class GiantGhost extends Boss {
     this.phaseDuration = BEAM_FIRE_TIME;
     this.phaseTimer = BEAM_FIRE_TIME;
     const startX = this.beamDir === 1 ? ctx.stage.blast.left + 1.2 : ctx.stage.blast.right - 1.2;
-    ctx.fireProjectile(BEAM, BEAM_ATTACK, startX, this.beamLaneY, this.beamDir, 'enemy', this.power);
+    ctx.fireProjectile(BEAM, BEAM_ATTACK, startX, this.beamLaneY, this.beamDir, 'enemy', this.teamId, this.power);
     this.shake(0.45);
   }
 
@@ -274,7 +276,7 @@ export class GiantGhost extends Boss {
   private steerTo(targetX: number, targetY: number, speed: number, accel: number, dt: number): void {
     let dx = targetX - this.body.pos.x;
     let dy = targetY - this.body.pos.y;
-    const len = Math.hypot(dx, dy);
+    const len = hypot(dx, dy);
     if (len > 0.001) {
       dx /= len;
       dy /= len;

@@ -10,6 +10,7 @@ import {
   TIMESTEP,
 } from '../config';
 import { resetMobAttackTokens } from '../ai/MobBrain';
+import { createSimRngSet, type SimRngSet } from '../core/rng';
 import { WaveSpawner } from '../ai/WaveSpawner';
 import type { ActiveHitbox, FighterLike, Rect } from '../combat/types';
 import { HitResolver } from '../combat/HitResolver';
@@ -64,6 +65,8 @@ export type GameplayScreenOptions = {
   characterId: string;
   stageId?: string;
   weaponId?: string;
+  /** Sim RNG seed. Netplay/replays pass a shared seed; solo may omit. */
+  seed?: number;
   onLevelEnd?: (result: LevelEndResult) => void;
   onPause?: () => void;
 };
@@ -104,6 +107,7 @@ export class GameplayScreen implements Screen {
   private readonly splitSpawnPos: Vec2 = { x: 0, y: 0 };
   private readonly materialsEarned: Partial<Record<MaterialId, number>> = {};
 
+  private rng: SimRngSet | null = null;
   private playerRespawnTimer = 0;
   private goldEarned = 0;
   private levelEnding = false;
@@ -113,7 +117,7 @@ export class GameplayScreen implements Screen {
   private bossSpawnQueued = false;
   private bossSpawnTimer = 0;
   private fps = 60;
-  private lastRenderMs = performance.now();
+  private lastRenderMs = performance.now(); // det-ok: render FPS display only
 
   private debugPanel: HTMLDivElement | null = null;
   private debugGroup: THREE.Group | null = null;
@@ -132,16 +136,19 @@ export class GameplayScreen implements Screen {
     const stageDef = stageById(this.level.stageId);
     const playerDef = characterById(this.opts.characterId);
 
+    const rng = createSimRngSet(this.opts.seed ?? ((Math.random() * 0xffffffff) >>> 0)); // det-ok: seeds SOLO only; net passes opts.seed
+    this.rng = rng;
+
     this.stage = buildStage(stageDef, game.renderer.scene);
     this.particles = new Particles(game.renderer.scene);
     this.trails = new Trails(game.renderer.scene);
     this.cameraRig = new CameraRig(game.renderer.camera, () => game.save.settings.shake);
     this.hitResolver = new HitResolver();
     this.physics = new PhysicsWorld();
-    this.pickupManager = new PickupManager(game.renderer.scene);
+    this.pickupManager = new PickupManager(game.renderer.scene, rng.drops);
     const projectileManager = new ProjectileManager(game.renderer.scene);
     this.projectileManager = projectileManager;
-    this.powerupSpawner = new PowerupSpawner(game.renderer.scene, unlockedPowerupIds(game.save));
+    this.powerupSpawner = new PowerupSpawner(game.renderer.scene, unlockedPowerupIds(game.save), rng.drops);
 
     this.player = new Player(playerDef, game.input);
     this.player.stocks = PLAYER_STOCKS;
@@ -167,6 +174,7 @@ export class GameplayScreen implements Screen {
     this.ctx = {
       particles: this.particles,
       trails: this.trails,
+      rng,
       stage: {
         colliders: this.stage.colliders,
         blast: stageDef.blast,
@@ -179,8 +187,8 @@ export class GameplayScreen implements Screen {
           this.debugSubmittedHitboxes.push(h);
         }
       },
-      fireProjectile: (def, attackDef, x, y, facing, faction, power) => {
-        this.projectileManager?.fire(def, x, y, facing, faction, power, attackDef);
+      fireProjectile: (def, attackDef, x, y, facing, faction, teamId, power) => {
+        this.projectileManager?.fire(def, x, y, facing, faction, teamId, power, attackDef);
       },
     };
 
@@ -360,7 +368,7 @@ export class GameplayScreen implements Screen {
   }
 
   render(_game: Game, _alpha: number): void {
-    const now = performance.now();
+    const now = performance.now(); // det-ok: render FPS display only
     const dt = Math.max(0.0001, (now - this.lastRenderMs) / 1000);
     this.lastRenderMs = now;
     this.fps = 1 / dt;
@@ -557,8 +565,9 @@ export class GameplayScreen implements Screen {
         this.splitSpawnPos.y = mob.body.pos.y + 0.25;
         const child = this.spawnMob(game, 'slimeSmall', this.splitSpawnPos);
         if (child) {
-          child.body.vel.x = (i % 2 === 0 ? -1 : 1) * (2.4 + Math.random() * 1.2);
-          child.body.vel.y = 6 + Math.random() * 1.4;
+          const rng = this.rng!.spawn;
+          child.body.vel.x = (i % 2 === 0 ? -1 : 1) * (2.4 + rng.next() * 1.2);
+          child.body.vel.y = 6 + rng.next() * 1.4;
           child.body.grounded = false;
         }
       }

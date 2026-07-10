@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hypot } from '../../core/simmath';
 import type { AttackDef, ProjectileDef } from '../../data/types';
 import { makeToonMaterial } from '../../render/toon';
 import { Boss, type BossDefeatedCallback, type BossDropCallback, type BossRequestMinionCallback } from '../Boss';
@@ -158,7 +159,7 @@ export class GiantEagle extends Boss {
     const x = this.body.pos.x + facing * (this.body.halfW + 0.45);
     const y = this.body.pos.y + this.body.height * 0.56;
     for (let i = 0; i < FEATHERS.length; i += 1) {
-      ctx.fireProjectile(FEATHERS[i]!, FEATHER_ATTACK, x, y, facing, 'enemy', this.power);
+      ctx.fireProjectile(FEATHERS[i]!, FEATHER_ATTACK, x, y, facing, 'enemy', this.teamId, this.power);
     }
     ctx.particles.directional(x, y, facing, 0.15, 0xffd94a, 18, 5.5);
   }
@@ -299,7 +300,7 @@ export class GiantEagle extends Boss {
   private steerTo(targetX: number, targetY: number, speed: number, accel: number, dt: number): void {
     let dx = targetX - this.body.pos.x;
     let dy = targetY - this.body.pos.y;
-    const len = Math.hypot(dx, dy);
+    const len = hypot(dx, dy);
     if (len > 0.001) {
       dx /= len;
       dy /= len;

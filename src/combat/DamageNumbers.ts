@@ -74,8 +74,8 @@ export class DamageNumbers {
     slot.sprite.visible = true;
     slot.material.opacity = 1;
     slot.life = 0.75;
-    slot.vx = (Math.random() - 0.5) * 1.6;
-    slot.vy = 3.4 + Math.random() * 0.8;
+    slot.vx = (Math.random() - 0.5) * 1.6; // det-ok: view-only (floating UI sprite)
+    slot.vy = 3.4 + Math.random() * 0.8; // det-ok: view-only (floating UI sprite)
   }
 
   update(dt: number): void {

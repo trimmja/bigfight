@@ -32,6 +32,17 @@ type Handler<T> = (payload: T) => void;
 
 export class EventBus {
   private handlers = new Map<keyof GameEvents, Set<Handler<never>>>();
+  private suppressed = false;
+
+  /**
+   * Netplay rollback: while re-simulating already-seen frames, events are
+   * suppressed so audio/particles/UI don't replay. Sim state must NEVER be
+   * mutated from an event handler (use direct callbacks) — suppression makes
+   * any such handler a desync.
+   */
+  setSuppressed(suppressed: boolean): void {
+    this.suppressed = suppressed;
+  }
 
   on<K extends keyof GameEvents>(event: K, fn: Handler<GameEvents[K]>): () => void {
     let set = this.handlers.get(event);
@@ -44,6 +55,7 @@ export class EventBus {
   }
 
   emit<K extends keyof GameEvents>(event: K, payload: GameEvents[K]): void {
+    if (this.suppressed) return;
     const set = this.handlers.get(event);
     if (!set) return;
     for (const fn of set) (fn as Handler<GameEvents[K]>)(payload);

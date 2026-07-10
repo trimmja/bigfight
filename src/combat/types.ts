@@ -34,6 +34,12 @@ export interface FighterLike {
   readonly body: CombatBody;
   readonly hurtbox: Hurtbox;
   readonly faction: Faction;
+  /**
+   * THE combat gate (faction stays for cosmetics/SFX). Same team never hits.
+   * solo/co-op: mobs 0, humans 1 (⇔ legacy faction gate); FFA: unique 1-4;
+   * 2v2: shared team id.
+   */
+  teamId: number;
   readonly facing: Facing;
   readonly power: number;
   readonly weight: number;
@@ -49,6 +55,8 @@ export interface ActiveHitbox {
   attacker: FighterLike;
   def: AttackDef;
   faction: Faction;
+  /** Mirrors attacker.teamId — the resolve gate compares victim vs this. */
+  teamId: number;
   alreadyHit: Set<object>;
   worldRect(): Rect;
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { ActiveHitbox, HitResult, Rect } from '../combat/types';
 import { events } from '../core/events';
 import { clamp } from '../core/math';
+import { hypot } from '../core/simmath';
 import { bossById } from '../data/enemies';
 import type { AttackDef, BossDef, BossId, CharacterDef, Vec2 } from '../data/types';
 import { buildBossRig, type BossRig } from '../rigs/bossBuilders';
@@ -45,6 +46,7 @@ export abstract class Boss extends Fighter {
     attacker: this,
     def: DUMMY_ATTACK,
     faction: 'enemy',
+    teamId: 0,
     alreadyHit: this.bossHitAlready,
     worldRect: () => this.bossHitRect,
   };
@@ -286,7 +288,7 @@ export abstract class Boss extends Fighter {
 
   private clampKnockback(): void {
     const max = 4.8;
-    const speed = Math.hypot(this.body.vel.x, this.body.vel.y);
+    const speed = hypot(this.body.vel.x, this.body.vel.y);
     if (speed <= max || speed <= 0.0001) return;
     const s = max / speed;
     this.body.vel.x *= s;

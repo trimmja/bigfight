@@ -3,6 +3,7 @@ import { GRAVITY, POOL_PROJECTILES } from '../config';
 import type { ActiveHitbox, FighterLike, HitResult, Hurtbox, Rect } from '../combat/types';
 import { events } from '../core/events';
 import { degToRad } from '../core/math';
+import { atan2, cos, hypot, sin } from '../core/simmath';
 import { Pool } from '../core/pool';
 import type { AttackDef, Faction, Facing, ProjectileDef } from '../data/types';
 import { aabbOverlap } from '../physics/collision';
@@ -54,6 +55,7 @@ class ProjectileSlot implements FighterLike {
   readonly hurtbox: Hurtbox;
 
   faction: Faction = 'player';
+  teamId = 1;
   facing: Facing = 1;
   power = 1;
   weight = 100;
@@ -121,6 +123,7 @@ class ProjectileSlot implements FighterLike {
       attacker: this,
       def: this.attackDef,
       faction: this.faction,
+      teamId: this.teamId,
       alreadyHit: this.alreadyHit,
       worldRect: () => this.readRect(),
       onResolvedHit: () => {
@@ -147,11 +150,13 @@ class ProjectileSlot implements FighterLike {
     y: number,
     facing: Facing,
     faction: Faction,
+    teamId: number,
     attackerPower: number,
     attackDef: AttackDef,
   ): void {
     this.copyAttack(attackDef);
     this.faction = faction;
+    this.teamId = teamId;
     this.facing = facing;
     this.power = attackerPower;
     this.radius = def.radius;
@@ -182,12 +187,13 @@ class ProjectileSlot implements FighterLike {
     this.body.halfW = def.radius;
     this.body.height = def.radius * 2;
     const angle = degToRad(def.angleDeg);
-    this.body.vel.x = Math.cos(angle) * def.speed * facing;
-    this.body.vel.y = Math.sin(angle) * def.speed;
+    this.body.vel.x = cos(angle) * def.speed * facing;
+    this.body.vel.y = sin(angle) * def.speed;
     this.alreadyHit.clear();
     this.hurtbox.faction = faction;
     this.hurtbox.enabled = this.hp > 0;
     this.hitbox.faction = faction;
+    this.hitbox.teamId = teamId;
     this.hitbox.stopAfterHit = !this.piercing;
     this.visual = def.visual;
     this.primaryMat.color.setHex(def.color, THREE.SRGBColorSpace);
@@ -235,13 +241,13 @@ class ProjectileSlot implements FighterLike {
         this.smokeTimer -= dt;
         if (this.smokeTimer <= 0 && this.trailColor > 0) {
           this.smokeTimer = 0.05;
-          const a = Math.random() * Math.PI * 2;
+          const a = Math.random() * Math.PI * 2; // det-ok: particle placement only
           const r = this.pullRadius > 0 ? this.pullRadius * 0.7 : 2;
           ctx.particles.directional(
-            this.body.pos.x + Math.cos(a) * r,
-            this.body.pos.y + this.body.height * 0.5 + Math.sin(a) * r * 0.5,
-            -Math.cos(a),
-            -Math.sin(a) * 0.5,
+            this.body.pos.x + Math.cos(a) * r, // det-ok: view-only
+            this.body.pos.y + this.body.height * 0.5 + Math.sin(a) * r * 0.5, // det-ok: view-only
+            -Math.cos(a), // det-ok: view-only
+            -Math.sin(a) * 0.5, // det-ok: view-only
             this.trailColor,
             2,
             r * 2.2,
@@ -383,7 +389,7 @@ class ProjectileSlot implements FighterLike {
   private checkStickyTrigger(ctx: WorldCtx, targets: readonly Fighter[]): void {
     for (let i = 0; i < targets.length; i += 1) {
       const target = targets[i]!;
-      if (!target.alive || target.faction === this.faction) continue;
+      if (!target.alive || target.teamId === this.teamId) continue;
       const dx = target.body.pos.x - this.body.pos.x;
       const dy = target.body.pos.y + target.body.height * 0.5 - this.body.pos.y;
       if (dx * dx + dy * dy <= STICKY_TRIGGER_RADIUS_SQ) {
@@ -399,7 +405,7 @@ class ProjectileSlot implements FighterLike {
     let bestDist = Number.POSITIVE_INFINITY;
     for (let i = 0; i < targets.length; i += 1) {
       const target = targets[i]!;
-      if (!target.alive || target.faction === this.faction) continue;
+      if (!target.alive || target.teamId === this.teamId) continue;
       const dx = target.body.pos.x - this.body.pos.x;
       const dy = target.body.pos.y + target.body.height * 0.55 - this.body.pos.y;
       const dist = dx * dx + dy * dy;
@@ -409,16 +415,16 @@ class ProjectileSlot implements FighterLike {
       }
     }
     if (!best) return;
-    const speed = Math.max(EPSILON, Math.hypot(this.body.vel.x, this.body.vel.y));
-    const targetAngle = Math.atan2(
+    const speed = Math.max(EPSILON, hypot(this.body.vel.x, this.body.vel.y));
+    const targetAngle = atan2(
       best.body.pos.y + best.body.height * 0.55 - this.body.pos.y,
       best.body.pos.x - this.body.pos.x,
     );
-    const currentAngle = Math.atan2(this.body.vel.y, this.body.vel.x);
+    const currentAngle = atan2(this.body.vel.y, this.body.vel.x);
     const turn = degToRad(this.homingDeg) * dt;
     const nextAngle = currentAngle + clampAngle(targetAngle - currentAngle, -turn, turn);
-    this.body.vel.x = Math.cos(nextAngle) * speed;
-    this.body.vel.y = Math.sin(nextAngle) * speed;
+    this.body.vel.x = cos(nextAngle) * speed;
+    this.body.vel.y = sin(nextAngle) * speed;
   }
 
   private hitSurface(ctx: WorldCtx, prevX: number, prevY: number): boolean {
@@ -453,17 +459,17 @@ class ProjectileSlot implements FighterLike {
   private syncVisual(dt: number): void {
     this.group.position.set(this.body.pos.x, this.body.pos.y, 0.32);
     if (!this.stuck && !this.exploding) {
-      this.group.rotation.z = Math.atan2(this.body.vel.y, this.body.vel.x);
+      this.group.rotation.z = Math.atan2(this.body.vel.y, this.body.vel.x); // det-ok: view-only
     }
     if (this.visual === 'mine') {
-      const blink = Math.sin(this.age * 14) > 0 ? 1 : 0.35;
+      const blink = Math.sin(this.age * 14) > 0 ? 1 : 0.35; // det-ok: view-only
       this.redMat.color.setRGB(1, 0.12 * blink, 0.18 * blink, THREE.SRGBColorSpace);
     } else if (this.visual === 'shockwave' || this.exploding) {
       const t = this.exploding ? 1 : Math.min(1, this.age / Math.max(EPSILON, this.lifetime));
       const s = this.exploding ? this.explodeRadius : 0.3 + t * 1.4;
       this.group.scale.set(s, Math.max(0.12, this.radius * 0.55), s);
     } else {
-      const bob = this.sticky && this.stuck ? Math.sin(this.age * 8) * 0.03 : 0;
+      const bob = this.sticky && this.stuck ? Math.sin(this.age * 8) * 0.03 : 0; // det-ok: view-only
       this.group.scale.set(1, 1 + bob, 1);
     }
     if (this.glow) {
@@ -502,7 +508,7 @@ class ProjectileSlot implements FighterLike {
     const r2 = this.pullRadius * this.pullRadius;
     for (let i = 0; i < targets.length; i += 1) {
       const fighter = targets[i]!;
-      if (!fighter.alive || fighter.faction === this.faction || fighter.hitstopTimer > 0) continue;
+      if (!fighter.alive || fighter.teamId === this.teamId || fighter.hitstopTimer > 0) continue;
       const dx = this.body.pos.x - fighter.body.pos.x;
       const dy = this.body.pos.y + this.body.height * 0.5 - (fighter.body.pos.y + fighter.body.height * 0.5);
       const d2 = dx * dx + dy * dy;
@@ -668,12 +674,13 @@ export class ProjectileManager {
     y: number,
     facing: Facing,
     faction: Faction,
+    teamId: number,
     attackerPower: number,
     attackDef: AttackDef,
   ): void {
     const projectile = this.pool.obtain();
     if (!projectile) return;
-    projectile.fire(def, x, y, facing, faction, attackerPower, attackDef);
+    projectile.fire(def, x, y, facing, faction, teamId, attackerPower, attackDef);
     this.active.push(projectile);
   }
 
