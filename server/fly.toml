@@ -1,0 +1,26 @@
+# BIG FIGHT room/relay server — Fly.io config.
+#
+# Deploy from the REPO ROOT (the Docker build context must include shared/):
+#   flyctl deploy --config server/fly.toml --dockerfile server/Dockerfile --app bigfight-online .
+#
+# Or just run the helper (builds the client into server/public first):
+#   node scripts/deploy-server.mjs
+#
+# auto_stop_machines stays OFF: stopping the machine kills live room WebSockets.
+
+app = "bigfight-online"
+primary_region = "dfw"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

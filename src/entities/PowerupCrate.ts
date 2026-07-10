@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GRAVITY, POWERUP_DROP_CHANCE, POWERUP_DROP_INTERVAL } from '../config';
 import { events } from '../core/events';
 import type { SimRng } from '../core/rng';
+import { simPhase } from '../net/simPhase';
 import type { PowerupDef, PowerupId } from '../data/types';
 import { powerupById } from '../data/powerups';
 import { aabbOverlap } from '../physics/collision';
@@ -107,12 +108,12 @@ class PowerupSlot {
     if (this.touches(player)) {
       const def = powerupById(this.id);
       events.emit('powerup', { id: this.id, pos: { x: this.x, y: this.y } });
-      ctx.particles.burst(this.x, this.y, def.color, 34, 7);
+      if (!simPhase.resimulating) ctx.particles.burst(this.x, this.y, def.color, 34, 7);
       player.applyPowerup(def);
       return false;
     }
 
-    this.syncVisual();
+    if (!simPhase.resimulating) this.syncVisual();
     return true;
   }
 
@@ -124,6 +125,19 @@ class PowerupSlot {
     this.vy = 0;
     this.grounded = false;
     this.groundedTimer = 0;
+  }
+
+  /** Sim-relevant scalars for replay digests / net snapshots. */
+  digestInto(out: number[]): void {
+    out.push(
+      this.active ? 1 : 0,
+      this.x,
+      this.y,
+      this.vy,
+      this.grounded ? 1 : 0,
+      this.groundedTimer,
+      this.age,
+    );
   }
 
   dispose(): void {
@@ -217,6 +231,11 @@ export class PowerupSpawner {
   dispose(): void {
     for (let i = 0; i < this.slots.length; i += 1) this.slots[i]!.dispose();
     this.slots.length = 0;
+  }
+
+  digestInto(out: number[]): void {
+    out.push(this.dropTimer);
+    for (let i = 0; i < this.slots.length; i += 1) this.slots[i]!.digestInto(out);
   }
 
   private spawn(ctx: WorldCtx): void {

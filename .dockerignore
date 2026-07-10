@@ -1,0 +1,6 @@
+# Docker build context filter for server/Dockerfile (built from the repo root).
+# Only shared/ and server/ are COPYed, but the whole context uploads — keep it tiny.
+.git
+node_modules
+dist
+*.log

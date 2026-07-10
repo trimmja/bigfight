@@ -66,6 +66,11 @@ export class Mob extends Fighter {
     super.beginKo();
   }
 
+  override digestInto(out: number[]): void {
+    super.digestInto(out);
+    this.brain.digestInto(out);
+  }
+
   private applyMobBodyFlags(): void {
     const canFly = this.enemyDef.brain.canFly === true;
     this.body.gravityScale = canFly ? 0 : this.enemyDef.gravityScale;

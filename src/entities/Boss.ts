@@ -3,6 +3,7 @@ import type { ActiveHitbox, HitResult, Rect } from '../combat/types';
 import { events } from '../core/events';
 import { clamp } from '../core/math';
 import { hypot } from '../core/simmath';
+import { simPhase } from '../net/simPhase';
 import { bossById } from '../data/enemies';
 import type { AttackDef, BossDef, BossId, CharacterDef, Vec2 } from '../data/types';
 import { buildBossRig, type BossRig } from '../rigs/bossBuilders';
@@ -115,8 +116,10 @@ export abstract class Boss extends Fighter {
       this.stateTime = Math.min(this.stateTime, 0);
     }
     this.hurtbox.enabled = this.alive && !this.isInvulnerable && !this.intangible;
-    this.bossRig.setGhostOpacity(this.desiredOpacity);
-    this.applyRequestedPose();
+    if (!simPhase.resimulating) {
+      this.bossRig.setGhostOpacity(this.desiredOpacity);
+      this.applyRequestedPose();
+    }
   }
 
   /**
@@ -134,7 +137,7 @@ export abstract class Boss extends Fighter {
     this.state = 'fall';
     this.stateTime = 0;
     this.invulnTimer = 1.2; // brief mercy window during the fall-in
-    this.bossRig.flashColor(0xffffff, 0.3);
+    if (!simPhase.resimulating) this.bossRig.flashColor(0xffffff, 0.3);
     if (this.damage >= this.bossDef.defeatThreshold) this.pendingDefeat = true;
   }
 
@@ -166,8 +169,22 @@ export abstract class Boss extends Fighter {
 
   protected abstract pattern(ctx: WorldCtx, dt: number): void;
 
+  override digestInto(out: number[]): void {
+    super.digestInto(out);
+    out.push(
+      this.intangible ? 1 : 0,
+      this.defeated ? 1 : 0,
+      this.pendingDefeat ? 1 : 0,
+      this.lastHpFrac,
+      this.preserveVelocityFrame ? 1 : 0,
+      this.preservedVelX,
+      this.preservedVelY,
+      this.minions.length,
+    );
+  }
+
   protected telegraphFlash(color: number, seconds: number): void {
-    this.bossRig.flashColor(color, seconds);
+    if (!simPhase.resimulating) this.bossRig.flashColor(color, seconds);
   }
 
   protected setIntangible(on: boolean, opacity = 0.56): void {
@@ -311,8 +328,10 @@ export abstract class Boss extends Fighter {
     events.emit('bossHp', { frac: 0 });
     events.emit('bossDefeated', { name: this.bossDef.name });
     events.emit('screenShake', { amount: 1.6 });
-    ctx.particles.koExplosion(x, y, this.bossDef.palette.accent);
-    ctx.particles.burst(x, y, 0xffffff, 42, 10);
+    if (!simPhase.resimulating) {
+      ctx.particles.koExplosion(x, y, this.bossDef.palette.accent);
+      ctx.particles.burst(x, y, 0xffffff, 42, 10);
+    }
     this.dropCallback(this.bossDef, x, y);
     super.beginKo();
     this.defeatedCallback(this);

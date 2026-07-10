@@ -6,6 +6,7 @@ import { GameplayScreen } from './screens/GameplayScreen';
 import { LevelMapScreen } from './screens/LevelMapScreen';
 import { MarketScreen } from './screens/MarketScreen';
 import { PauseOverlay } from './screens/PauseOverlay';
+import { ReplayLabScreen } from './screens/ReplayLabScreen';
 import { ResultsScreen, type LevelResult } from './screens/ResultsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { TitleScreen } from './screens/TitleScreen';
@@ -19,6 +20,11 @@ import { WeaponSelectScreen } from './screens/WeaponSelectScreen';
 
 export function goTitle(game: Game): void {
   game.screens.replace(new TitleScreen(() => goLevelMap(game)));
+}
+
+/** `?replaylab` dev tool — sim-determinism harness (see ReplayLabScreen). */
+export function goReplayLab(game: Game): void {
+  game.screens.replace(new ReplayLabScreen());
 }
 
 export function goLevelMap(game: Game): void {

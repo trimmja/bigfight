@@ -7,7 +7,7 @@ import { loadSave, writeSave } from './core/save';
 import type { SaveData } from './data/types';
 import { InputManager } from './input/InputManager';
 import { Renderer } from './render/Renderer';
-import { goTitle } from './flow';
+import { goReplayLab, goTitle } from './flow';
 import { ScreenManager } from './screens/ScreenManager';
 
 /**
@@ -44,7 +44,8 @@ export class Game {
     });
     window.visualViewport?.addEventListener('resize', () => this.renderer.onResize());
 
-    goTitle(this);
+    if (location.search.includes('replaylab')) goReplayLab(this);
+    else goTitle(this);
     this.stopLoop = startLoop(
       (dt) => {
         this.input.update();

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { HEAL_ORB_AMOUNT, PLAYER_STOCKS, RAGE_MULT, RESPAWN_INVULN, SHIELD_HITS } from '../config';
-import type { IInput } from '../contracts';
+import type { IIntentSource } from '../contracts';
 import type { AttackDef, CharacterDef, PowerupDef, WeaponDef } from '../data/types';
+import { simPhase } from '../net/simPhase';
 import { buildCharacterRig } from '../rigs/characterBuilders';
 import { buildWeaponModel } from '../rigs/weaponBuilders';
 import { makeToonMaterial } from '../render/toon';
@@ -101,7 +102,7 @@ export class Player extends Fighter {
   private shieldMesh: THREE.Mesh | null = null;
   private shieldMaterial: THREE.MeshToonMaterial | null = null;
 
-  constructor(def: CharacterDef, private readonly input: IInput) {
+  constructor(def: CharacterDef, private readonly input: IIntentSource) {
     super(def, 'player', buildCharacterRig(def));
   }
 
@@ -128,23 +129,40 @@ export class Player extends Fighter {
       ) {
         this.startCustomAttack(HAMMER_SWING);
       }
-      // Danger flash: pulse red the whole time.
-      this.hammerPulse += dt;
-      if (this.hammerPulse >= 0.16) {
-        this.hammerPulse = 0;
-        this.rig.flashColor(0xff3030, 0.09);
+      // Danger flash: pulse red the whole time (view-only pacing).
+      if (!simPhase.resimulating) {
+        this.hammerPulse += dt;
+        if (this.hammerPulse >= 0.16) {
+          this.hammerPulse = 0;
+          this.rig.flashColor(0xff3030, 0.09);
+        }
       }
     }
 
     super.update(ctx, dt);
-    this.updateShieldVisual(dt);
-    this.updateRagePulse(dt);
+    if (!simPhase.resimulating) {
+      this.updateShieldVisual(dt);
+      this.updateRagePulse(dt);
+    }
   }
 
   respawn(ctx: WorldCtx): void {
     this.koReset(ctx.stage.respawnPoint);
     this.invulnTimer = RESPAWN_INVULN;
     this.damage = 0;
+  }
+
+  override digestInto(out: number[]): void {
+    super.digestInto(out);
+    out.push(
+      this.stocks,
+      this.shieldTimer,
+      this.hammerTimer,
+      this.rageTimer,
+      this.temporaryWeaponTimer,
+      this.restoreWeapon ? 1 : 0,
+      this.autoSwingMove ? 1 : 0,
+    );
   }
 
   applyPowerup(def: PowerupDef): void {

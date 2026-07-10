@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { hypot, sin } from '../../core/simmath';
+import { simPhase } from '../../net/simPhase';
 import type { AttackDef, ProjectileDef } from '../../data/types';
 import { makeToonMaterial } from '../../render/toon';
 import { Boss, type BossDefeatedCallback, type BossDropCallback, type BossRequestMinionCallback } from '../Boss';
@@ -58,6 +59,16 @@ const BEAM: ProjectileDef = {
   piercing: true,
 };
 
+const PHASE_IDS: Record<GhostPhase, number> = {
+  hover: 0,
+  volley: 1,
+  beamWarn: 2,
+  beamFire: 3,
+  descend: 4,
+  vulnerable: 5,
+  rise: 6,
+};
+
 const HOVER_TIME = 1.05;
 const VOLLEY_GAP = 0.32;
 const BEAM_WARN = 0.8;
@@ -104,7 +115,7 @@ export class GiantGhost extends Boss {
   protected override pattern(ctx: WorldCtx, dt: number): void {
     this.hoverTime += dt;
     this.phaseTimer = Math.max(0, this.phaseTimer - dt);
-    this.warningLine.visible = false;
+    if (!simPhase.resimulating) this.warningLine.visible = false;
 
     switch (this.phase) {
       case 'hover':
@@ -210,6 +221,7 @@ export class GiantGhost extends Boss {
   }
 
   private updateWarningLine(ctx: WorldCtx): void {
+    if (simPhase.resimulating) return;
     const width = ctx.stage.blast.right - ctx.stage.blast.left + 12;
     this.warningLine.visible = true;
     this.warningLine.position.set(0, this.beamLaneY - this.body.pos.y, 0.44);
@@ -291,6 +303,22 @@ export class GiantGhost extends Boss {
 
   private phaseProgress(): number {
     return 1 - this.phaseTimer / Math.max(0.0001, this.phaseDuration);
+  }
+
+  override digestInto(out: number[]): void {
+    super.digestInto(out);
+    out.push(
+      PHASE_IDS[this.phase],
+      this.phaseTimer,
+      this.phaseDuration,
+      this.hoverTime,
+      this.volleyCount,
+      this.volleyIndex,
+      this.volleyCycle,
+      this.shotTimer,
+      this.beamLaneY,
+      this.beamDir,
+    );
   }
 }
 

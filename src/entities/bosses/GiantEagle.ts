@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { hypot } from '../../core/simmath';
+import { simPhase } from '../../net/simPhase';
 import type { AttackDef, ProjectileDef } from '../../data/types';
 import { makeToonMaterial } from '../../render/toon';
 import { Boss, type BossDefeatedCallback, type BossDropCallback, type BossRequestMinionCallback } from '../Boss';
@@ -44,6 +45,15 @@ const FEATHERS: readonly ProjectileDef[] = [
   featherDef(18),
   featherDef(32),
 ];
+
+const PHASE_IDS: Record<EaglePhase, number> = {
+  perch: 0,
+  fan: 1,
+  screech: 2,
+  swoopWarn: 3,
+  swoop: 4,
+  rest: 5,
+};
 
 const PERCH_WAIT = 0.95;
 const FAN_GAP = 0.55;
@@ -97,7 +107,7 @@ export class GiantEagle extends Boss {
   protected override pattern(ctx: WorldCtx, dt: number): void {
     this.ensurePerches(ctx);
     this.phaseTimer = Math.max(0, this.phaseTimer - dt);
-    this.warningLine.visible = false;
+    if (!simPhase.resimulating) this.warningLine.visible = false;
 
     switch (this.phase) {
       case 'perch':
@@ -161,7 +171,7 @@ export class GiantEagle extends Boss {
     for (let i = 0; i < FEATHERS.length; i += 1) {
       ctx.fireProjectile(FEATHERS[i]!, FEATHER_ATTACK, x, y, facing, 'enemy', this.teamId, this.power);
     }
-    ctx.particles.directional(x, y, facing, 0.15, 0xffd94a, 18, 5.5);
+    if (!simPhase.resimulating) ctx.particles.directional(x, y, facing, 0.15, 0xffd94a, 18, 5.5);
   }
 
   private updateSwoop(ctx: WorldCtx, dt: number): void {
@@ -213,7 +223,9 @@ export class GiantEagle extends Boss {
     this.chainRemaining = this.isBelowHp(0.4) ? 2 : 1;
     this.telegraphFlash(0xffd94a, SCREECH_TIME);
     this.shake(0.78);
-    ctx.particles.burst(this.body.pos.x, this.body.pos.y + this.body.height * 0.58, 0xffd94a, 34, 8);
+    if (!simPhase.resimulating) {
+      ctx.particles.burst(this.body.pos.x, this.body.pos.y + this.body.height * 0.58, 0xffd94a, 34, 8);
+    }
     for (let i = 0; i < 3; i += 1) {
       const side = i - 1;
       this.requestMinion('miniEagle', 4, this.body.pos.x + side * 0.9, this.body.pos.y + this.body.height * 0.52);
@@ -250,6 +262,7 @@ export class GiantEagle extends Boss {
   }
 
   private updateWarningLine(ctx: WorldCtx): void {
+    if (simPhase.resimulating) return;
     const width = ctx.stage.blast.right - ctx.stage.blast.left + 12;
     this.warningLine.visible = true;
     this.warningLine.position.set(0, this.swoopLaneY - this.body.pos.y, 0.44);
@@ -315,6 +328,27 @@ export class GiantEagle extends Boss {
 
   private phaseProgress(): number {
     return 1 - this.phaseTimer / Math.max(0.0001, this.phaseDuration);
+  }
+
+  override digestInto(out: number[]): void {
+    super.digestInto(out);
+    out.push(
+      PHASE_IDS[this.phase],
+      this.phaseTimer,
+      this.phaseDuration,
+      this.fanIndex,
+      this.shotTimer,
+      this.perchSide,
+      this.targetSide,
+      this.chainRemaining,
+      this.swoopLaneY,
+      this.swoopFeetY,
+      this.leftX,
+      this.leftY,
+      this.rightX,
+      this.rightY,
+      this.perchesReady ? 1 : 0,
+    );
   }
 }
 

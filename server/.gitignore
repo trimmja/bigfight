@@ -1,0 +1,3 @@
+# Built client staged here by scripts/deploy-server.mjs — never commit it.
+public/*
+!public/.gitkeep

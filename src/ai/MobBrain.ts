@@ -1,16 +1,30 @@
 import { ATTACK_TOKENS } from '../config';
 import type { SimRng } from '../core/rng';
 import { exp, hypot } from '../core/simmath';
+import { simPhase } from '../net/simPhase';
 import type { WorldCtx } from '../entities/Entity';
 import type { Fighter } from '../entities/Fighter';
 import type { Mob } from '../entities/Mob';
 
 export type MobBrainState = 'idle' | 'approach' | 'windup' | 'attack' | 'recover';
 
+const BRAIN_STATE_IDS: Record<MobBrainState, number> = {
+  idle: 0,
+  approach: 1,
+  windup: 2,
+  attack: 3,
+  recover: 4,
+};
+
 let activeAttackTokens = 0;
 
 export function resetMobAttackTokens(): void {
   activeAttackTokens = 0;
+}
+
+/** Snapshot access — the token count is global sim state. */
+export function getMobAttackTokens(): number {
+  return activeAttackTokens;
 }
 
 const RETREAT_MIN = 0.45;
@@ -154,6 +168,25 @@ export class MobBrain {
     activeAttackTokens = Math.max(0, activeAttackTokens - 1);
   }
 
+  /** Sim-relevant brain scalars for replay digests / net snapshots. */
+  digestInto(out: number[]): void {
+    out.push(
+      BRAIN_STATE_IDS[this.state],
+      this.isBlocking ? 1 : 0,
+      this.stateTimer,
+      this.attackCooldown,
+      this.hasAttackToken ? 1 : 0,
+      this.retreatDir,
+      this.retreatTime,
+      this.blockTimer,
+      this.blockCheckCooldown,
+      this.hopCooldown,
+      this.hopSeeded ? 1 : 0,
+      this.attackPulseSent ? 1 : 0,
+      this.attackStarted ? 1 : 0,
+    );
+  }
+
   private updateIdle(aggroRange: number, distSq: number): void {
     if (distSq <= aggroRange * aggroRange) this.enterState('approach');
   }
@@ -262,7 +295,7 @@ export class MobBrain {
       && (this.rng?.next() ?? 0) < 0.3
     ) {
       this.blockTimer = CAPTAIN_BLOCK_TIME;
-      this.mob.rig.flashColor(STEEL_BLUE, CAPTAIN_BLOCK_TIME);
+      if (!simPhase.resimulating) this.mob.rig.flashColor(STEEL_BLUE, CAPTAIN_BLOCK_TIME);
       this.setBlocking(true);
     } else {
       this.setBlocking(false);
@@ -272,7 +305,7 @@ export class MobBrain {
   private tryEnterWindup(): void {
     if (!this.acquireAttackToken()) return;
     this.enterState('windup');
-    this.mob.rig.flashColor(0xff5a5a, this.mob.enemyDef.brain.telegraphTime);
+    if (!simPhase.resimulating) this.mob.rig.flashColor(0xff5a5a, this.mob.enemyDef.brain.telegraphTime);
     this.mob.body.vel.x *= 0.25;
   }
 
