@@ -2,6 +2,7 @@
 // Uses the LOCAL dev server (vite :5173) + LOCAL ws server (:8080 via ?localserver).
 import { chromium } from 'playwright';
 const BASE = process.argv.find((a) => a.startsWith('--url='))?.slice(6) ?? 'http://localhost:5173/bigfight/?localserver';
+const joinUrl = (code) => (BASE.includes('?') ? `${BASE}&join=${code}` : `${BASE}?join=${code}`);
 const OUT = process.env.SHOTS ?? '.';
 const browser = await chromium.launch();
 
@@ -34,7 +35,7 @@ try {
   await a.waitForFunction(() => /\b[BCDFGHJKLMNPQRSTVWXZ]{4}\b/.test(document.body.innerText), null, { timeout: 15000 });
   const code = await a.evaluate(() => document.body.innerText.match(/\b([BCDFGHJKLMNPQRSTVWXZ]{4})\b/)?.[1]);
   console.log('room code:', code);
-  await b.goto(`${BASE}&join=${code}`, { waitUntil: 'domcontentloaded' });
+  await b.goto(joinUrl(code), { waitUntil: 'domcontentloaded' });
   await b.waitForTimeout(600);
   await tapTitle(b); // in case deep-link still shows title first
   // Wait until B is actually in the lobby (its ROOM chip renders).
