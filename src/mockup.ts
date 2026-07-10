@@ -4,6 +4,7 @@
  * them. Not linked from the game; exists for design sign-off.
  */
 import * as THREE from 'three';
+import { WEAPONS } from './data/weapons';
 import { toonRamp } from './render/toon';
 import { poseAttack, poseFightStance, poseRun, type Pose } from './rigs/poses';
 import { ALL_CHARS, buildMockRig, OPTION_LABELS, type CharId, type MockRig, type OptionId } from './mockup/rigs';
@@ -52,6 +53,7 @@ scene.add(wrap);
 let t = 0;
 let running = false;
 let spinning = false;
+let dancingUntil = 0;
 let attackQueue: { poseId: string; duration: number }[] = [];
 let attackPhase = 0;
 
@@ -97,6 +99,116 @@ chrBtn.addEventListener('click', () => {
   show();
 });
 syncChrButton();
+
+// ---------------------------------------------------------------------------
+// Online lobby review — interaction-only design mockup, not live networking.
+// ---------------------------------------------------------------------------
+const lobbyReview = document.getElementById('lobbyReview')!;
+const roomBrowser = document.getElementById('roomBrowser')!;
+const roomLobby = document.getElementById('roomLobby')!;
+const resultOverlay = document.getElementById('resultOverlay')!;
+const lobbyTitle = document.getElementById('lobbyTitle')!;
+const connectionChip = document.getElementById('connectionChip')!;
+const lobbyFighter = document.getElementById('lobbyFighter')!;
+const fighterValue = document.getElementById('fighterValue')!;
+const weaponValue = document.getElementById('weaponValue')!;
+const youPick = document.getElementById('youPick')!;
+const youStatus = document.getElementById('youStatus')!;
+const youCard = document.getElementById('youCard')!;
+const readyBtn = document.getElementById('readyBtn')!;
+const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
+const lobbyCharacters: readonly CharId[] = ALL_CHARS.filter((id) => id !== 'comet');
+let lobbyWeaponIndex = 0;
+let lobbyReady = false;
+let lobbyHost = true;
+
+function openLobbyBrowser(): void {
+  document.body.classList.add('lobby-mode');
+  lobbyReview.hidden = false;
+  roomBrowser.hidden = false;
+  roomLobby.hidden = true;
+  resultOverlay.hidden = true;
+  lobbyTitle.textContent = 'ONLINE FIGHTS';
+  connectionChip.innerHTML = '<span class="dot"></span> DALLAS · 28 MS';
+}
+
+function closeLobbyReview(): void {
+  document.body.classList.remove('lobby-mode');
+  lobbyReview.hidden = true;
+  resultOverlay.hidden = true;
+}
+
+function enterRoom(name: string, isHost: boolean, isPrivate = false): void {
+  lobbyHost = isHost;
+  lobbyReady = false;
+  if (chr === 'comet') chr = 'volt';
+  option = 'C';
+  show();
+  syncChrButton();
+  roomBrowser.hidden = true;
+  roomLobby.hidden = false;
+  resultOverlay.hidden = true;
+  lobbyTitle.textContent = name.toUpperCase();
+  connectionChip.innerHTML = `<span class="dot"></span> ${isPrivate ? 'PRIVATE · CODE BCDX' : 'DIRECT · 24 MS'}`;
+  youCard.querySelector('.player-card-name')!.textContent = isHost ? 'YOU · HOST' : 'YOU';
+  startBtn.hidden = !isHost;
+  syncLobbyLoadout();
+}
+
+function syncLobbyLoadout(): void {
+  const weapon = WEAPONS[lobbyWeaponIndex] ?? WEAPONS[0]!;
+  const name = chr.toUpperCase();
+  lobbyFighter.textContent = name;
+  fighterValue.textContent = name;
+  weaponValue.textContent = weapon.name.toUpperCase();
+  youPick.textContent = `${name} · ${weapon.name.toUpperCase()}`;
+  youStatus.textContent = lobbyReady ? 'READY' : 'PICKING';
+  readyBtn.textContent = lobbyReady ? 'NOT READY' : 'READY';
+  readyBtn.classList.toggle('on', lobbyReady);
+  startBtn.disabled = lobbyHost && !lobbyReady;
+}
+
+function cycleLobbyFighter(direction: -1 | 1): void {
+  const current = Math.max(0, lobbyCharacters.indexOf(chr));
+  chr = lobbyCharacters[(current + direction + lobbyCharacters.length) % lobbyCharacters.length] ?? 'volt';
+  show();
+  syncChrButton();
+  lobbyReady = false;
+  syncLobbyLoadout();
+}
+
+function cycleLobbyWeapon(direction: -1 | 1): void {
+  lobbyWeaponIndex = (lobbyWeaponIndex + direction + WEAPONS.length) % WEAPONS.length;
+  lobbyReady = false;
+  syncLobbyLoadout();
+}
+
+document.getElementById('lobbyBtn')!.addEventListener('click', openLobbyBrowser);
+document.getElementById('lobbyBack')!.addEventListener('click', () => {
+  if (!roomLobby.hidden) openLobbyBrowser();
+  else closeLobbyReview();
+});
+document.querySelectorAll<HTMLElement>('[data-room]').forEach((row) => {
+  row.addEventListener('click', () => enterRoom(row.dataset.room ?? 'Open Game', false));
+});
+document.getElementById('quickJoin')!.addEventListener('click', () => enterRoom("Ryder's Rooftop", false));
+document.getElementById('joinCode')!.addEventListener('click', () => enterRoom('Private Fight', false, true));
+document.getElementById('hostPublic')!.addEventListener('click', () => enterRoom('Your Open Game', true));
+document.getElementById('hostPrivate')!.addEventListener('click', () => enterRoom('Your Private Game', true, true));
+document.getElementById('fighterPrev')!.addEventListener('click', () => cycleLobbyFighter(-1));
+document.getElementById('fighterNext')!.addEventListener('click', () => cycleLobbyFighter(1));
+document.getElementById('weaponPrev')!.addEventListener('click', () => cycleLobbyWeapon(-1));
+document.getElementById('weaponNext')!.addEventListener('click', () => cycleLobbyWeapon(1));
+document.getElementById('danceBtn')!.addEventListener('click', () => { dancingUntil = t + 1.8; });
+readyBtn.addEventListener('click', () => { lobbyReady = !lobbyReady; syncLobbyLoadout(); });
+startBtn.addEventListener('click', () => { if (!startBtn.disabled) resultOverlay.hidden = false; });
+document.getElementById('testResults')!.addEventListener('click', () => { resultOverlay.hidden = false; });
+document.getElementById('sameRoom')!.addEventListener('click', () => {
+  resultOverlay.hidden = true;
+  lobbyReady = false;
+  syncLobbyLoadout();
+});
+
 // Each character's REAL game combo (kaze/blaze/shade kick on hit 2;
 // kaze/shade spin finishers, grim/titan slams, nova uppercut).
 const HIT2: Record<CharId, string> = {
@@ -165,6 +277,8 @@ function tick(dt: number): void {
         ? poseCometMeteor(attackPhase)
         : poseAttack(current.poseId, attackPhase);
     }
+  } else if (t < dancingUntil) {
+    pose = poseDancePreview(t);
   } else if (running) {
     pose = poseRun(t, 0.9);
   } else {
@@ -217,5 +331,25 @@ function poseCometMeteor(phase: number): Pose {
     legR: { z: 0.3 - 0.44 * dive },
     shinL: { z: -0.45 + 0.53 * dive },
     shinR: { z: -0.45 + 0.53 * dive },
+  };
+}
+
+/** Review-only lobby dance. Approved dances will be ported character by character. */
+function poseDancePreview(time: number): Pose {
+  const beat = Math.sin(time * 9);
+  const side = Math.sin(time * 4.5);
+  return {
+    root: { z: Math.abs(beat) * -0.09 },
+    hips: { x: side * 0.32, z: -beat * 0.08 },
+    torso: { x: -side * 0.26, z: beat * 0.12 },
+    head: { x: side * 0.18, z: -beat * 0.08 },
+    armL: { x: 0.35 + side * 0.4, z: 1.4 + beat * 0.45 },
+    armR: { x: -0.35 + side * 0.4, z: 1.4 - beat * 0.45 },
+    foreArmL: { z: 0.5 },
+    foreArmR: { z: 0.5 },
+    legL: { x: side * 0.15, z: beat * 0.28 },
+    legR: { x: side * 0.15, z: -beat * 0.28 },
+    shinL: { z: -Math.max(0, beat) * 0.35 },
+    shinR: { z: -Math.max(0, -beat) * 0.35 },
   };
 }
