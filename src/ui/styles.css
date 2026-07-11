@@ -295,10 +295,10 @@ html, body {
 .bf-mode-cards {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   gap: min(5vw, 44px);
-  padding-bottom: 16dvh; /* the fighters play out each mode below the slabs */
+  padding-bottom: max(2dvh, 10px); /* slabs sit low; the roster musters above */
 }
 .bf-mode-card {
   appearance: none;
@@ -324,7 +324,8 @@ html, body {
 }
 .bf-mode-card-online {
   background: linear-gradient(160deg, var(--neon-cyan), var(--neon-violet));
-  transform: rotate(2deg) translateY(8px);
+  /* Lean is only -2px now the cards hug the bottom — +8px cropped the shadow. */
+  transform: rotate(2deg) translateY(-2px);
   animation-delay: 0.09s;
 }
 /* Slow candy-stripe drift across each slab. */
@@ -342,9 +343,9 @@ html, body {
 }
 .bf-mode-card > * { position: relative; }
 .bf-mode-card-campaign:hover { transform: rotate(-3.2deg) translateY(-12px) scale(1.03); filter: brightness(1.07); }
-.bf-mode-card-online:hover { transform: rotate(2.7deg) translateY(2px) scale(1.03); filter: brightness(1.07); }
+.bf-mode-card-online:hover { transform: rotate(2.7deg) translateY(-8px) scale(1.03); filter: brightness(1.07); }
 .bf-mode-card-campaign:active { transform: rotate(-1.6deg) translateY(-2px) scale(0.97); box-shadow: 0 3px 0 rgba(30, 42, 74, 0.3); }
-.bf-mode-card-online:active { transform: rotate(1.2deg) translateY(12px) scale(0.97); box-shadow: 0 3px 0 rgba(30, 42, 74, 0.3); }
+.bf-mode-card-online:active { transform: rotate(1.2deg) translateY(2px) scale(0.97); box-shadow: 0 3px 0 rgba(30, 42, 74, 0.3); }
 .bf-mode-card:focus-visible { outline: 4px solid #ffffff; outline-offset: 4px; }
 .bf-mode-chip {
   background: #ffffff;
@@ -423,7 +424,15 @@ html, body {
   color: #b8860b;
   box-shadow: 0 4px 0 rgba(30, 42, 74, 0.2);
 }
-.bf-button-round { border-radius: 50%; width: 46px; height: 46px; padding: 0; }
+.bf-button-round {
+  border-radius: 50%;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .bf-map-path {
   flex: 1;
   display: flex;

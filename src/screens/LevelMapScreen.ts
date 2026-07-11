@@ -20,7 +20,6 @@ export class LevelMapScreen implements Screen {
     private readonly callbacks: {
       onPickLevel: (levelId: number) => void;
       onBack: () => void;
-      onSettings: () => void;
     },
   ) {}
 
@@ -36,7 +35,6 @@ export class LevelMapScreen implements Screen {
     el('h1', 'bf-map-title', header).textContent = 'CAMPAIGN';
     const gold = el('div', 'bf-gold-chip', header);
     gold.textContent = `G ${game.save.gold}`;
-    button('SET', () => this.callbacks.onSettings(), 'bf-button bf-button-round', header);
 
     const path = el('div', 'bf-map-path', this.root);
     const beaten = game.save.levelsBeaten;
