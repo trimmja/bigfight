@@ -1,5 +1,5 @@
 /**
- * The 8 playable fighters — "Action Figure" designs (direction C, picked by
+ * The playable fighters — "Action Figure" designs (direction C, picked by
  * Ryder in the Character Lab): taller athletic figures, armor & muscle,
  * signature heads and gear. HeroRig implements the full game Rig contract
  * (flash tints, ghost opacity, blob shadow, weapon socket, facing turns).
@@ -233,7 +233,7 @@ function limb(upper: THREE.Object3D, lower: THREE.Object3D, mat: THREE.Material,
 }
 
 // ---------------------------------------------------------------------------
-// The nine fighters (geometry approved in the Character Lab)
+// The fighters (geometry approved in the Character Lab)
 // ---------------------------------------------------------------------------
 type Builder = (rig: HeroRig) => void;
 
@@ -481,6 +481,69 @@ const BUILDERS: Record<string, Builder> = {
     limb(j.legR, j.shinR, suit, orange, 0.13, 0.5, 0.48, 1.6, false);
     ball(j.armL, blue, 0.14, 0.12, 0.14, 0, 0.03, 0);
     ball(j.armR, blue, 0.14, 0.12, 0.14, 0, 0.03, 0);
+  },
+
+  rex(rig) {
+    // Teal T-rex bruiser: big jaws, back ridge, striped tail with a spike tip.
+    const s: Skeleton = { legLen: 0.96, torsoH: 0.72, depth: 0.28, limbR: 0.12, upperArm: 0.44, foreArm: 0.42, thigh: 0.48, shin: 0.46, shoulderY: 0.6, shoulderZ: 0.44, legZ: 0.17 };
+    buildSkeleton(rig, s);
+    const body = rig.toon(0x2fbf8f), dark = rig.toon(0x1a8a5f), belly = rig.toon(0xffe08a), accent = rig.toon(0xff8a3c), bone = rig.toon(0xfff3e0);
+    const j = rig.joints;
+    ball(j.torso, body, 0.42, 0.46, 0.36, 0, 0.38, 0);
+    ball(j.torso, belly, 0.3, 0.34, 0.28, 0.16, 0.32, 0);
+    // Orange ridge plates marching down the back.
+    for (let i = 0; i < 3; i += 1) cone(j.torso, accent, 0.07 - i * 0.01, 0.18, -0.34 - i * 0.08, 0.52 - i * 0.16, 0, 0, -1.8);
+    // Thick tail ending in a spike.
+    const tail = box(j.hips, dark, 0.55, 0.13, 0.13, -0.42, -0.04, 0, 0, 0.45);
+    cone(tail, accent, 0.9, 1.6, -0.62, 0.4, 0, 0, -1.25);
+    // Dino head: skull + snout + underbite jaw full of teeth.
+    j.head.position.y = 0.84;
+    ball(j.head, body, 0.26, 0.24, 0.26, 0, 0.02, 0);
+    box(j.head, body, 0.26, 0.13, 0.22, 0.24, 0, 0);
+    box(j.head, dark, 0.24, 0.09, 0.2, 0.24, -0.13, 0);
+    for (const zz of [-0.07, 0, 0.07]) cone(j.head, bone, 0.03, 0.08, 0.3, -0.055, zz, 3.14, 0);
+    for (const zz of [-0.09, 0.09]) cone(j.head, bone, 0.035, 0.09, 0.34, -0.1, zz);
+    ball(j.head, dark, 0.03, 0.025, 0.025, 0.37, 0.05, -0.05);
+    ball(j.head, dark, 0.03, 0.025, 0.025, 0.37, 0.05, 0.05);
+    for (const zz of [-0.12, 0.12]) ball(j.head, accent, 0.05, 0.055, 0.04, 0.16, 0.12, zz);
+    box(j.head, dark, 0.14, 0.05, 0.28, 0.14, 0.17, 0);
+    cone(j.head, accent, 0.05, 0.16, -0.14, 0.16, 0, 0, -0.6);
+    limb(j.armL, j.foreArmL, body, dark, 0.12, 0.44, 0.42, 1.5, true);
+    limb(j.armR, j.foreArmR, body, dark, 0.12, 0.44, 0.42, 1.5, true);
+    limb(j.legL, j.shinL, dark, accent, 0.13, 0.48, 0.46, 1.6, false);
+    limb(j.legR, j.shinR, dark, accent, 0.13, 0.48, 0.46, 1.6, false);
+  },
+
+  frost(rig) {
+    // Ice yeti heavy: huge furry shoulders, blue face, icy back spikes.
+    const s: Skeleton = { legLen: 0.92, torsoH: 0.8, depth: 0.33, limbR: 0.155, upperArm: 0.5, foreArm: 0.48, thigh: 0.45, shin: 0.43, shoulderY: 0.7, shoulderZ: 0.54, legZ: 0.2 };
+    buildSkeleton(rig, s);
+    const fur = rig.toon(0xeef8ff), shade = rig.toon(0xc9e2f2), skin = rig.toon(0x7fc4e8), deep = rig.toon(0x3d78a8), ice = rig.toon(0x9df3ff);
+    const j = rig.joints;
+    ball(j.torso, fur, 0.5, 0.54, 0.46, 0, 0.4, 0.04);
+    j.torso.rotation.z = -0.1;
+    ball(j.torso, shade, 0.32, 0.38, 0.3, 0.2, 0.34, 0);
+    ball(j.torso, ice, 0.07, 0.07, 0.045, 0.42, 0.42, 0);
+    // Ice crystal spikes down the back.
+    for (let i = 0; i < 3; i += 1) cone(j.torso, ice, 0.08 - i * 0.015, 0.22 - i * 0.04, -0.34 - i * 0.09, 0.56 - i * 0.16, 0, 0, -1.9);
+    for (const arm of [j.armL, j.armR]) {
+      ball(arm, fur, 0.21, 0.17, 0.21, 0, 0.04, 0);
+      cone(arm, ice, 0.05, 0.14, 0, 0.21, 0);
+    }
+    // Blue face sunk into the fur, heavy brow, icicle-fang underbite.
+    j.head.position.y = 1.02;
+    j.head.position.x = 0.06;
+    ball(j.head, fur, 0.27, 0.25, 0.27, 0, 0.02, 0);
+    ball(j.head, skin, 0.17, 0.16, 0.18, 0.16, 0, 0);
+    for (const zz of [-0.1, 0.1]) ball(j.head, deep, 0.045, 0.05, 0.03, 0.28, 0.06, zz);
+    box(j.head, fur, 0.14, 0.07, 0.3, 0.2, 0.15, 0, 0, -0.1);
+    box(j.head, skin, 0.2, 0.1, 0.28, 0.2, -0.16, 0);
+    for (const zz of [-0.1, 0.1]) cone(j.head, ice, 0.035, 0.1, 0.28, -0.09, zz);
+    cone(j.head, fur, 0.08, 0.18, -0.02, 0.26, 0, 0, -0.3);
+    limb(j.armL, j.foreArmL, fur, skin, 0.155, 0.5, 0.48, 1.7, true);
+    limb(j.armR, j.foreArmR, fur, skin, 0.155, 0.5, 0.48, 1.7, true);
+    limb(j.legL, j.shinL, shade, skin, 0.15, 0.45, 0.43, 1.55, false);
+    limb(j.legR, j.shinR, shade, skin, 0.15, 0.45, 0.43, 1.55, false);
   },
 };
 

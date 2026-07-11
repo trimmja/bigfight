@@ -1,7 +1,7 @@
 /**
  * BIG FIGHT — campaign levels (design: Ryder).
  *
- * 12 levels with a fair ramp. Boss levels list only warm-up waves; the boss
+ * 16 levels with a fair ramp. Boss levels list only warm-up waves; the boss
  * spawns via `bossId` after all waves clear. Wave delays run 1.2–2s,
  * creeping up as fights get tougher.
  */
@@ -223,6 +223,83 @@ export const LEVELS: readonly LevelDef[] = [
     waves: [{ enemies: [{ enemyId: 'miniEagle', count: 3 }], delay: 1.5 }],
     bossId: 'giantEagle',
     goldReward: 250,
+  },
+  {
+    id: 13,
+    name: 'Lava Landing',
+    stageId: 'volcano',
+    waves: [
+      {
+        enemies: [
+          { enemyId: 'magmaSlime', count: 2 },
+          { enemyId: 'skeleton', count: 2 },
+        ],
+        delay: 1.5,
+      },
+      {
+        enemies: [
+          { enemyId: 'magmaSlime', count: 3 },
+          { enemyId: 'captain', count: 1 },
+        ],
+        delay: 1.8,
+      },
+    ],
+    goldReward: 150,
+    unlocks: { stageId: 'volcano', characterId: 'rex' },
+  },
+  {
+    id: 14,
+    name: 'Frozen Fortress',
+    stageId: 'icekingdom',
+    waves: [
+      { enemies: [{ enemyId: 'frostGhost', count: 3 }], delay: 1.5 },
+      {
+        enemies: [
+          { enemyId: 'frostGhost', count: 2 },
+          { enemyId: 'captain', count: 2 },
+        ],
+        delay: 1.8,
+      },
+    ],
+    goldReward: 170,
+    unlocks: { stageId: 'icekingdom', characterId: 'frost' },
+  },
+  {
+    id: 15,
+    name: 'Fire and Ice',
+    stageId: 'icekingdom',
+    waves: [
+      {
+        enemies: [
+          { enemyId: 'magmaSlime', count: 2 },
+          { enemyId: 'frostGhost', count: 2 },
+        ],
+        delay: 1.6,
+      },
+      {
+        enemies: [
+          { enemyId: 'frostGhost', count: 2 },
+          { enemyId: 'miniEagle', count: 3 },
+        ],
+        delay: 1.8,
+      },
+      {
+        enemies: [
+          { enemyId: 'captain', count: 2 },
+          { enemyId: 'magmaSlime', count: 2 },
+        ],
+        delay: 2,
+      },
+    ],
+    goldReward: 200,
+  },
+  {
+    id: 16,
+    name: 'The Molten King',
+    stageId: 'volcano',
+    waves: [{ enemies: [{ enemyId: 'magmaSlime', count: 3 }], delay: 1.5 }],
+    bossId: 'lavaGolem',
+    goldReward: 400,
   },
 ];
 

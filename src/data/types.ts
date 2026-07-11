@@ -257,9 +257,11 @@ export interface EnemyDef {
   drops: MaterialCost;
   /** Slimes split into this many smaller copies once. */
   splitsInto?: number;
+  /** Enemy id of the split children (default 'slimeSmall'). */
+  splitChildId?: string;
 }
 
-export type BossId = 'skeletonKing' | 'giantGhost' | 'giantEagle';
+export type BossId = 'skeletonKing' | 'giantGhost' | 'giantEagle' | 'lavaGolem';
 
 export interface BossDef {
   id: BossId;
@@ -286,7 +288,9 @@ export type StageTheme =
   | 'graveyard'
   | 'ghostship'
   | 'peak'
-  | 'finale';
+  | 'finale'
+  | 'volcano'
+  | 'ice';
 
 export interface PlatformDef {
   /** Center x, top y. */
@@ -412,7 +416,7 @@ export interface SaveData {
   craftedWeapons: string[];
   ownedSidekicks: string[];
   equippedSidekick: string | null;
-  /** Highest beaten level, 0–12. Level N is playable iff N <= levelsBeaten + 1. */
+  /** Highest beaten level, 0–LEVELS.length. Level N is playable iff N <= levelsBeaten + 1. */
   levelsBeaten: number;
   settings: SaveSettings;
 }

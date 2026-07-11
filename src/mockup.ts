@@ -4,11 +4,12 @@
  * them. Not linked from the game; exists for design sign-off.
  */
 import * as THREE from 'three';
+import { CHARACTERS } from './data/characters';
 import { WEAPONS } from './data/weapons';
 import { toonRamp } from './render/toon';
 import { poseAttack, poseFightStance, poseRun, type Pose } from './rigs/poses';
 import { PedestalRoom } from './mockup/PedestalRoom';
-import { ALL_CHARS, buildMockRig, OPTION_LABELS, type CharId, type MockRig, type OptionId } from './mockup/rigs';
+import { ALL_CHARS, buildMockRig, type CharId, type MockRig } from './mockup/rigs';
 
 const canvas = document.getElementById('lab') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -78,7 +79,6 @@ window.addEventListener('resize', resize);
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let option: OptionId = 'A';
 let chr: CharId = 'volt';
 let rig: MockRig | null = null;
 const wrap = new THREE.Group();
@@ -93,46 +93,47 @@ let attackPhase = 0;
 
 const label = document.getElementById('label')!;
 
+/** New fighters awaiting family sign-off in the Lab (not yet reviewed). */
+const NEW_CHARS: readonly CharId[] = ['rex', 'frost'];
+
+function labelFor(id: CharId): string {
+  const def = CHARACTERS.find((c) => c.id === id);
+  const name = (def?.name ?? id).toUpperCase();
+  const flair = NEW_CHARS.includes(id) ? ' · ★ NEW — NEEDS YOUR OK!' : '';
+  if (id === 'comet') return `${name} · SPACE CADET · SIGNATURE PREVIEW: METEOR DIVE`;
+  return def ? `${name} · ${def.tagline.toUpperCase()}${flair}` : name;
+}
+
 function show(): void {
   rig?.dispose();
-  rig = buildMockRig(option, chr);
+  rig = buildMockRig(chr);
   wrap.clear();
   wrap.add(rig.root);
   wrap.rotation.y = -Math.PI / 2 + 0.2;
   attackQueue = [];
-  label.textContent = chr === 'comet'
-    ? 'COMET · SPACE CADET · SIGNATURE PREVIEW: METEOR DIVE'
-    : OPTION_LABELS[option];
+  label.textContent = labelFor(chr);
 }
 show();
 
 // ---------------------------------------------------------------------------
-// UI
+// UI — one dropdown picks the fighter; everyone renders in the shipped style.
 // ---------------------------------------------------------------------------
-function pickOption(id: OptionId): void {
-  option = id;
-  if (id !== 'C' && chr !== 'volt' && chr !== 'grim') chr = 'volt';
-  for (const o of ['A', 'B', 'C'] as const) {
-    document.getElementById(`opt${o}`)!.classList.toggle('on', o === id);
-  }
-  syncChrButton();
-  show();
+const chrSelect = document.getElementById('chrSelect') as HTMLSelectElement;
+for (const id of ALL_CHARS) {
+  const opt = document.createElement('option');
+  const def = CHARACTERS.find((c) => c.id === id);
+  opt.value = id;
+  opt.textContent = (def?.name ?? id).toUpperCase() + (NEW_CHARS.includes(id) ? ' ★ NEW' : '');
+  chrSelect.appendChild(opt);
 }
-document.getElementById('optA')!.addEventListener('click', () => pickOption('A'));
-document.getElementById('optB')!.addEventListener('click', () => pickOption('B'));
-document.getElementById('optC')!.addEventListener('click', () => pickOption('C'));
-const chrBtn = document.getElementById('chr')!;
-function syncChrButton(): void {
-  chrBtn.textContent = `${chr.toUpperCase()} ▸`;
+function syncChrSelect(): void {
+  chrSelect.value = chr;
 }
-chrBtn.addEventListener('click', () => {
-  // Options A/B only have volt+grim; C has the full roster.
-  const pool: readonly CharId[] = option === 'C' ? ALL_CHARS : ['volt', 'grim'];
-  chr = pool[(pool.indexOf(chr) + 1) % pool.length] ?? 'volt';
-  syncChrButton();
+chrSelect.addEventListener('change', () => {
+  chr = (chrSelect.value as CharId) ?? 'volt';
   show();
 });
-syncChrButton();
+syncChrSelect();
 
 // ---------------------------------------------------------------------------
 // Online lobby review — interaction-only design mockup, not live networking.
@@ -190,9 +191,8 @@ function enterRoom(name: string, isHost: boolean, isPrivate = false): void {
   lobbyRoomName = name;
   lobbyPrivate = isPrivate;
   lobbyReady = false;
-  option = 'C';
   show();
-  syncChrButton();
+  syncChrSelect();
   roomBrowser.hidden = true;
   fighterSelect.hidden = false;
   weaponSelect.hidden = true;
@@ -275,7 +275,7 @@ function cycleLobbyFighter(direction: -1 | 1): void {
   const current = Math.max(0, lobbyCharacters.indexOf(chr));
   chr = lobbyCharacters[(current + direction + lobbyCharacters.length) % lobbyCharacters.length] ?? 'volt';
   show();
-  syncChrButton();
+  syncChrSelect();
   lobbyReady = false;
   syncLobbyLoadout();
 }
@@ -336,19 +336,22 @@ document.getElementById('sameRoom')!.addEventListener('click', () => {
   syncLobbyLoadout();
 });
 
-// Each character's REAL game combo (kaze/blaze/shade kick on hit 2;
-// kaze/shade spin finishers, grim/titan slams, nova uppercut).
+// Each character's REAL game combo (kaze/blaze/shade/rex kick on hit 2;
+// kaze/shade spin finishers, grim/titan/frost slams, rex tail-spin, nova uppercut).
 const HIT2: Record<CharId, string> = {
   volt: 'jab2', kaze: 'kick', grim: 'jab2', ace: 'jab2',
   blaze: 'kick', nova: 'jab2', shade: 'kick', titan: 'jab2', comet: 'jab2',
+  rex: 'kick', frost: 'jab2',
 };
 const FINISHERS: Record<CharId, string> = {
   volt: 'finisher', kaze: 'spin', grim: 'slam', ace: 'finisher',
   blaze: 'finisher', nova: 'uppercut', shade: 'spin', titan: 'slam', comet: 'finisher',
+  rex: 'spin', frost: 'slam',
 };
 const SIGNATURES: Record<CharId, string> = {
   volt: 'uppercut', kaze: 'shoot', grim: 'slam', ace: 'shoot',
   blaze: 'uppercut', nova: 'uppercut', shade: 'spin', titan: 'slam', comet: 'cometMeteor',
+  rex: 'spin', frost: 'slam',
 };
 document.getElementById('jab')!.addEventListener('click', () => {
   attackQueue = [
@@ -359,7 +362,7 @@ document.getElementById('jab')!.addEventListener('click', () => {
   attackPhase = 0;
 });
 document.getElementById('weapon')!.addEventListener('click', () => {
-  attackQueue = [{ poseId: chr === 'grim' || chr === 'titan' ? 'slam' : 'slash', duration: 0.6 }];
+  attackQueue = [{ poseId: chr === 'grim' || chr === 'titan' || chr === 'frost' ? 'slam' : 'slash', duration: 0.6 }];
   attackPhase = 0;
 });
 document.getElementById('signature')!.addEventListener('click', () => {
@@ -380,9 +383,9 @@ document.getElementById('spinBtn')!.addEventListener('click', function (this: HT
 // ---------------------------------------------------------------------------
 let last = performance.now();
 // Manual stepping for design review from an occluded window (rAF pauses).
-(window as unknown as { lab: { step: (n?: number) => void; pick: (o: OptionId, c: CharId) => void; attack: () => void; signature: () => void } }).lab = {
+(window as unknown as { lab: { step: (n?: number) => void; pick: (c: CharId) => void; attack: () => void; signature: () => void } }).lab = {
   step: (n = 1) => { for (let i = 0; i < n; i += 1) tick(1 / 60); renderer.render(scene, camera); },
-  pick: (o, c) => { option = o; chr = c; show(); },
+  pick: (c) => { chr = c; syncChrSelect(); show(); },
   attack: () => document.getElementById('jab')!.click(),
   signature: () => document.getElementById('signature')!.click(),
 };

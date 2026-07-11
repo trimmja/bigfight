@@ -41,6 +41,7 @@ import { Trails } from '../render/Trails';
 import { Boss } from '../entities/Boss';
 import { GiantEagle } from '../entities/bosses/GiantEagle';
 import { GiantGhost } from '../entities/bosses/GiantGhost';
+import { LavaGolem } from '../entities/bosses/LavaGolem';
 import { SkeletonKing } from '../entities/bosses/SkeletonKing';
 import { resetEntityIds } from '../entities/Entity';
 import { Fighter } from '../entities/Fighter';
@@ -735,6 +736,8 @@ export class GameplayScreen implements Screen {
         return new GiantGhost(drops, requestMinion, defeated);
       case 'giantEagle':
         return new GiantEagle(drops, requestMinion, defeated);
+      case 'lavaGolem':
+        return new LavaGolem(drops, requestMinion, defeated);
     }
   }
 
@@ -883,7 +886,7 @@ export class GameplayScreen implements Screen {
       for (let i = 0; i < count; i += 1) {
         this.splitSpawnPos.x = mob.body.pos.x + (i - (count - 1) * 0.5) * 0.45;
         this.splitSpawnPos.y = mob.body.pos.y + 0.25;
-        const child = this.spawnMob(game, 'slimeSmall', this.splitSpawnPos);
+        const child = this.spawnMob(game, mob.enemyDef.splitChildId ?? 'slimeSmall', this.splitSpawnPos);
         if (child) {
           const rng = this.rng!.spawn;
           child.body.vel.x = (i % 2 === 0 ? -1 : 1) * (2.4 + rng.next() * 1.2);

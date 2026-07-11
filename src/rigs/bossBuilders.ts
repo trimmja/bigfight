@@ -51,6 +51,8 @@ export function buildBossRig(id: BossId, def: BossDef): MobRig {
       return new GiantGhostRig(def);
     case 'giantEagle':
       return new GiantEagleRig(def);
+    case 'lavaGolem':
+      return new LavaGolemRig(def);
   }
 }
 
@@ -469,6 +471,153 @@ class GiantEagleRig extends BossRigBase {
     this.wingR.rotation.z = 0.08 - flap * 0.18;
     this.tail.rotation.z = Math.sin(time * 2.5) * 0.08;
   }
+}
+
+class LavaGolemRig extends BossRigBase {
+  private readonly eyeMats: THREE.MeshBasicMaterial[] = [];
+  private readonly coreMesh: THREE.Mesh;
+  private angry = false;
+
+  constructor(def: BossDef) {
+    const h = 1.8 * def.scale;
+    super(1.9, 1.1, 0.34, 0.012, 1.6);
+
+    const rock = this.makeToon(def.palette.core);
+    const rockDark = this.makeToon(0x2a2333);
+    const rockLight = this.makeToon(0x554a63);
+    const lava = this.makeBasic(def.palette.glow);
+    const lavaBright = this.makeBasic(0xffd94a);
+
+    const hips = new THREE.Group();
+    const torso = new THREE.Group();
+    const head = new THREE.Group();
+    const armL = new THREE.Group();
+    const armR = new THREE.Group();
+    const foreArmL = new THREE.Group();
+    const foreArmR = new THREE.Group();
+    const legL = new THREE.Group();
+    const legR = new THREE.Group();
+    const shinL = new THREE.Group();
+    const shinR = new THREE.Group();
+    this.joints.hips = hips;
+    this.joints.torso = torso;
+    this.joints.head = head;
+    this.joints.armL = armL;
+    this.joints.armR = armR;
+    this.joints.foreArmL = foreArmL;
+    this.joints.foreArmR = foreArmR;
+    this.joints.legL = legL;
+    this.joints.legR = legR;
+    this.joints.shinL = shinL;
+    this.joints.shinR = shinR;
+
+    hips.position.y = h * 0.3;
+    torso.position.y = h * 0.16;
+    head.position.y = h * 0.44;
+    this.bodyRoot.add(hips);
+    hips.add(torso);
+    torso.add(head);
+
+    // Boulder pelvis + massive cracked chest boulder.
+    addBall(hips, rockDark, 0.8, 0.5, 0.7, 0, 0, 0);
+    addBall(torso, rock, 1.05, h * 0.24, 0.92, 0, h * 0.16, 0);
+    addBall(torso, rockLight, 0.62, h * 0.13, 0.55, 0.32, h * 0.26, -0.4);
+    addBall(torso, rockLight, 0.5, h * 0.1, 0.48, 0.2, h * 0.3, 0.45);
+    // Molten core: a glowing heart visible through the chest crack.
+    this.coreMesh = addBall(torso, lavaBright, 0.3, 0.34, 0.24, 0.72, h * 0.15, 0);
+    addBox(torso, lava, 0.1, h * 0.2, 0.16, 0.88, h * 0.14, 0);
+    addBox(torso, lava, 0.32, 0.09, 0.14, 0.84, h * 0.2, 0.14);
+    addBox(torso, lava, 0.28, 0.09, 0.14, 0.86, h * 0.1, -0.16);
+    // Lava seams around the shoulders and belly.
+    addBox(torso, lava, 0.08, 0.5, 0.1, 0.3, h * 0.28, -0.62);
+    addBox(torso, lava, 0.08, 0.42, 0.1, 0.3, h * 0.28, 0.62);
+    addBox(hips, lava, 0.5, 0.08, 0.1, 0.42, 0.12, 0);
+
+    // Head: squat rock block with a heavy brow, lava eyes, obsidian crown.
+    const headR = h * 0.11;
+    addBall(head, rock, headR * 1.25, headR * 1.0, headR * 1.15, 0, 0, 0);
+    addBox(head, rockDark, headR * 0.9, headR * 0.38, headR * 2.3, headR * 0.55, headR * 0.42, 0);
+    for (const side of [-1, 1] as const) {
+      const eye = new THREE.Mesh(SPHERE, this.makeBasic(def.palette.accent));
+      eye.scale.set(headR * 0.3, headR * 0.22, headR * 0.14);
+      eye.position.set(headR * 0.95, headR * 0.1, side * headR * 0.42);
+      head.add(eye);
+      this.eyeMats.push(eye.material as THREE.MeshBasicMaterial);
+    }
+    addBox(head, lava, headR * 0.5, headR * 0.1, headR * 0.9, headR * 0.9, -headR * 0.4, 0);
+    for (let i = 0; i < 5; i += 1) {
+      const x = (i - 2) * headR * 0.42;
+      addCone(head, i % 2 === 0 ? rockDark : rockLight, headR * 0.18, headR * (0.5 + (i % 2) * 0.25), x, headR * 1.05, 0, 0);
+    }
+
+    // Colossal arms: boulder shoulders, lava elbow seams, fists bigger than
+    // the head — this boss reads as pure punching power.
+    const shoulderY = h * 0.3;
+    armL.position.set(0, shoulderY, -0.85);
+    armR.position.set(0, shoulderY, 0.85);
+    torso.add(armL, armR);
+    buildGolemArm(armL, foreArmL, rock, rockDark, lava, 0.62, 0.7);
+    buildGolemArm(armR, foreArmR, rock, rockDark, lava, 0.62, 0.7);
+
+    // Stubby stone legs with lava ankle cracks.
+    legL.position.set(-0.24, 0, -0.34);
+    legR.position.set(0.24, 0, 0.34);
+    hips.add(legL, legR);
+    buildGolemLeg(legL, shinL, rockDark, rockLight, lava, 0.5, 0.52);
+    buildGolemLeg(legR, shinR, rockDark, rockLight, lava, 0.5, 0.52);
+  }
+
+  setAngry(on: boolean): void {
+    if (this.angry === on) return;
+    this.angry = on;
+    const eyeColor = on ? ANGRY_RED : 0xffd94a;
+    for (const material of this.eyeMats) material.color.setHex(eyeColor, THREE.SRGBColorSpace);
+  }
+
+  protected override updateCustom(_dt: number, time: number): void {
+    // The molten heart throbs — faster and hotter when enraged.
+    const speed = this.angry ? 7 : 3.4;
+    const pulse = 1 + Math.sin(time * speed) * 0.12;
+    this.coreMesh.scale.set(0.3 * pulse, 0.34 * pulse, 0.24 * pulse);
+  }
+}
+
+function buildGolemArm(
+  upper: THREE.Group,
+  lower: THREE.Group,
+  rock: THREE.Material,
+  rockDark: THREE.Material,
+  lava: THREE.Material,
+  upperLen: number,
+  lowerLen: number,
+): void {
+  addBall(upper, rock, 0.42, 0.36, 0.42, 0, 0.05, 0);
+  addCapsule(upper, rockDark, 0.24, upperLen, 0.24, 0, -upperLen * 0.5, 0);
+  addBox(upper, lava, 0.1, upperLen * 0.6, 0.12, 0.2, -upperLen * 0.5, 0);
+  lower.position.y = -upperLen;
+  upper.add(lower);
+  addCapsule(lower, rockDark, 0.22, lowerLen, 0.22, 0, -lowerLen * 0.5, 0);
+  addBox(lower, lava, 0.09, lowerLen * 0.5, 0.11, 0.18, -lowerLen * 0.45, 0);
+  // Boulder fist with glowing knuckle cracks.
+  addBall(lower, rock, 0.44, 0.4, 0.44, 0, -lowerLen - 0.12, 0);
+  addBox(lower, lava, 0.34, 0.08, 0.3, 0.22, -lowerLen - 0.1, 0);
+}
+
+function buildGolemLeg(
+  upper: THREE.Group,
+  lower: THREE.Group,
+  rockDark: THREE.Material,
+  rockLight: THREE.Material,
+  lava: THREE.Material,
+  upperLen: number,
+  lowerLen: number,
+): void {
+  addCapsule(upper, rockDark, 0.28, upperLen, 0.28, 0, -upperLen * 0.5, 0);
+  lower.position.y = -upperLen;
+  upper.add(lower);
+  addCapsule(lower, rockDark, 0.26, lowerLen, 0.26, 0, -lowerLen * 0.5, 0);
+  addBox(lower, lava, 0.1, lowerLen * 0.4, 0.12, 0.2, -lowerLen * 0.6, 0);
+  addBall(lower, rockLight, 0.4, 0.2, 0.34, 0.1, -lowerLen, 0);
 }
 
 function buildBoneArm(

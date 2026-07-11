@@ -439,6 +439,8 @@ function speedFor(id: BossId): number {
       return 3.4;
     case 'giantEagle':
       return 6.2;
+    case 'lavaGolem':
+      return 2.8;
   }
 }
 
@@ -450,5 +452,7 @@ function bulkFor(id: BossId): number {
       return 2.9;
     case 'giantEagle':
       return 3.1;
+    case 'lavaGolem':
+      return 3.3;
   }
 }

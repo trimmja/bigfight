@@ -116,5 +116,6 @@ function rewardPreview(level: LevelDef, revealName: boolean): string {
   }
   if (level.id === LEVELS.length) return 'FINAL BOSS';
   if (level.bossId) return 'BOSS FIGHT';
-  return revealName ? 'START HERE!' : 'SECRET FIGHT';
+  if (level.id === 1) return revealName ? 'START HERE!' : 'SECRET FIGHT';
+  return revealName ? 'BIG GOLD!' : 'SECRET FIGHT';
 }

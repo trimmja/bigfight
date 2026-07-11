@@ -1,7 +1,7 @@
 /**
  * BIG FIGHT — enemy & boss bestiary (design: Ryder).
  *
- * 6 regular enemies + 3 bosses. Enemy attacks telegraph via
+ * 8 regular enemies + 4 bosses. Enemy attacks telegraph via
  * `brain.telegraphTime` before the AttackDef windup plays.
  */
 
@@ -206,6 +206,107 @@ export const ENEMIES: readonly EnemyDef[] = [
     gold: 20,
     drops: { boneShard: 2, energyCore: 1 },
   },
+  {
+    id: 'magmaSlime',
+    name: 'Magma Slime',
+    builder: 'slime',
+    weight: 60,
+    gravityScale: 1,
+    palette: { core: 0xff6a2e, glow: 0xd42a1a, accent: 0xffd94a },
+    proportions: { height: 1.0, bulk: 1.3, headSize: 1 },
+    attack: {
+      id: 'magmaSlimeSlam',
+      damage: 9,
+      baseKb: 6.5,
+      kbGrowth: 0.09,
+      angleDeg: 60,
+      windup: 0.13,
+      active: 0.12,
+      recover: 0.32,
+      hitbox: { x: 0.3, y: 0, w: 1.4, h: 1.0 },
+      sfx: 'hitHeavy',
+      poseId: 'slam',
+    },
+    brain: {
+      aggroRange: 13,
+      attackRange: 1.4,
+      moveSpeed: 3.0,
+      telegraphTime: 0.35,
+      retreatChance: 0.15,
+      attackCooldown: 1.8,
+      hops: true,
+    },
+    gold: 12,
+    drops: { slimeGoo: 2 },
+    splitsInto: 2,
+    splitChildId: 'magmaSlimeSmall',
+  },
+  {
+    id: 'magmaSlimeSmall',
+    name: 'Magma Drip',
+    builder: 'slime',
+    weight: 42,
+    gravityScale: 1,
+    palette: { core: 0xff8a52, glow: 0xd44a2a, accent: 0xffe94a },
+    proportions: { height: 0.6, bulk: 0.8, headSize: 1 },
+    attack: {
+      id: 'magmaSlimeSmallSlam',
+      damage: 5,
+      baseKb: 4.8,
+      kbGrowth: 0.06,
+      angleDeg: 60,
+      windup: 0.13,
+      active: 0.1,
+      recover: 0.28,
+      hitbox: { x: 0.2, y: 0, w: 1.0, h: 0.7 },
+      sfx: 'hitLight',
+      poseId: 'slam',
+    },
+    brain: {
+      aggroRange: 13,
+      attackRange: 1.1,
+      moveSpeed: 3.2,
+      telegraphTime: 0.35,
+      retreatChance: 0.15,
+      attackCooldown: 1.8,
+      hops: true,
+    },
+    gold: 5,
+    drops: { slimeGoo: 1 },
+  },
+  {
+    id: 'frostGhost',
+    name: 'Frost Ghost',
+    builder: 'ghost',
+    weight: 55,
+    gravityScale: 0,
+    palette: { core: 0xdff6ff, glow: 0x8fd8f2, accent: 0x4fb8ff },
+    proportions: { height: 1.5, bulk: 1.0, headSize: 1.1 },
+    attack: {
+      id: 'frostGhostLunge',
+      damage: 10,
+      baseKb: 7.5,
+      kbGrowth: 0.11,
+      angleDeg: 40,
+      windup: 0.22,
+      active: 0.15,
+      recover: 0.38,
+      hitbox: { x: 0.7, y: 0.6, w: 1.2, h: 1.1 },
+      sfx: 'hitHeavy',
+      poseId: 'lunge',
+    },
+    brain: {
+      aggroRange: 20,
+      attackRange: 1.8,
+      moveSpeed: 3.4,
+      telegraphTime: 0.4,
+      retreatChance: 0.45,
+      attackCooldown: 2.0,
+      canFly: true,
+    },
+    gold: 14,
+    drops: { ghostEssence: 2 },
+  },
 ];
 
 export const BOSSES: readonly BossDef[] = [
@@ -241,6 +342,18 @@ export const BOSSES: readonly BossDef[] = [
     palette: { core: 0xd88a3c, glow: 0x9a5c22, accent: 0xffd94a },
     gold: 300,
     drops: { feather: 6, energyCore: 3 },
+  },
+  {
+    // The campaign's final challenge — tuned harder than every boss before it.
+    id: 'lavaGolem',
+    name: 'Lava Golem',
+    title: 'THE MOLTEN KING',
+    defeatThreshold: 340,
+    weight: 450,
+    scale: 3.0,
+    palette: { core: 0x3d3244, glow: 0xff6a2e, accent: 0xffd94a },
+    gold: 500,
+    drops: { energyCore: 5, slimeGoo: 6, boneShard: 4 },
   },
 ];
 

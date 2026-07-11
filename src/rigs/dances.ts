@@ -151,6 +151,7 @@ const sprinkler: Dance = {
 const DANCES: Readonly<Record<string, Dance>> = {
   volt: robot, comet: robot, kaze: ninja, grim: stomp, ace: hoedown,
   blaze: hype, nova: disco, shade: wave, titan: sprinkler,
+  rex: hype, frost: stomp,
 };
 
 /** Returns the fighter's approved dance at the shared, kid-friendly tempo. */

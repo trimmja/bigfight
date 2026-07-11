@@ -1,4 +1,5 @@
 import { SAVE_KEY } from '../config';
+import { LEVELS } from '../data/levels';
 import { SIDEKICKS } from '../data/sidekicks';
 import type { SaveData } from '../data/types';
 
@@ -83,7 +84,7 @@ function sanitize(save: SaveData): SaveData {
     typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
 
   save.gold = num(save.gold, 0, 0, 9_999_999);
-  save.levelsBeaten = Math.floor(num(save.levelsBeaten, 0, 0, 12));
+  save.levelsBeaten = Math.floor(num(save.levelsBeaten, 0, 0, LEVELS.length));
   for (const key of Object.keys(save.materials) as (keyof SaveData['materials'])[]) {
     save.materials[key] = Math.floor(num(save.materials[key], 0, 0, 9999));
   }

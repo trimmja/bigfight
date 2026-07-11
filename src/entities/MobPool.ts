@@ -20,11 +20,16 @@ import { Mob } from './Mob';
  * (slime → 2× slimeSmall on death), plus each boss's minion cap.
  */
 
-/** Mirrors each boss's requestMinion(id, cap, …) calls — keep in sync. */
+/**
+ * Mirrors each boss's requestMinion(id, cap, …) calls — keep in sync.
+ * Minions that split must ALSO list their split children here (the wave-based
+ * split math below never sees boss minions).
+ */
 const BOSS_MINIONS: Readonly<Record<string, Readonly<Record<string, number>>>> = {
   skeletonKing: { skeleton: 3 },
   giantGhost: {},
   giantEagle: { miniEagle: 4 },
+  lavaGolem: { magmaSlime: 2, magmaSlimeSmall: 4 },
 };
 
 export class MobPool {
@@ -36,22 +41,27 @@ export class MobPool {
   /** Compute per-enemyId pool caps for a level (see header). */
   static planFor(level: LevelDef): Map<string, number> {
     const caps = new Map<string, number>();
-    let maxSplitChildren = 0;
+    const maxSplitChildren = new Map<string, number>();
     for (const wave of level.waves) {
       const inWave = new Map<string, number>();
       for (const entry of wave.enemies) {
         inWave.set(entry.enemyId, (inWave.get(entry.enemyId) ?? 0) + entry.count);
       }
-      let waveSplitChildren = 0;
+      const waveSplitChildren = new Map<string, number>();
       for (const [id, count] of inWave) {
         if (count > (caps.get(id) ?? 0)) caps.set(id, count);
         const def = enemyById(id);
-        if (def.splitsInto) waveSplitChildren += count * def.splitsInto;
+        if (def.splitsInto) {
+          const childId = def.splitChildId ?? 'slimeSmall';
+          waveSplitChildren.set(childId, (waveSplitChildren.get(childId) ?? 0) + count * def.splitsInto);
+        }
       }
-      if (waveSplitChildren > maxSplitChildren) maxSplitChildren = waveSplitChildren;
+      for (const [childId, count] of waveSplitChildren) {
+        if (count > (maxSplitChildren.get(childId) ?? 0)) maxSplitChildren.set(childId, count);
+      }
     }
-    if (maxSplitChildren > 0) {
-      caps.set('slimeSmall', (caps.get('slimeSmall') ?? 0) + maxSplitChildren);
+    for (const [childId, count] of maxSplitChildren) {
+      caps.set(childId, (caps.get(childId) ?? 0) + count);
     }
     if (level.bossId) {
       const minions = BOSS_MINIONS[level.bossId] ?? {};

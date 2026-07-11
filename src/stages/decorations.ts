@@ -37,6 +37,12 @@ export function decorateStage(group: THREE.Group, def: StageDef): { dispose(): v
     case 'finale':
       decorateFinale(kit, def);
       break;
+    case 'volcano':
+      decorateVolcano(kit, def);
+      break;
+    case 'ice':
+      decorateIce(kit, def);
+      break;
   }
 
   return { dispose: () => kit.dispose() };
@@ -268,6 +274,84 @@ function decorateFinale(kit: DecorationKit, def: StageDef): void {
   for (let i = 0; i < 6; i += 1) {
     addBall(kit.root, crowdMats[i % crowdMats.length]!, 0.22, 0.22, 0.22, -9 + i * 3.6, -0.65 + (i % 2) * 0.12, -10.8);
   }
+}
+
+function decorateVolcano(kit: DecorationKit, def: StageDef): void {
+  const rockMat = kit.makeToon(mix(def.skyColor, 0x6a4a55, 0.55));
+  const darkRockMat = kit.makeToon(0x4a3644);
+  const lavaMat = kit.makeToon(def.glowColor, 0.9);
+  const emberMat = kit.makeToon(0xffd94a, 0.85);
+  const smokeMat = kit.makeToon(0x6a5a6e, 0.6);
+  const glowPoolMat = kit.makeToon(mix(def.glowColor, 0xffd94a, 0.3), 0.8);
+
+  // Big erupting volcano behind the stage.
+  addCone(kit.root, rockMat, 4.2, 7.5, -13.5, 0.4, -14.5);
+  addCone(kit.root, lavaMat, 1.3, 1.1, -13.5, 4.5, -14.3);
+  buildCloud(kit.root, smokeMat, -13.5, 6.4, -14.2, 1.1);
+  buildCloud(kit.root, smokeMat, -12.2, 7.6, -14.6, 0.8);
+  // Sister volcano on the right.
+  addCone(kit.root, darkRockMat, 3.4, 5.8, 13.2, 0.2, -14.8);
+  addCone(kit.root, lavaMat, 1.0, 0.9, 13.2, 3.4, -14.6);
+  buildCloud(kit.root, smokeMat, 13.2, 4.9, -14.4, 0.7);
+
+  // Lava pools + rising lava bubbles at the stage base.
+  addCylinder(kit.root, glowPoolMat, 2.2, 0.07, 0.5, -8.5, -1.0, -3.6);
+  addCylinder(kit.root, glowPoolMat, 1.6, 0.07, 0.42, 7.8, -0.95, -3.2);
+  addBall(kit.root, lavaMat, 0.26, 0.26, 0.26, -8.2, -0.4, -3.4);
+  addBall(kit.root, lavaMat, 0.18, 0.18, 0.18, -7.4, -0.1, -3.6);
+  addBall(kit.root, lavaMat, 0.2, 0.2, 0.2, 8.2, -0.3, -3.2);
+
+  // Obsidian spires and floating embers.
+  addCone(kit.root, darkRockMat, 0.6, 2.4, -11.2, -0.9, -6.2, 0, 0.12);
+  addCone(kit.root, darkRockMat, 0.5, 1.8, 10.6, -0.9, -5.8, 0, -0.14);
+  addCone(kit.root, darkRockMat, 0.4, 1.5, -3.5, -0.95, -6.5, 0, 0.08);
+  addBall(kit.root, emberMat, 0.14, 0.14, 0.14, -5.5, 3.2, -7.5);
+  addBall(kit.root, emberMat, 0.1, 0.1, 0.1, 2.2, 4.6, -8.8);
+  addBall(kit.root, emberMat, 0.12, 0.12, 0.12, 7.4, 2.8, -7.0);
+  addBall(kit.root, emberMat, 0.09, 0.09, 0.09, -1.8, 6.2, -9.4);
+}
+
+function decorateIce(kit: DecorationKit, def: StageDef): void {
+  const iceMat = kit.makeToon(mix(def.skyColor, WHITE, 0.4));
+  const deepIceMat = kit.makeToon(mix(def.glowColor, 0x4a7ab8, 0.4));
+  const snowMat = kit.makeToon(WHITE);
+  const crystalMat = kit.makeToon(mix(def.glowColor, WHITE, 0.25), 0.85);
+  const scarfMat = kit.makeToon(0xff6f91);
+  const auroraMats = [
+    kit.makeToon(0x7ee6a2, 0.4),
+    kit.makeToon(0x71d9ff, 0.4),
+    kit.makeToon(0xc49aff, 0.4),
+  ] as const;
+
+  // Frozen castle: two towers with cone roofs + a connecting wall.
+  for (const side of [-1, 1] as const) {
+    const x = side * 12.5;
+    addCylinder(kit.root, iceMat, 1.1, 5.6, 1.1, x, 1.6, -12.8);
+    addCylinder(kit.root, iceMat, 1.3, 0.5, 1.3, x, 4.5, -12.8);
+    addCone(kit.root, deepIceMat, 1.3, 2.2, x, 5.8, -12.8);
+    addBall(kit.root, snowMat, 0.2, 0.2, 0.2, x, 7.0, -12.8);
+  }
+  addBox(kit.root, iceMat, 22, 2.6, 0.8, 0, 0.2, -13.2);
+  for (let i = 0; i < 6; i += 1) {
+    addBox(kit.root, iceMat, 0.9, 0.7, 0.7, -10 + i * 4, 1.8, -13.2);
+  }
+
+  // Aurora ribbons arcing across the sky.
+  addHalfTorus(kit.root, auroraMats[0], 6.2, -2.0, 7.2, -14.5);
+  addHalfTorus(kit.root, auroraMats[1], 5.7, -2.0, 7.2, -14.4);
+  addHalfTorus(kit.root, auroraMats[2], 5.2, -2.0, 7.2, -14.3);
+
+  // Snowman greeter (Ryder-bait) + ice crystals + drifts.
+  addBall(kit.root, snowMat, 0.55, 0.5, 0.55, -10.8, -0.6, -4.2);
+  addBall(kit.root, snowMat, 0.4, 0.38, 0.4, -10.8, 0.1, -4.2);
+  addBall(kit.root, snowMat, 0.28, 0.27, 0.28, -10.8, 0.62, -4.2);
+  addCone(kit.root, scarfMat, 0.07, 0.3, -10.55, 0.62, -4.2, 0, -1.4);
+  addBox(kit.root, scarfMat, 0.5, 0.1, 0.12, -10.8, 0.38, -4.15);
+  addOcta(kit.root, crystalMat, 0.5, 0.9, 0.5, 4.2, -0.3, -5.5, 0.1, 0.2, 0.2);
+  addOcta(kit.root, crystalMat, 0.36, 0.66, 0.36, 5.1, -0.4, -5.2, -0.15, 0.1, -0.22);
+  addOcta(kit.root, crystalMat, 0.4, 0.75, 0.4, -4.6, 0.9, -8.6, 0.2, 0.3, 0.15);
+  addBall(kit.root, snowMat, 2.6, 0.4, 0.8, 9.5, -1.0, -3.0);
+  addBall(kit.root, snowMat, 2.0, 0.32, 0.7, -3.5, -1.05, -2.6);
 }
 
 function buildCloud(parent: THREE.Object3D, material: THREE.Material, x: number, y: number, z: number, scale: number): void {

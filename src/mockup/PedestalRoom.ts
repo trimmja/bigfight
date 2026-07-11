@@ -91,7 +91,7 @@ class Pedestal {
     this.rig?.dispose();
     this.rig = null;
     if (!characterId) return;
-    const rig = buildMockRig('C', characterId);
+    const rig = buildMockRig(characterId);
     rig.root.scale.setScalar(FIGHTER_SCALE);
     rig.root.position.y = 0.2;
     this.group.add(rig.root);

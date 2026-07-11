@@ -185,6 +185,71 @@ export const STAGES: readonly StageDef[] = [
     skyColor: 0xffb86e,
     glowColor: 0xff5a8a,
   },
+  {
+    // Climb-the-crater layout: a center step leading to two high rim
+    // platforms, so lava-arc projectiles have real lanes to threaten.
+    id: 'volcano',
+    name: 'Lava Volcano',
+    theme: 'volcano',
+    enclosed: false,
+    platforms: [
+      { x: 0, y: 0, w: 26, oneWay: false },
+      { x: 0, y: 3.6, w: 7, oneWay: true },
+      { x: -9, y: 5.8, w: 5, oneWay: true },
+      { x: 9, y: 5.8, w: 5, oneWay: true },
+    ],
+    blast: { left: -25, right: 25, top: 18, bottom: -10 },
+    playerSpawn: { x: -6, y: 0.5 },
+    versusSpawns: [
+      { x: -9, y: 0.5 },
+      { x: 9, y: 0.5 },
+      { x: -9, y: 6.3 },
+      { x: 9, y: 6.3 },
+    ],
+    enemySpawns: [
+      { x: 7, y: 0.5 },
+      { x: 0, y: 4.1 },
+      { x: -9, y: 6.3 },
+      { x: 9, y: 6.3 },
+      { x: -4, y: 0.5 },
+    ],
+    respawnPoint: { x: 0, y: 8 },
+    unlockedAtStart: false,
+    skyColor: 0xff9a66,
+    glowColor: 0xff5a2e,
+  },
+  {
+    // Staircase layout climbing left-to-right, like frozen castle ramparts.
+    id: 'icekingdom',
+    name: 'Ice Kingdom',
+    theme: 'ice',
+    enclosed: false,
+    platforms: [
+      { x: 0, y: 0, w: 24, oneWay: false },
+      { x: -8, y: 3.0, w: 5.5, oneWay: true },
+      { x: -1.5, y: 4.8, w: 5, oneWay: true },
+      { x: 6.5, y: 3.4, w: 6, oneWay: true },
+    ],
+    blast: { left: -24, right: 24, top: 18, bottom: -10 },
+    playerSpawn: { x: -6, y: 0.5 },
+    versusSpawns: [
+      { x: -8, y: 0.5 },
+      { x: 8, y: 0.5 },
+      { x: -8, y: 3.5 },
+      { x: 6.5, y: 3.9 },
+    ],
+    enemySpawns: [
+      { x: 6, y: 0.5 },
+      { x: -8, y: 3.5 },
+      { x: -1.5, y: 5.3 },
+      { x: 6.5, y: 3.9 },
+      { x: -3, y: 0.5 },
+    ],
+    respawnPoint: { x: 0, y: 8 },
+    unlockedAtStart: false,
+    skyColor: 0xa8d8ff,
+    glowColor: 0x7de0ff,
+  },
 ];
 
 /** Look up a stage by id; throws on unknown id. */

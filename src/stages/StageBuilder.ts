@@ -50,8 +50,11 @@ export function buildStage(def: StageDef, scene: THREE.Scene): BuiltStage {
   // ---- sky ----
   group.add(buildSky(def, materials, textures, geometries));
 
-  // ---- hills for depth ----
-  const hillColors = [0x9fe098, 0x7fcf8e, 0xbce8a8];
+  // ---- hills for depth (grassy by default; rocky/snowy for hot/cold themes) ----
+  const hillColors =
+    def.theme === 'volcano' ? [0x8a5a5f, 0x6f4a55, 0xa06a62]
+    : def.theme === 'ice' ? [0xe8f4ff, 0xcfe4fa, 0xf4faff]
+    : [0x9fe098, 0x7fcf8e, 0xbce8a8];
   for (let i = 0; i < 3; i += 1) {
     const hill = new THREE.Mesh(SPHERE, toon(hillColors[i % hillColors.length]!));
     const hw = 16 + i * 7;

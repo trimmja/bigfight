@@ -70,6 +70,12 @@ export function buildWeaponModel(weapon: WeaponDef): THREE.Group {
     case 'blackHoleOrb':
       buildBlackHoleOrb(group, mats, weapon.color);
       break;
+    case 'magmaCannon':
+      buildMagmaCannon(group, mats, weapon.color);
+      break;
+    case 'frostSaber':
+      buildFrostSaber(group, mats, weapon.color);
+      break;
     default:
       buildRustyPistol(group, mats);
       break;
@@ -168,6 +174,29 @@ function buildBlackHoleOrb(root: THREE.Group, mats: Mats, color: number): void {
   ring.position.y = -0.22;
   root.add(ring);
   attachGlow(root, color, 0.72, 0.62).position.set(0, -0.22, 0);
+}
+
+function buildMagmaCannon(root: THREE.Group, mats: Mats, color: number): void {
+  const barrel = addCylinder(root, mats.body, 0.26, 0.62, 0, -0.38, 0);
+  barrel.rotation.z = Math.PI / 2;
+  const mouth = addCylinder(root, mats.dark, 0.3, 0.1, 0, -0.72, 0);
+  mouth.rotation.z = Math.PI / 2;
+  addSphere(root, mats.glow, 0.2, 0.2, 0.2, 0, -0.72, 0);
+  addBox(root, mats.accent, 0.2, 0.14, 0.32, 0, -0.34, 0);
+  addBox(root, mats.dark, 0.13, 0.26, 0.13, 0, -0.06, 0.12, -0.2);
+  addSphere(root, mats.accent, 0.09, 0.09, 0.09, 0, -0.22, 0.18);
+  attachGlow(root, color, 0.55, 0.5).position.set(0, -0.78, 0);
+}
+
+function buildFrostSaber(root: THREE.Group, mats: Mats, color: number): void {
+  addBox(root, mats.glow, 0.1, 0.82, 0.05, 0, -0.46, 0);
+  addCone(root, mats.glow, 0.07, 0.2, 0, -0.94, 0, Math.PI);
+  addCone(root, mats.white, 0.05, 0.14, -0.09, -0.62, 0, Math.PI * 0.82);
+  addCone(root, mats.white, 0.05, 0.14, 0.09, -0.62, 0, -Math.PI * 0.82);
+  addBox(root, mats.accent, 0.4, 0.07, 0.09, 0, -0.05, 0);
+  addBox(root, mats.dark, 0.12, 0.26, 0.12, 0, 0.12, 0);
+  addSphere(root, mats.accent, 0.1, 0.1, 0.1, 0, 0.28, 0);
+  attachGlow(root, color, 0.6, 0.4).position.set(0, -0.5, 0);
 }
 
 function addBox(

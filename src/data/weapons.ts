@@ -1,7 +1,7 @@
 /**
  * BIG FIGHT — weapon catalog (design: Ryder).
  *
- * 12 weapons: 2 starters (empty recipe) + 10 craftables. The weapon button
+ * 14 weapons: 2 starters (empty recipe) + 12 craftables. The weapon button
  * fires `ability` on `cooldown`. Projectile weapons use a zeroed melee hitbox
  * and carry a ProjectileDef; melee weapons use a real hitbox.
  */
@@ -475,6 +475,92 @@ export const WEAPONS: readonly WeaponDef[] = [
     recipe: { energyCore: 5, ghostEssence: 6, feather: 4 },
     model: 'blackHoleOrb',
     color: 0xa86bff,
+  },
+  {
+    id: 'magmaCannon',
+    name: 'Magma Cannon',
+    tagline: 'Lob a lava ball. Watch it go SPLOOSH.',
+    category: 'gun',
+    ability: {
+      id: 'magmaCannonShot',
+      damage: 15,
+      baseKb: 10,
+      kbGrowth: 0.16,
+      angleDeg: 50,
+      windup: 0.16,
+      active: 0.06,
+      recover: 0.34,
+      hitbox: NO_HITBOX,
+      sfx: 'shoot',
+      poseId: 'shoot',
+      projectile: {
+        id: 'magmaCannonBlob',
+        speed: 12,
+        angleDeg: 30,
+        gravityScale: 1,
+        lifetime: 3,
+        radius: 0.34,
+        visual: 'orb',
+        color: 0xff6a2e,
+        explodeRadius: 2.6,
+        trailColor: 0xffa03c,
+      },
+    },
+    cooldown: 6,
+    recipe: { slimeGoo: 5, boneShard: 3, energyCore: 2 },
+    model: 'magmaCannon',
+    color: 0xff6a2e,
+  },
+  {
+    id: 'frostSaber',
+    name: 'Frost Saber',
+    tagline: 'Slice AND freeze. Coolest sword ever.',
+    category: 'melee',
+    ability: {
+      id: 'frostSaberSlash',
+      damage: 12,
+      baseKb: 9,
+      kbGrowth: 0.18,
+      angleDeg: 45,
+      windup: 0.1,
+      active: 0.08,
+      recover: 0.22,
+      hitbox: { x: 1.05, y: 0.9, w: 1.6, h: 1.25 },
+      sfx: 'slash',
+      poseId: 'slash',
+      freezeTime: 1.2,
+    },
+    cooldown: 5,
+    recipe: { ghostEssence: 4, feather: 2, boneShard: 2 },
+    model: 'frostSaber',
+    color: 0xbfe9ff,
+    slashWave: {
+      projectile: {
+        id: 'frostSaberWave',
+        speed: 12,
+        angleDeg: 0,
+        gravityScale: 0,
+        lifetime: 0.32,
+        radius: 0.62,
+        visual: 'slash',
+        color: 0xbfe9ff,
+        piercing: true,
+      },
+      attack: {
+        id: 'frostSaberWaveHit',
+        damage: 5,
+        baseKb: 4.5,
+        kbGrowth: 0.08,
+        angleDeg: 30,
+        windup: 0,
+        active: 0,
+        recover: 0,
+        hitbox: { x: 0, y: 0, w: 0, h: 0 },
+        sfx: 'slash',
+        poseId: 'slash',
+        freezeTime: 0.6,
+      },
+    },
   },
 ];
 
