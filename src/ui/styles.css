@@ -963,18 +963,19 @@ html, body {
   .bf-online-setting select { min-height: 26px; }
 }
 
+/* Narrow phones: compact real information, never hide it — the room tag
+   carries the PRIVATE room code, and row meta says what you're joining. */
 @media (max-width: 720px) {
   .bf-online-header { grid-template-columns: auto 1fr auto; }
   .bf-online-chip { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bf-online-browser { grid-template-columns: 1.2fr 0.9fr; gap: 8px; }
   .bf-online-panel { padding: 9px; }
-  .bf-online-join > p { display: none; }
-  .bf-online-room-meta { display: none; }
-  .bf-online-room-join { grid-row: 1; }
+  .bf-online-join > p { display: none; } /* pure hint text — safe to shed */
+  .bf-online-room-meta { font-size: 9px; }
   .bf-online-host-row { grid-template-columns: 1fr; }
-  .bf-online-room-tag { display: none; }
+  .bf-online-room-tag { max-width: 60vw; padding: 5px 9px; font-size: 8px; }
   .bf-online-waiting-controls { width: 97vw; }
-  .bf-online-loadout { display: none; }
+  .bf-online-loadout { display: none; } /* your pedestal already shows it */
   .bf-online-settings { min-width: 205px; }
 }
 

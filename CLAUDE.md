@@ -34,6 +34,18 @@ Visual redesigns go mockup-first: build options in the Character Lab (`/mockup.h
 their picks, THEN port to the game. Don't restyle live game code on taste-guesses.
 
 ## Design decisions that aren't obvious from code
+- Menu design language (2026-07-10, Jacob-approved): logo-style outlined titles everywhere;
+  selects are full-screen Smash-style 20-slot roster boards (`src/ui/rosterGrid.ts`); tile
+  portraits are photographed from the live 3D models at runtime (`src/ui/portraits.ts`) so
+  art can never drift. Locked = dark silhouette + "?", future slots = plain "?" tiles.
+- Online loadout offers ONLY save-unlocked fighters/weapons (same progression fns as campaign).
+- Responsive rule: on phones COMPACT information, never `display:none` it. Hiding "extras"
+  bit us twice in one night (stat bars gone on mobile; private-room CODE invisible on small
+  iPhones). Verify with a ≤700px-wide window before shipping media queries.
+- History: main was force-replaced 2026-07-10 with the selective rebuild (brother's laggier
+  online build had drifted from Ryder's design). His 21 commits live on
+  `archive/online-v1-brother` — cherry-pick from there (dances, abilities, lobby ideas)
+  instead of rebuilding.
 - Losing keeps all loot (Ryder's rule) — never add loss penalties.
 - Melee weapons: point-blank (blade) must out-damage the ranged effect (wave).
 - Bosses can't be ring-out KO'd: knocking one off-stage = 8% health penalty + sky respawn.
