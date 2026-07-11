@@ -402,10 +402,15 @@ export class OnlineLobbyScreen implements Screen {
     el('span', '', loadout).textContent = 'YOUR LOADOUT';
     el('strong', '', loadout).textContent = `${characterName(this.selectedCharacter)} · ${weaponName(this.selectedWeapon)}`;
     button('DANCE', () => this.session.setPlayer({ dance: true }), 'bf-online-action bf-online-dance', bottom);
-    button(local?.ready ? 'NOT READY' : 'READY UP', () => {
+    // A stateful check, not an action toggle: the label always describes YOU
+    // ("READY?" unchecked / "READY!" checked) — never the opposite action.
+    const readyBtn = button('', () => {
       if (!local?.ready && this.bounceIfFighterTaken()) return;
       this.session.setPlayer({ ready: !local?.ready });
-    }, `bf-online-action ${local?.ready ? 'bf-online-ready-on' : 'bf-online-primary'}`, bottom);
+    }, `bf-online-action bf-online-ready-toggle ${local?.ready ? 'bf-online-ready-on' : 'bf-online-primary'}`, bottom);
+    const check = el('span', 'bf-ready-check', readyBtn);
+    if (local?.ready) check.textContent = '✓';
+    readyBtn.append(local?.ready ? 'READY!' : 'READY?');
     button('CHANGE', () => {
       // Back to the roster releases your claim so others can grab the fighter.
       this.session.setPlayer({ claimed: false, ready: false });

@@ -993,6 +993,32 @@ html, body {
 .bf-online-loadout strong { max-width: 210px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .bf-online-dance { background: linear-gradient(#ae78ff, #7750d2); }
 .bf-online-ready-on { background: linear-gradient(#42de72, #20a94d); }
+/* Ready checkbox button: constant label, the box carries the state. */
+.bf-online-ready-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+.bf-ready-check {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  border: 3px solid #ffffff;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  background: rgba(9, 16, 40, 0.25);
+}
+.bf-online-ready-on .bf-ready-check {
+  background: #ffffff;
+  color: #20a94d;
+  animation: bf-card-pop 0.18s ease backwards;
+}
 .bf-online-settings { flex: 1; min-width: 245px; display: grid; grid-template-columns: repeat(3, minmax(70px, 1fr)); gap: 5px; }
 .bf-online-setting { min-width: 0; display: flex; flex-direction: column; gap: 2px; color: var(--text-dim); font-size: 7px; font-weight: 900; letter-spacing: 0.8px; }
 .bf-online-setting select {
