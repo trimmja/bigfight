@@ -140,6 +140,43 @@ test('real websocket clients can discover, join, and resume the same room', asyn
   assert.equal((await fetch(`http://127.0.0.1:${launched.port}/%ZZ`)).status, 400);
 });
 
+test('resuming while the other player is disconnected keeps everyone informed, not stranded', async (t) => {
+  const launched = await launchServer();
+  t.after(() => stopServer(launched.child));
+
+  const host = await connect(launched.port, 'release-test');
+  t.after(() => host.client.socket.close());
+  host.client.send({ t: 'createRoom', nickname: 'Alpha', visibility: 'public' });
+  const created = await host.client.waitFor((message): message is RoomMessage => message.t === 'room' && message.room.players.length === 1);
+
+  const guest = await connect(launched.port, 'release-test');
+  t.after(() => guest.client.socket.close());
+  guest.client.send({ t: 'joinRoom', nickname: 'Bravo', roomId: created.room.id });
+  host.client.send({ t: 'setPlayer', characterId: 'volt', ready: true });
+  guest.client.send({ t: 'setPlayer', characterId: 'kaze', ready: true });
+  await host.client.waitFor((message): message is RoomMessage => message.t === 'room' && message.room.players.length === 2 && message.room.players.every((player) => player.ready));
+  host.client.send({ t: 'startMatch' });
+  await host.client.waitFor((message) => message.t === 'matchStart', 2_000);
+
+  // Host opens the pause menu, then the guest's connection dies while paused.
+  host.client.send({ t: 'pauseMatch' });
+  await host.client.waitFor((message) => message.t === 'matchPaused' && message.reason === 'menu');
+  guest.client.socket.close();
+  await host.client.waitFor((message): message is RoomMessage => message.t === 'room' && message.room.players.some((player) => !player.connected), 3_000);
+
+  // RESUME cannot complete — the host must get a connection pause, not silence.
+  host.client.send({ t: 'resumeMatch' });
+  const stillPaused = await host.client.waitFor(
+    (message): message is Extract<S2C, { t: 'matchPaused' }> => message.t === 'matchPaused' && message.reason === 'connection',
+  );
+  assert.equal(stillPaused.playerId, guest.playerId);
+
+  // The guest reconnecting finally releases the match for both players.
+  const rejoined = await connect(launched.port, 'release-test', guest.resumeToken);
+  t.after(() => rejoined.client.socket.close());
+  await host.client.waitFor((message) => message.t === 'matchResumed', 3_000);
+});
+
 async function connect(port: number, releaseId: string, resumeToken?: string): Promise<{
   client: TestClient;
   playerId: string;

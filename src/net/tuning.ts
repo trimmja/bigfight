@@ -45,5 +45,13 @@ export function chooseNetworkTuning(peers: readonly PeerStats[]): NetworkTuning 
     rollbackWindowFrames = Math.min(28, rollbackWindowFrames + 3);
   }
 
+  // The hybrid transport can silently fall back to relay MID-match while this
+  // tuning stays frozen. A window sized for a perfect P2P link (12f ≈ 200ms)
+  // exhausts on the first Wi-Fi hiccup; floor it so a route wobble stalls
+  // gracefully instead. Window size costs snapshot memory, not input latency.
+  if (path !== 'local') {
+    rollbackWindowFrames = Math.max(rollbackWindowFrames, 18);
+  }
+
   return { inputDelayFrames, rollbackWindowFrames, effectiveOneWayMs, path };
 }

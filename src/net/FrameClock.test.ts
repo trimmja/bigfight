@@ -17,12 +17,14 @@ test('network tuning stays responsive for direct links and cushions relay links'
   const direct = chooseNetworkTuning([{ rttMs: 24, jitterMs: 2, path: 'p2p', connected: true }]);
   assert.deepEqual(direct, {
     inputDelayFrames: 2,
-    rollbackWindowFrames: 12,
+    // Input delay stays snappy on P2P, but the window is floored at 18f: the
+    // hybrid transport can fall back to relay mid-match with tuning frozen.
+    rollbackWindowFrames: 18,
     effectiveOneWayMs: 16,
     path: 'p2p',
   });
   const relay = chooseNetworkTuning([{ rttMs: 24, jitterMs: 2, path: 'relay', connected: true }]);
   assert.equal(relay.inputDelayFrames, 3);
-  assert.equal(relay.rollbackWindowFrames, 15);
+  assert.equal(relay.rollbackWindowFrames, 18);
   assert.equal(relay.path, 'relay');
 });

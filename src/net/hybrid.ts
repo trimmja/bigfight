@@ -10,10 +10,26 @@ export interface HybridMeshOptions {
   iceServers?: readonly RTCIceServer[];
 }
 
+/** Direct must stay connected this long before we route on it (no flapping). */
+const DIRECT_STABLE_MS = 1_500;
+/** After any route switch, mirror sends on the old route for this long. */
+const ROUTE_OVERLAP_MS = 1_000;
+
+interface RouteState {
+  onDirect: boolean;
+  /** When the direct link last (re)connected; 0 while down. */
+  directSince: number;
+  /** When the active route last changed; 0 = never switched. */
+  switchedAt: number;
+}
+
 /**
- * Per-peer route selector. The match works immediately over Fly relay, then
- * switches each peer to direct WebRTC as soon as both data channels open.
- * Rollback input redundancy makes the one-packet route transition harmless.
+ * Per-peer route selector with hysteresis. The match works immediately over
+ * Fly relay; a peer is promoted to direct WebRTC only after its data channels
+ * have been open for DIRECT_STABLE_MS, and demoted the moment they drop.
+ * Around every switch, packets go out on BOTH routes for ROUTE_OVERLAP_MS —
+ * rollback input packets are redundant and idempotent, so duplicates are
+ * harmless and a single bad handoff can't open an input gap.
  */
 export class HybridMeshTransport implements NetTransport {
   readonly localSlot: PeerSlot;
@@ -21,6 +37,7 @@ export class HybridMeshTransport implements NetTransport {
 
   private readonly direct: WebRtcMeshTransport;
   private readonly relay: WsRelayTransport;
+  private readonly routes = new Map<PeerSlot, RouteState>();
   private messageCallback: ((from: PeerSlot, channel: NetChannel, data: Uint8Array) => void) | null = null;
   private peerCallback: ((slot: PeerSlot, event: 'connected' | 'lost' | 'left') => void) | null = null;
 
@@ -37,14 +54,26 @@ export class HybridMeshTransport implements NetTransport {
     this.direct.onMessage((from, channel, data) => this.messageCallback?.(from, channel, data));
     this.relay.onMessage((from, channel, data) => this.messageCallback?.(from, channel, data));
     this.direct.onPeerChange((slot, event) => {
-      if (event === 'connected') this.peerCallback?.(slot, 'connected');
-      else if (!this.relay.stats(slot).connected) this.peerCallback?.(slot, event);
+      const route = this.routeState(slot);
+      if (event === 'connected') {
+        route.directSince = Date.now();
+        this.peerCallback?.(slot, 'connected');
+      } else {
+        route.directSince = 0;
+        if (!this.relay.stats(slot).connected) this.peerCallback?.(slot, event);
+      }
     });
   }
 
   send(to: PeerSlot, channel: NetChannel, data: Uint8Array): void {
-    const route = this.direct.stats(to).connected ? this.direct : this.relay;
-    route.send(to, channel, data);
+    const now = Date.now();
+    const route = this.updateRoute(to, now);
+    const primary = route.onDirect ? this.direct : this.relay;
+    primary.send(to, channel, data);
+    if (route.switchedAt > 0 && now - route.switchedAt < ROUTE_OVERLAP_MS) {
+      const mirror = route.onDirect ? this.relay : this.directIfUp(to);
+      mirror?.send(to, channel, data);
+    }
   }
 
   broadcast(channel: NetChannel, data: Uint8Array): void {
@@ -60,8 +89,8 @@ export class HybridMeshTransport implements NetTransport {
   }
 
   stats(slot: PeerSlot): PeerStats {
-    const direct = this.direct.stats(slot);
-    return direct.connected ? direct : this.relay.stats(slot);
+    const route = this.updateRoute(slot, Date.now());
+    return route.onDirect ? this.direct.stats(slot) : this.relay.stats(slot);
   }
 
   /** Direct is preferred but relay makes a false result playable, not fatal. */
@@ -73,5 +102,40 @@ export class HybridMeshTransport implements NetTransport {
     this.direct.close();
     this.relay.close();
     this.messageCallback = null;
+  }
+
+  private routeState(slot: PeerSlot): RouteState {
+    let route = this.routes.get(slot);
+    if (!route) {
+      route = { onDirect: false, directSince: 0, switchedAt: 0 };
+      this.routes.set(slot, route);
+    }
+    return route;
+  }
+
+  /** Apply hysteresis: promote after stability, demote immediately on drop. */
+  private updateRoute(slot: PeerSlot, now: number): RouteState {
+    const route = this.routeState(slot);
+    const directUp = this.direct.stats(slot).connected;
+    if (!directUp) {
+      route.directSince = 0;
+      if (route.onDirect) {
+        route.onDirect = false;
+        route.switchedAt = now;
+        console.info(`[net] peer ${slot} route: direct→relay`);
+      }
+    } else {
+      if (route.directSince === 0) route.directSince = now;
+      if (!route.onDirect && now - route.directSince >= DIRECT_STABLE_MS) {
+        route.onDirect = true;
+        route.switchedAt = now;
+        console.info(`[net] peer ${slot} route: relay→direct`);
+      }
+    }
+    return route;
+  }
+
+  private directIfUp(slot: PeerSlot): WebRtcMeshTransport | null {
+    return this.direct.stats(slot).connected ? this.direct : null;
   }
 }

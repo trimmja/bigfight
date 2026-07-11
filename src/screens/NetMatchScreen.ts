@@ -3,7 +3,8 @@ import type { Game } from '../Game';
 import type { MatchConfig } from '../match/MatchConfig';
 import { FrameClock } from '../net/FrameClock';
 import { NetIntentSource } from '../net/inputCodec';
-import { RollbackSession } from '../net/RollbackSession';
+import { MatchPacer, type PacerStats } from '../net/pacing';
+import { RollbackSession, type RollbackStats } from '../net/RollbackSession';
 import { simPhase } from '../net/simPhase';
 import type { NetTransport } from '../net/transport';
 import { chooseNetworkTuning, type NetworkTuning } from '../net/tuning';
@@ -36,16 +37,25 @@ export interface NetMatchScreenOptions {
  * inner screen renders/behaves exactly like solo — it just eats NetIntentSource
  * inputs the session decodes from the wire.
  */
+export interface NetDiagnostics {
+  rollback: RollbackStats;
+  pacer: PacerStats;
+  peers: { slot: number; path: string; rttMs: number; jitterMs: number; connected: boolean }[];
+}
+
 export class NetMatchScreen implements Screen {
   private inner: GameplayScreen | null = null;
   private session: RollbackSession | null = null;
   private readonly clock = new FrameClock();
+  private readonly pacer = new MatchPacer();
   private reconnectPaused = false;
   private game: Game | null = null;
   private menuRoot: HTMLElement | null = null;
   private bannerRoot: HTMLElement | null = null;
+  private stallBannerActive = false;
   private menuButtons: HTMLButtonElement[] = [];
   private locallyEnded = false;
+  private nextLogFrame = 0;
 
   constructor(private readonly opts: NetMatchScreenOptions) {}
 
@@ -111,24 +121,56 @@ export class NetMatchScreen implements Screen {
         this.opts.actions.pauseMatch();
       }
     }
-    // Catch up toward the shared clock (bounded — beyond that we stall and
-    // timesync handles it), but always pump at least one step attempt.
     if (this.reconnectPaused) {
       session.flush();
       return;
     }
-    const target = this.clock.targetFrame(this.opts.nowMs?.() ?? Date.now());
-    const behind = Math.max(0, target - session.frame);
-    session.pump(Math.min(4, Math.max(1, behind)));
+    // Follow the shared clock. The pacer bounds catch-up speed and DROPS big
+    // backlogs by shifting the clock — a stall never becomes a fast-forward.
+    const now = this.opts.nowMs?.() ?? Date.now();
+    const frameBefore = session.frame;
+    const steps = this.pacer.plan(this.clock, now, frameBefore);
+    if (steps > 0) session.pump(steps);
+    else session.flush();
+    this.pacer.observe(steps, frameBefore, session.frame);
+    this.syncStallBanner();
+    this.logDiagnostics(session);
   }
 
   render(game: Game, alpha: number): void {
+    this.pacer.onRender();
     this.inner?.render(game, alpha);
   }
 
-  /** Live session stats for the net HUD / lobby debug. */
-  get stats(): RollbackSession['stats'] | null {
-    return this.session?.stats ?? null;
+  /** Live net diagnostics for the HUD / lobby debug / console. */
+  get stats(): NetDiagnostics | null {
+    const session = this.session;
+    if (!session) return null;
+    return {
+      rollback: session.stats,
+      pacer: this.pacer.stats,
+      peers: this.opts.transport.peerSlots.map((slot) => {
+        const peer = this.opts.transport.stats(slot);
+        return { slot, path: peer.path, rttMs: peer.rttMs, jitterMs: peer.jitterMs, connected: peer.connected };
+      }),
+    };
+  }
+
+  /** ~Every 10s: one console line a phone playtest can be diagnosed from. */
+  private logDiagnostics(session: RollbackSession): void {
+    if (session.frame < this.nextLogFrame) return;
+    this.nextLogFrame = session.frame + 600;
+    const s = session.stats;
+    const peers = this.opts.transport.peerSlots
+      .map((slot) => {
+        const peer = this.opts.transport.stats(slot);
+        return `p${slot}:${peer.path}${peer.connected ? '' : '!'} ${Math.round(peer.rttMs)}ms±${Math.round(peer.jitterMs)}`;
+      })
+      .join(' ');
+    console.info(
+      `[net] f=${s.frame} conf=${s.confirmedFrame} ${peers} rollbacks=${s.rollbacks} `
+      + `resim=${s.resimmedFrames} stalls=${s.stalledFrames} shifted=${this.pacer.stats.clockShiftFrames}f desyncs=${s.desyncs}`,
+    );
   }
 
   /** Room server calls this after a paused player resumes their session. */
@@ -157,6 +199,9 @@ export class NetMatchScreen implements Screen {
       this.removeBanner();
       return;
     }
+    // A connection pause supersedes the local pause menu (e.g. RESUME was
+    // pressed while the other player is disconnected — the room stays paused).
+    if (info.reason === 'connection') this.removeMenu();
     const subtitle = info.reason === 'menu'
       ? `${info.nickname} paused the fight`
       : info.isLocal
@@ -211,11 +256,37 @@ export class NetMatchScreen implements Screen {
   private resumeFromMenu(): void {
     if (!this.menuRoot || !this.opts.actions) return;
     if (this.menuButtons.some((menuButton) => menuButton.disabled)) return;
-    this.removeMenu();
+    // Keep the menu up until the server confirms (onMatchResumed removes it):
+    // if the other player is disconnected the room STAYS paused, and removing
+    // the menu now would strand this player on a frozen fight with no UI.
+    const [resume, sound] = this.menuButtons;
+    if (resume) {
+      resume.disabled = true;
+      resume.textContent = 'RESUMING…';
+    }
+    if (sound) sound.disabled = true;
+    // END GAME stays enabled — always an exit even if the resume never lands.
     this.opts.actions.resumeMatch();
   }
 
-  private showBanner(subtitle: string): void {
+  /** Connection-hiccup banner while the rollback window is exhausted. */
+  private syncStallBanner(): void {
+    const stalled = this.pacer.connectionStalled;
+    if (stalled && !this.stallBannerActive && !this.menuRoot && !this.bannerRoot) {
+      this.showBanner('Connection hiccup — hang tight!', 'HOLD ON!');
+      this.stallBannerActive = true;
+      console.info(`[net] stall: waiting for remote inputs at frame ${this.session?.frame}`);
+    } else if (!stalled && this.stallBannerActive) {
+      this.stallBannerActive = false;
+      this.removeBanner();
+      console.info(
+        `[net] stall recovered at frame ${this.session?.frame} `
+        + `(clock shifted ${this.pacer.stats.clockShiftFrames}f total instead of fast-forwarding)`,
+      );
+    }
+  }
+
+  private showBanner(subtitle: string, titleText = 'PAUSED'): void {
     const game = this.game;
     if (!game) return;
     this.removeBanner();
@@ -224,7 +295,7 @@ export class NetMatchScreen implements Screen {
     this.bannerRoot = root;
     const panel = el('div', 'bf-panel', root);
     const title = el('h1', 'bf-title', panel);
-    title.textContent = 'PAUSED';
+    title.textContent = titleText;
     title.style.fontSize = 'clamp(42px, 9vw, 72px)';
     const copy = el('p', '', panel);
     copy.textContent = subtitle;
@@ -243,6 +314,7 @@ export class NetMatchScreen implements Screen {
   private removeBanner(): void {
     this.bannerRoot?.remove();
     this.bannerRoot = null;
+    this.stallBannerActive = false;
     this.restoreTouchControlsIfClear();
   }
 

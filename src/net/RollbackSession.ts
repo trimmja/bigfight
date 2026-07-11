@@ -36,6 +36,8 @@ const MSG_HASH = 0x03;
 const MSG_INPUT_REQUEST = 0x04;
 const MSG_INPUT_REPAIR = 0x05;
 const REPAIR_CHUNK_FRAMES = 200;
+/** Consecutive stalled pumps before (re)requesting reliable input repair. */
+const STALL_REPAIR_INTERVAL = 30;
 
 export interface RollbackStats {
   frame: number;
@@ -92,6 +94,7 @@ export class RollbackSession {
   private readonly snapshotFrames: number[] = [];
 
   private rollbackTo = -1;
+  private stalledStreak = 0;
   private lastHashedFrame = -1;
   private readonly pendingHashes = new Map<number, Map<number, number>>();
 
@@ -197,7 +200,17 @@ export class RollbackSession {
       this.frame += 1;
       steps += 1;
     }
-    if (steps === 0) this.stats.stalledFrames += 1;
+    if (steps === 0) {
+      this.stats.stalledFrames += 1;
+      this.stalledStreak += 1;
+      // Peers simulate up to a full rollback window INTO an outage, which is
+      // deeper than the redundant packet tail reaches back. A stall that long
+      // leaves a hole ordinary resends never refill — keep asking every peer
+      // for a reliable refill until the sim moves again.
+      if (this.stalledStreak % STALL_REPAIR_INTERVAL === 0) this.repairConnections();
+    } else {
+      this.stalledStreak = 0;
+    }
 
     // 4. Confirmed-frame hashes (host compares).
     this.exchangeHashes();

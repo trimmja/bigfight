@@ -176,6 +176,20 @@ function handleControl(connection: Connection, raw: RawData): void {
         const { room, resumed } = rooms.resumeMatch(connection.playerId);
         publishRoom(room);
         if (resumed) publishToRoom(room, { t: 'matchResumed', ...resumed });
+        else {
+          // The menu pause lifted but someone is disconnected, so the room
+          // stays paused. Without this event the resuming player is stranded
+          // on a frozen fight with no banner and no menu.
+          const waiting = room.players.find((player) => !player.connected);
+          if (waiting && room.pauseStartedAt !== null) {
+            publishToRoom(room, {
+              t: 'matchPaused',
+              playerId: waiting.playerId,
+              pausedAt: room.pauseStartedAt,
+              reason: 'connection',
+            });
+          }
+        }
         return;
       }
       case 'forfeitMatch': {
