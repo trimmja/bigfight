@@ -1,4 +1,5 @@
 import type { RoomPlayer, RoomState, RoomVisibility } from '../../../shared/protocol';
+import { events } from '../../core/events';
 import { CHARACTERS, characterById } from '../../data/characters';
 import { LEVELS } from '../../data/levels';
 import { STAGES } from '../../data/stages';
@@ -43,6 +44,8 @@ export class OnlineLobbyScreen implements Screen {
   private selectedWeapon = 'rustyPistol';
   private roomId: string | null = null;
   private notice: string | null = null;
+  private toastEl: HTMLElement | null = null;
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private unsubscribeState: (() => void) | null = null;
   private unsubscribeMatch: (() => void) | null = null;
   private renderedSignature = '';
@@ -70,6 +73,9 @@ export class OnlineLobbyScreen implements Screen {
   }
 
   exit(_game: Game): void {
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = null;
+    this.toastEl = null;
     this.unsubscribeState?.();
     this.unsubscribeState = null;
     this.unsubscribeMatch?.();
@@ -275,6 +281,7 @@ export class OnlineLobbyScreen implements Screen {
       capacity: ROSTER_CAPACITY,
       selectedId: this.selectedCharacter,
       onSelect: (id) => this.pickCharacter(id),
+      onSelectTaken: (id) => this.showTakenToast(id),
     });
 
     const bar = el('div', 'bf-roster-bar', main);
@@ -470,6 +477,25 @@ export class OnlineLobbyScreen implements Screen {
     const tag = el('div', 'bf-online-room-tag', parent);
     const visibility = room.visibility === 'private' ? `PRIVATE · CODE ${room.code}` : 'OPEN GAME';
     tag.textContent = `${visibility} · ${room.players.length} / 4 · ${connectionCopy(state.connection)}`;
+  }
+
+  /** Quick self-dismissing popup for taps on an already-picked fighter. */
+  private showTakenToast(id: string): void {
+    const root = this.root;
+    if (!root) return;
+    const holder = this.claimedByOthers().get(id);
+    events.emit('ui', { kind: 'error' });
+    this.toastEl?.remove();
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    const toast = el('div', 'bf-online-toast', root);
+    toast.textContent = holder
+      ? `${holder.nickname.toUpperCase()} ALREADY PICKED ${characterName(id)}!`
+      : `${characterName(id)} IS ALREADY PICKED!`;
+    this.toastEl = toast;
+    this.toastTimer = setTimeout(() => {
+      toast.remove();
+      if (this.toastEl === toast) this.toastEl = null;
+    }, 1800);
   }
 
   private pickCharacter(id: string): void {

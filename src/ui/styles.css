@@ -667,6 +667,39 @@ html, body {
 .bf-tile-taken { cursor: default; }
 .bf-tile-taken .bf-tile-face { filter: saturate(0.35) brightness(0.55); }
 .bf-tile-taken .bf-tile-name { color: rgba(255, 255, 255, 0.75); }
+.bf-tile-taken:hover { transform: none; }
+.bf-tile-taken:active { transform: none; }
+/* Denied tap: the tile shakes its head. */
+.bf-tile-shake { animation: bf-tile-shake 0.3s ease; }
+@keyframes bf-tile-shake {
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+}
+/* Quick self-dismissing popup (fighter already picked). */
+.bf-online-toast {
+  position: absolute;
+  z-index: 9;
+  top: calc(var(--safe-t) + 104px);
+  left: 50%;
+  /* `translate` (not transform) so the pop animation can't clobber centering. */
+  translate: -50% 0;
+  max-width: min(88vw, 560px);
+  padding: 9px 20px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: rgba(30, 42, 74, 0.95);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 0 rgba(30, 42, 74, 0.3);
+  pointer-events: none;
+  animation: bf-card-pop 0.18s ease backwards;
+}
 /* Friendly amber heads-up (someone locked your fighter) — not an error. */
 .bf-online-notice {
   background: var(--neon-yellow);

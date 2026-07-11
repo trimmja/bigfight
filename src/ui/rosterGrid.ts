@@ -35,6 +35,8 @@ export function buildRosterGrid(
     capacity: number;
     selectedId: string | null;
     onSelect: (id: string) => void;
+    /** Tap on a taken tile — the tile shakes; use this to explain why. */
+    onSelectTaken?: (id: string) => void;
   },
 ): RosterGrid {
   const root = el('div', 'bf-roster-grid', parent);
@@ -50,7 +52,9 @@ export function buildRosterGrid(
     tile.type = 'button';
     if (!slot.locked) tile.style.setProperty('--card', slot.color);
     if (slot.locked && slot.lockHint) tile.title = slot.lockHint;
-    tile.disabled = slot.locked || taken;
+    // Taken tiles stay tappable so a tap can explain itself (shake + toast).
+    tile.disabled = slot.locked;
+    if (taken) tile.setAttribute('aria-disabled', 'true');
     const portrait = el('span', 'bf-tile-portrait', tile);
     const face = el('img', 'bf-tile-face', portrait);
     face.src = slot.portrait;
@@ -68,6 +72,14 @@ export function buildRosterGrid(
     }
     el('span', 'bf-tile-name', tile).textContent = slot.locked ? '???' : slot.name.toUpperCase();
     if (!slot.locked && !taken) tile.addEventListener('click', () => opts.onSelect(slot.id));
+    else if (taken) {
+      tile.addEventListener('click', () => {
+        tile.classList.remove('bf-tile-shake');
+        void tile.offsetWidth; // restart the animation on rapid taps
+        tile.classList.add('bf-tile-shake');
+        opts.onSelectTaken?.(slot.id);
+      });
+    }
     tiles.set(slot.id, tile);
   }
 
