@@ -33,7 +33,9 @@ try {
 
   const guest = await makePlayer('GUEST');
   await guest.page.locator('.bf-online-room-row').first().click();
-  await guest.page.getByText('KAZE', { exact: true }).click();
+  // Role-scoped: the roster-bar heading can also read KAZE (the guest's
+  // highlight auto-slides off the host's claimed fighter).
+  await guest.page.getByRole('button', { name: 'KAZE', exact: true }).click();
   await guest.page.getByText('PICK WEAPON ▶', { exact: true }).click();
   await guest.page.getByText('PRACTICE SWORD', { exact: true }).click();
   await guest.page.getByText('LOCK IN ▶', { exact: true }).click();
