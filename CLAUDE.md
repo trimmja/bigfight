@@ -23,6 +23,9 @@ spec; when a "bug report" describes intended-but-confusing behavior, fix the *co
 - Test runs pollute real state: the dev tab shares localStorage (`bigfight_save_v1`) and live
   waves/crates interfere with measurements (mobs wander, powerup crates refresh timers, players
   hammer themselves off cliffs). Park/freeze mobs for controlled tests; reset the save after.
+  All-unlocked testing: back up `bigfight_save_v1` to another localStorage key, write a save
+  with `levelsBeaten: 15` + all weapon ids in `craftedWeapons` + shade/titan in
+  `purchasedCharacters`, then RELOAD (an open game tab overwrites edits from memory).
 - Jacob often playtests the dev tab/phone while I work — don't fight him for the browser, and
   every file save hot-reloads his session.
 - Pose/animation work: never guess rotation signs — measure world positions or render a
@@ -47,6 +50,10 @@ their picks, THEN port to the game. Don't restyle live game code on taste-guesse
   `archive/online-v1-brother` — cherry-pick from there (dances, abilities, lobby ideas)
   instead of rebuilding.
 - Losing keeps all loot (Ryder's rule) — never add loss penalties.
+- Campaign bosses escalate: each NEW boss must be the hardest yet (Jacob 2026-07-10);
+  Lava Golem (L16) is the current ceiling. Hard = pace/damage/variety, never unclear telegraphs.
+- New fighters debut in the Character Lab dropdown flagged "★ NEW" for family sign-off,
+  THEN port to `characterBuilders.ts` (comet/rex/frost precedent).
 - Melee weapons: point-blank (blade) must out-damage the ranged effect (wave).
 - Bosses can't be ring-out KO'd: knocking one off-stage = 8% health penalty + sky respawn.
 - Walk-off stages (cavern, ghostship) are intentional — Smash walk-off style, side ring-outs.
