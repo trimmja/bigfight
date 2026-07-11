@@ -1,7 +1,7 @@
 /**
  * BIG FIGHT — playable character roster (design: Ryder).
  *
- * 8 fighters. Stats follow the archetype spread: speed 6–10, power 0.9–1.15,
+ * 9 fighters. Stats follow the archetype spread: speed 5.5–10, power 0.9–1.15,
  * weight 85–115, jumpVel 13–16. Combos are exactly [jab1, jab2, finisher];
  * heavier fighters get slower windups and bigger damage.
  */
@@ -448,6 +448,61 @@ export const CHARACTERS: readonly CharacterDef[] = [
       },
     ],
     unlock: { type: 'gold', cost: 1200 },
+  },
+  {
+    id: 'comet',
+    name: 'Comet',
+    tagline: 'Blast off — the sky is not the limit!',
+    archetype: 'robot',
+    speed: 7.6,
+    power: 0.98,
+    weight: 92,
+    jumpVel: 15.2,
+    jumps: 2,
+    palette: { core: 0xeaf0ff, glow: 0x8a9bff, accent: 0xff8a3c },
+    proportions: { height: 1.8, bulk: 1.02, headSize: 1.05 },
+    combo: [
+      {
+        id: 'cometJab1',
+        damage: 3,
+        baseKb: 3.5,
+        kbGrowth: 0.02,
+        angleDeg: 25,
+        windup: 0.08,
+        active: 0.06,
+        recover: 0.12,
+        hitbox: { x: 0.9, y: 0.9, w: 1.2, h: 1.0 },
+        sfx: 'hitLight',
+        poseId: 'jab1',
+      },
+      {
+        id: 'cometJab2',
+        damage: 3,
+        baseKb: 3.5,
+        kbGrowth: 0.02,
+        angleDeg: 25,
+        windup: 0.08,
+        active: 0.06,
+        recover: 0.12,
+        hitbox: { x: 0.9, y: 0.9, w: 1.2, h: 1.0 },
+        sfx: 'hitLight',
+        poseId: 'jab2',
+      },
+      {
+        id: 'cometFinisher',
+        damage: 6,
+        baseKb: 7,
+        kbGrowth: 0.14,
+        angleDeg: 45,
+        windup: 0.12,
+        active: 0.08,
+        recover: 0.24,
+        hitbox: { x: 1.0, y: 0.9, w: 1.45, h: 1.25 },
+        sfx: 'hitHeavy',
+        poseId: 'finisher',
+      },
+    ],
+    unlock: { type: 'level', level: 4 },
   },
 ];
 

@@ -68,7 +68,7 @@ export const FIXTURES: readonly ReplayFixture[] = [
         { slot: 0, characterId: 'volt', weaponId: 'rustyPistol', sidekickId: null, teamId: 1, nickname: 'P1' },
         { slot: 1, characterId: 'kaze', weaponId: 'practiceSword', sidekickId: null, teamId: 2, nickname: 'P2' },
         { slot: 2, characterId: 'grim', weaponId: 'rustyPistol', sidekickId: null, teamId: 3, nickname: 'P3' },
-        { slot: 3, characterId: 'ace', weaponId: 'practiceSword', sidekickId: null, teamId: 4, nickname: 'P4' },
+        { slot: 3, characterId: 'comet', weaponId: 'practiceSword', sidekickId: null, teamId: 4, nickname: 'P4' },
       ],
       stageId: 'rooftop',
       stocks: 3,

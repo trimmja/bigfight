@@ -447,7 +447,7 @@ function buildC(rig: MockRig, chr: CharId): void {
     return;
   }
   if (chr === 'comet') {
-    // Review-only ninth-fighter concept: a bright space cadet whose silhouette
+    // Approved ninth fighter: a bright space cadet whose silhouette
     // is defined by a bubble helmet, compact jetpack, and puffy flight suit.
     const s: Skeleton = { legLen: 1.02, torsoH: 0.7, depth: 0.28, limbR: 0.12, upperArm: 0.4, foreArm: 0.38, thigh: 0.5, shin: 0.48, shoulderY: 0.62, shoulderZ: 0.42, legZ: 0.17 };
     buildSkeleton(rig, s);

@@ -66,7 +66,7 @@ export const LEVELS: readonly LevelDef[] = [
     waves: [{ enemies: [{ enemyId: 'skeleton', count: 2 }], delay: 1.2 }],
     bossId: 'skeletonKing',
     goldReward: 90,
-    unlocks: { stageId: 'ghostship' },
+    unlocks: { stageId: 'ghostship', characterId: 'comet' },
   },
   {
     id: 5,
