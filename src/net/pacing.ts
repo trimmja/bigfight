@@ -24,6 +24,10 @@ export const MAX_STEPS_PER_RENDER = 4;
 export const CATCHUP_LIMIT_FRAMES = 8;
 /** Consecutive no-progress updates (~0.5s at 60Hz) before the stall banner. */
 export const STALL_BANNER_UPDATES = 30;
+/** Timesync cadence: at most one ±1-frame nudge per this many updates. */
+export const SYNC_INTERVAL_UPDATES = 20;
+/** Timesync ignores leads inside this band (estimate noise ≈ ±1 frame). */
+export const SYNC_DEADBAND_FRAMES = 2;
 
 export interface PacerStats {
   /** Total frames dropped from the clock instead of fast-forwarded. */
@@ -32,17 +36,58 @@ export interface PacerStats {
   stallEvents: number;
   /** Total updates that wanted to step but could not. */
   stalledUpdates: number;
+  /** Total ±1 timesync nudges applied to re-align with the other players. */
+  syncNudges: number;
+}
+
+/**
+ * How many frames the local sim leads the (slowest) remote sim. Derived from
+ * the input stream itself — a peer's newest broadcast input is always its sim
+ * frame + its input delay, sent one transit ago — so asymmetric clock shifts
+ * are observable without any extra wire traffic or server round-trip:
+ * lead ≈ local − (frontier − delay + transit). Positive = we are ahead.
+ */
+export function estimateFrameLead(
+  localFrame: number,
+  remoteInputFrontier: number,
+  inputDelayFrames: number,
+  rttMs: number,
+): number {
+  const transitFrames = (rttMs / 2) * (60 / 1000);
+  return localFrame - remoteInputFrontier + inputDelayFrames - transitFrames;
 }
 
 export class MatchPacer {
-  readonly stats: PacerStats = { clockShiftFrames: 0, stallEvents: 0, stalledUpdates: 0 };
+  readonly stats: PacerStats = { clockShiftFrames: 0, stallEvents: 0, stalledUpdates: 0, syncNudges: 0 };
   private stepsThisRender = 0;
   private noProgressUpdates = 0;
+  private updatesSinceSync = 0;
   private stalled = false;
 
   /** True while the sim has been unable to advance for ~0.5s. */
   get connectionStalled(): boolean {
     return this.stalled;
+  }
+
+  /**
+   * GGPO-style timesync: asymmetric stalls make each peer drop a different
+   * amount of wall time, leaving their clocks skewed — the leader then
+   * predicts the laggard several frames ahead forever (constant rollbacks).
+   * Gently re-align: the behind peer speeds up (+1 nudge → 2× catch-up), the
+   * ahead peer holds (−1 nudge → one zero-step update), rate-limited and
+   * dead-banded so estimate noise can't cause oscillation.
+   */
+  sync(clock: FrameClock, frameLead: number): void {
+    this.updatesSinceSync += 1;
+    if (this.updatesSinceSync < SYNC_INTERVAL_UPDATES) return;
+    this.updatesSinceSync = 0;
+    if (frameLead < -SYNC_DEADBAND_FRAMES) {
+      clock.nudge(1);
+      this.stats.syncNudges += 1;
+    } else if (frameLead > SYNC_DEADBAND_FRAMES) {
+      clock.nudge(-1);
+      this.stats.syncNudges += 1;
+    }
   }
 
   /**

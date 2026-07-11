@@ -3,7 +3,7 @@ import type { Game } from '../Game';
 import type { MatchConfig } from '../match/MatchConfig';
 import { FrameClock } from '../net/FrameClock';
 import { NetIntentSource } from '../net/inputCodec';
-import { MatchPacer, type PacerStats } from '../net/pacing';
+import { estimateFrameLead, MatchPacer, type PacerStats } from '../net/pacing';
 import { RollbackSession, type RollbackStats } from '../net/RollbackSession';
 import { simPhase } from '../net/simPhase';
 import type { NetTransport } from '../net/transport';
@@ -129,6 +129,21 @@ export class NetMatchScreen implements Screen {
     // backlogs by shifting the clock — a stall never becomes a fast-forward.
     const now = this.opts.nowMs?.() ?? Date.now();
     const frameBefore = session.frame;
+    // Timesync: asymmetric stalls skew the peers' locally shifted clocks;
+    // re-align to the input stream (skip the noisy first second of a match).
+    if (frameBefore > 60 && this.opts.transport.peerSlots.length > 0) {
+      let maxRtt = 0;
+      for (const slot of this.opts.transport.peerSlots) {
+        maxRtt = Math.max(maxRtt, this.opts.transport.stats(slot).rttMs);
+      }
+      const lead = estimateFrameLead(
+        frameBefore,
+        session.remoteInputFrontier,
+        session.stats.inputDelayFrames,
+        maxRtt,
+      );
+      this.pacer.sync(this.clock, lead);
+    }
     const steps = this.pacer.plan(this.clock, now, frameBefore);
     if (steps > 0) session.pump(steps);
     else session.flush();
@@ -169,7 +184,8 @@ export class NetMatchScreen implements Screen {
       .join(' ');
     console.info(
       `[net] f=${s.frame} conf=${s.confirmedFrame} ${peers} rollbacks=${s.rollbacks} `
-      + `resim=${s.resimmedFrames} stalls=${s.stalledFrames} shifted=${this.pacer.stats.clockShiftFrames}f desyncs=${s.desyncs}`,
+      + `resim=${s.resimmedFrames} stalls=${s.stalledFrames} shifted=${this.pacer.stats.clockShiftFrames}f `
+      + `sync=${this.pacer.stats.syncNudges} desyncs=${s.desyncs}`,
     );
   }
 

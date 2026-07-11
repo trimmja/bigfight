@@ -162,6 +162,19 @@ export class RollbackSession {
     this.broadcastInputs();
   }
 
+  /**
+   * Newest contiguous input frame received from the SLOWEST remote peer —
+   * the timesync signal (pacing.estimateFrameLead). -1 before any packet.
+   */
+  get remoteInputFrontier(): number {
+    let min = Number.POSITIVE_INFINITY;
+    for (let slot = 0; slot < this.playerCount; slot += 1) {
+      if (slot === this.localSlot) continue;
+      if (this.lastKnownFrame[slot]! < min) min = this.lastKnownFrame[slot]!;
+    }
+    return min === Number.POSITIVE_INFINITY ? -1 : min;
+  }
+
   /** Min contiguous frame received from EVERY slot (local included). */
   get confirmedFrame(): number {
     let min = Number.POSITIVE_INFINITY;

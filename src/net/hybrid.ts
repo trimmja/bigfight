@@ -3,11 +3,17 @@ import { WsRelayTransport } from './relay';
 import type { NetChannel, NetTransport, PeerSlot, PeerStats } from './transport';
 import { WebRtcMeshTransport } from './webrtc';
 
+/** The direct-transport surface hybrid needs (WebRTC, or a test fake). */
+export type DirectTransport = NetTransport & { ready(timeoutMs?: number): Promise<boolean> };
+
 export interface HybridMeshOptions {
   localSlot: PeerSlot;
   peerSlots: readonly PeerSlot[];
-  signaling: MatchSignaling;
+  signaling?: MatchSignaling;
   iceServers?: readonly RTCIceServer[];
+  /** Test seams: injected transports + clock (production: WebRTC/relay/Date.now). */
+  transports?: { direct: DirectTransport; relay: NetTransport };
+  now?: () => number;
 }
 
 /** Direct must stay connected this long before we route on it (no flapping). */
@@ -35,8 +41,9 @@ export class HybridMeshTransport implements NetTransport {
   readonly localSlot: PeerSlot;
   readonly peerSlots: readonly PeerSlot[];
 
-  private readonly direct: WebRtcMeshTransport;
-  private readonly relay: WsRelayTransport;
+  private readonly direct: DirectTransport;
+  private readonly relay: NetTransport;
+  private readonly now: () => number;
   private readonly routes = new Map<PeerSlot, RouteState>();
   private messageCallback: ((from: PeerSlot, channel: NetChannel, data: Uint8Array) => void) | null = null;
   private peerCallback: ((slot: PeerSlot, event: 'connected' | 'lost' | 'left') => void) | null = null;
@@ -44,19 +51,26 @@ export class HybridMeshTransport implements NetTransport {
   constructor(options: HybridMeshOptions) {
     this.localSlot = options.localSlot;
     this.peerSlots = [...options.peerSlots];
-    this.relay = new WsRelayTransport(options.localSlot, options.peerSlots, options.signaling);
-    this.direct = new WebRtcMeshTransport({
-      localSlot: options.localSlot,
-      peerSlots: options.peerSlots,
-      signaling: options.signaling,
-      ...(options.iceServers ? { iceServers: options.iceServers } : {}),
-    });
+    this.now = options.now ?? Date.now;
+    if (options.transports) {
+      this.relay = options.transports.relay;
+      this.direct = options.transports.direct;
+    } else {
+      if (!options.signaling) throw new Error('HybridMeshTransport needs signaling (or injected transports)');
+      this.relay = new WsRelayTransport(options.localSlot, options.peerSlots, options.signaling);
+      this.direct = new WebRtcMeshTransport({
+        localSlot: options.localSlot,
+        peerSlots: options.peerSlots,
+        signaling: options.signaling,
+        ...(options.iceServers ? { iceServers: options.iceServers } : {}),
+      });
+    }
     this.direct.onMessage((from, channel, data) => this.messageCallback?.(from, channel, data));
     this.relay.onMessage((from, channel, data) => this.messageCallback?.(from, channel, data));
     this.direct.onPeerChange((slot, event) => {
       const route = this.routeState(slot);
       if (event === 'connected') {
-        route.directSince = Date.now();
+        route.directSince = this.now();
         this.peerCallback?.(slot, 'connected');
       } else {
         route.directSince = 0;
@@ -66,8 +80,17 @@ export class HybridMeshTransport implements NetTransport {
   }
 
   send(to: PeerSlot, channel: NetChannel, data: Uint8Array): void {
-    const now = Date.now();
+    const now = this.now();
     const route = this.updateRoute(to, now);
+    if (channel === 'control') {
+      // Reliable control traffic (state hashes, the input-repair exchange
+      // that unfreezes a stalled match) is tiny and idempotent: send it on
+      // BOTH routes always, so a direct path that still claims connected
+      // while silently dropping traffic can never starve a repair.
+      this.relay.send(to, channel, data);
+      this.directIfUp(to)?.send(to, channel, data);
+      return;
+    }
     const primary = route.onDirect ? this.direct : this.relay;
     primary.send(to, channel, data);
     if (route.switchedAt > 0 && now - route.switchedAt < ROUTE_OVERLAP_MS) {
@@ -89,7 +112,7 @@ export class HybridMeshTransport implements NetTransport {
   }
 
   stats(slot: PeerSlot): PeerStats {
-    const route = this.updateRoute(slot, Date.now());
+    const route = this.updateRoute(slot, this.now());
     return route.onDirect ? this.direct.stats(slot) : this.relay.stats(slot);
   }
 
@@ -135,7 +158,7 @@ export class HybridMeshTransport implements NetTransport {
     return route;
   }
 
-  private directIfUp(slot: PeerSlot): WebRtcMeshTransport | null {
+  private directIfUp(slot: PeerSlot): DirectTransport | null {
     return this.direct.stats(slot).connected ? this.direct : null;
   }
 }

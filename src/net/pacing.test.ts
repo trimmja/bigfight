@@ -7,9 +7,11 @@ import { FrameClock } from './FrameClock';
 import { NetIntentSource } from './inputCodec';
 import {
   CATCHUP_LIMIT_FRAMES,
+  estimateFrameLead,
   MatchPacer,
   MAX_STEPS_PER_RENDER,
   STALL_BANNER_UPDATES,
+  SYNC_DEADBAND_FRAMES,
 } from './pacing';
 import { RollbackSession } from './RollbackSession';
 import type { StateIO } from './snapshots';
@@ -105,6 +107,7 @@ interface Peer {
   session: RollbackSession;
   clock: FrameClock;
   pacer: MatchPacer;
+  hub: LoopbackHub;
 }
 
 function createPeer(hub: LoopbackHub, slot: PeerSlot, seed: number): Peer {
@@ -124,12 +127,21 @@ function createPeer(hub: LoopbackHub, slot: PeerSlot, seed: number): Peer {
   });
   const clock = new FrameClock();
   clock.start(0);
-  return { screen, session, clock, pacer: new MatchPacer() };
+  return { screen, session, clock, pacer: new MatchPacer(), hub };
 }
 
 /** One 60Hz browser tick, exactly as NetMatchScreen paces it. */
 function driveTick(peer: Peer, nowMs: number): number {
   const before = peer.session.frame;
+  if (before > 60) {
+    const lead = estimateFrameLead(
+      before,
+      peer.session.remoteInputFrontier,
+      peer.session.stats.inputDelayFrames,
+      peer.hub.delayMs * 2,
+    );
+    peer.pacer.sync(peer.clock, lead);
+  }
   const steps = peer.pacer.plan(peer.clock, nowMs, before);
   if (steps > 0) peer.session.pump(steps);
   else peer.session.flush();
@@ -186,6 +198,12 @@ test('a ~500ms mid-fight packet outage stalls, self-repairs, and resumes without
   assert.ok(a.pacer.stats.clockShiftFrames > 0, 'peer A never shifted its clock to drop the backlog');
   assert.ok(b.pacer.stats.clockShiftFrames > 0, 'peer B never shifted its clock to drop the backlog');
 
+  // Timesync must have re-converged the independently shifted clocks during
+  // NORMAL play — persistent skew means one peer predicts the other several
+  // frames ahead forever (constant rollbacks). No manual alignment here.
+  const skew = Math.abs(a.session.frame - b.session.frame);
+  assert.ok(skew <= SYNC_DEADBAND_FRAMES + 2, `peers ended ${skew} frames apart after recovery`);
+
   // Both peers converged on identical state: align frames, drain, compare.
   const targetFrame = Math.max(a.session.frame, b.session.frame);
   let guard = 2000;
@@ -206,6 +224,38 @@ test('a ~500ms mid-fight packet outage stalls, self-repairs, and resumes without
   assert.equal(a.screen.digest(), b.screen.digest(), 'peers diverged');
   assert.equal(a.session.stats.desyncs + b.session.stats.desyncs, 0);
   assert.ok(a.session.stats.rollbacks + b.session.stats.rollbacks > 0, 'network never exercised rollback');
+});
+
+test('asymmetric clock shifts reconverge through timesync during normal play', () => {
+  const hub = new LoopbackHub();
+  hub.delayMs = 40;
+  hub.jitterMs = 5;
+  const a = createPeer(hub, 0, 1000);
+  const b = createPeer(hub, 1, 5000);
+  const peers = [a, b];
+
+  for (let tick = 0; tick < 200; tick += 1) {
+    hub.pump(TICK_MS);
+    for (const peer of peers) driveTick(peer, tick * TICK_MS);
+  }
+
+  // An asymmetric stall aftermath: B dropped 5 more frames than A. Without
+  // timesync this skew is PERMANENT (each clock is locally authoritative)
+  // and A predicts B five frames ahead for the rest of the match.
+  b.clock.nudge(-5);
+
+  for (let tick = 200; tick < 800; tick += 1) {
+    hub.pump(TICK_MS);
+    for (const peer of peers) driveTick(peer, tick * TICK_MS);
+  }
+
+  const now = 800 * TICK_MS;
+  const targetSkew = Math.abs(a.clock.targetFrame(now) - b.clock.targetFrame(now));
+  const frameSkew = Math.abs(a.session.frame - b.session.frame);
+  assert.ok(targetSkew <= SYNC_DEADBAND_FRAMES + 1, `clock targets stayed ${targetSkew} frames apart`);
+  assert.ok(frameSkew <= SYNC_DEADBAND_FRAMES + 1, `sims stayed ${frameSkew} frames apart`);
+  assert.ok(a.pacer.stats.syncNudges + b.pacer.stats.syncNudges > 0, 'timesync never engaged');
+  assert.equal(a.session.stats.desyncs + b.session.stats.desyncs, 0);
 });
 
 test('the pacer follows the clock: no steps when ahead, bounded catch-up, big backlogs dropped', () => {
