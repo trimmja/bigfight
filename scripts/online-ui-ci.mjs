@@ -27,16 +27,16 @@ let failed = false;
 try {
   await waitForServers();
   const host = await makePlayer('HOST');
-  await host.page.getByText('HOST OPEN GAME', { exact: true }).click();
-  await host.page.getByText('CHOOSE WEAPON', { exact: true }).click();
-  await host.page.getByText('LOCK IN', { exact: true }).click();
+  await host.page.getByText('HOST GAME', { exact: true }).click();
+  await host.page.getByText('PICK WEAPON ▶', { exact: true }).click();
+  await host.page.getByText('LOCK IN ▶', { exact: true }).click();
 
   const guest = await makePlayer('GUEST');
   await guest.page.locator('.bf-online-room-row').first().click();
-  await guest.page.getByText('NEXT', { exact: true }).first().click();
-  await guest.page.getByText('CHOOSE WEAPON', { exact: true }).click();
-  await guest.page.getByText('NEXT', { exact: true }).click();
-  await guest.page.getByText('LOCK IN', { exact: true }).click();
+  await guest.page.getByText('KAZE', { exact: true }).click();
+  await guest.page.getByText('PICK WEAPON ▶', { exact: true }).click();
+  await guest.page.getByText('PRACTICE SWORD', { exact: true }).click();
+  await guest.page.getByText('LOCK IN ▶', { exact: true }).click();
 
   await host.page.waitForFunction(() => document.body.innerText.includes('GUEST') && document.body.innerText.includes('START MATCH'));
   const lobbyText = await host.page.locator('body').innerText();
@@ -82,7 +82,9 @@ async function makePlayer(nickname) {
   const context = await browser.newContext({ viewport: { width: 667, height: 375 } });
   const page = await context.newPage();
   await page.goto(`http://127.0.0.1:${VITE_PORT}/bigfight/`, { waitUntil: 'networkidle' });
-  await page.getByText('ONLINE FIGHTS', { exact: true }).click();
+  // Tap through the title, then pick the ONLINE mode card.
+  await page.locator('.bf-title-screen').click();
+  await page.getByText('ONLINE', { exact: true }).click();
   await page.locator('input[aria-label="Your nickname"]').fill(nickname);
   return { context, page };
 }

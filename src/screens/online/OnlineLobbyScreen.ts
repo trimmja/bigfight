@@ -9,7 +9,12 @@ import {
   type OnlineState,
   OnlineSession,
 } from '../../online/OnlineSession';
+import { isCharacterUnlocked, ownedWeapons, unlockedCharacters } from '../../progression';
+import { characterCssColor, WEAPON_CATEGORY_COLORS } from '../../ui/cardColors';
 import { button, el, uiRoot } from '../../ui/dom';
+import { characterPortrait, weaponPortrait } from '../../ui/portraits';
+import { buildRosterGrid } from '../../ui/rosterGrid';
+import { ROSTER_CAPACITY } from '../CharacterSelectScreen';
 import type { Screen } from '../Screen';
 import { PedestalStage } from './PedestalStage';
 
@@ -202,44 +207,80 @@ export class OnlineLobbyScreen implements Screen {
     const host = (visibility: RoomVisibility): void => {
       this.session.createRoom(this.validNickname(), visibility, roomName.value.trim() || undefined);
     };
-    button('HOST OPEN GAME', () => host('public'), 'bf-online-action bf-online-primary', hostRow);
+    button('HOST GAME', () => host('public'), 'bf-online-action bf-online-primary', hostRow);
     button('HOST PRIVATE', () => host('private'), 'bf-online-action bf-online-secondary', hostRow);
   }
 
-  private renderFighter(root: HTMLElement, room: RoomState, state: OnlineState): void {
+  private renderFighter(root: HTMLElement, _room: RoomState, _state: OnlineState): void {
+    this.clampLoadoutToSave();
+    const save = this.game!.save;
     const def = characterById(this.selectedCharacter);
     const main = el('main', 'bf-online-select', root);
-    this.selectionPrompt(main, 'STEP 2 OF 4', 'CHOOSE YOUR FIGHTER');
-    const plate = el('div', 'bf-online-selection-plate', main);
-    el('strong', '', plate).textContent = def.name.toUpperCase();
-    el('span', '', plate).textContent = 'YOUR PEDESTAL';
 
-    const controls = el('section', 'bf-online-select-controls', main);
-    const picker = this.picker(controls, 'FIGHTER', def.name, () => this.cycleCharacter(-1), () => this.cycleCharacter(1));
-    el('p', 'bf-online-picker-detail', picker).textContent = def.tagline;
-    button('CHOOSE WEAPON', () => {
+    // Full-screen Smash-style roster; locked fighters show as ?-silhouettes.
+    buildRosterGrid(main, {
+      slots: CHARACTERS.map((character) => ({
+        id: character.id,
+        name: character.name,
+        portrait: characterPortrait(character.id),
+        color: characterCssColor(character),
+        locked: !isCharacterUnlocked(character, save),
+        lockHint: character.unlock.type === 'level'
+          ? `Beat level ${character.unlock.level} in the campaign`
+          : 'Unlock in Market',
+      })),
+      capacity: ROSTER_CAPACITY,
+      selectedId: this.selectedCharacter,
+      onSelect: (id) => this.pickCharacter(id),
+    });
+
+    const bar = el('div', 'bf-roster-bar', main);
+    const who = el('div', 'bf-roster-who', bar);
+    el('h2', 'bf-roster-name', who).textContent = def.name.toUpperCase();
+    el('p', 'bf-roster-tagline', who).textContent = def.tagline;
+    const stats = el('div', 'bf-roster-stats', bar);
+    this.statBar(stats, 'SPEED', def.speed / 10);
+    this.statBar(stats, 'POWER', (def.power - 0.85) / 0.3);
+    this.statBar(stats, 'WEIGHT', (def.weight - 80) / 40);
+    this.statBar(stats, 'JUMP', (def.jumpVel - 12) / 4.5);
+    el('span', 'bf-online-step', bar).textContent = 'STEP 2 OF 4';
+    button('PICK WEAPON ▶', () => {
       this.view = 'weapon';
       this.forceRender();
-    }, 'bf-online-action bf-online-primary bf-online-lock', controls);
-    this.renderRoomTag(main, room, state);
+    }, 'bf-button bf-button-green bf-button-big', bar);
   }
 
-  private renderWeapon(root: HTMLElement, room: RoomState, state: OnlineState): void {
+  private renderWeapon(root: HTMLElement, _room: RoomState, _state: OnlineState): void {
+    this.clampLoadoutToSave();
+    const save = this.game!.save;
     const weapon = weaponById(this.selectedWeapon);
     const main = el('main', 'bf-online-select', root);
-    this.selectionPrompt(main, 'STEP 3 OF 4', 'CHOOSE YOUR WEAPON');
-    const plate = el('div', 'bf-online-selection-plate', main);
-    el('strong', '', plate).textContent = characterById(this.selectedCharacter).name.toUpperCase();
-    el('span', '', plate).textContent = 'WEAPON EQUIPPED';
 
-    const controls = el('section', 'bf-online-select-controls', main);
-    const picker = this.picker(controls, 'WEAPON BUTTON', weapon.name, () => this.cycleWeapon(-1), () => this.cycleWeapon(1));
-    el('p', 'bf-online-picker-detail', picker).textContent = weapon.tagline;
-    button('CHANGE FIGHTER', () => {
+    const owned = new Set(ownedWeapons(save).map((entry) => entry.id));
+    buildRosterGrid(main, {
+      slots: WEAPONS.map((option) => ({
+        id: option.id,
+        name: option.name,
+        portrait: weaponPortrait(option.id),
+        color: WEAPON_CATEGORY_COLORS[option.category] ?? 'var(--neon-cyan)',
+        locked: !owned.has(option.id),
+        lockHint: 'Craft it in the Market',
+      })),
+      capacity: ROSTER_CAPACITY,
+      selectedId: this.selectedWeapon,
+      onSelect: (id) => this.pickWeapon(id),
+    });
+
+    const bar = el('div', 'bf-roster-bar', main);
+    const who = el('div', 'bf-roster-who', bar);
+    el('h2', 'bf-roster-name', who).textContent = weapon.name.toUpperCase();
+    el('p', 'bf-roster-tagline', who).textContent = weapon.tagline;
+    el('span', 'bf-online-step', bar).textContent = 'STEP 3 OF 4';
+    button('◀ FIGHTER', () => {
       this.view = 'fighter';
       this.forceRender();
-    }, 'bf-online-action bf-online-secondary', controls);
-    button('LOCK IN', () => {
+    }, 'bf-button', bar);
+    button('LOCK IN ▶', () => {
       this.session.setPlayer({
         characterId: this.selectedCharacter,
         weaponId: this.selectedWeapon,
@@ -248,8 +289,27 @@ export class OnlineLobbyScreen implements Screen {
       this.view = 'waiting';
       this.stage?.startFlyIn(this.game!.renderer.camera);
       this.forceRender();
-    }, 'bf-online-action bf-online-primary bf-online-lock', controls);
-    this.renderRoomTag(main, room, state);
+    }, 'bf-button bf-button-green bf-button-big', bar);
+  }
+
+  private statBar(parent: HTMLElement, label: string, frac: number): void {
+    el('span', 'bf-stat-label', parent).textContent = label;
+    const track = el('div', 'bf-stat-track', parent);
+    const fill = el('div', 'bf-stat-fill', track);
+    fill.style.width = `${Math.round(Math.max(0.08, Math.min(1, frac)) * 100)}%`;
+  }
+
+  /** Keep online picks inside what this device's save has actually earned. */
+  private clampLoadoutToSave(): void {
+    const save = this.game!.save;
+    const roster = unlockedCharacters(save);
+    if (!roster.some((character) => character.id === this.selectedCharacter)) {
+      this.selectedCharacter = roster[0]!.id;
+    }
+    const arsenal = ownedWeapons(save);
+    if (!arsenal.some((weapon) => weapon.id === this.selectedWeapon)) {
+      this.selectedWeapon = arsenal[0]!.id;
+    }
   }
 
   private renderWaiting(root: HTMLElement, room: RoomState, state: OnlineState): void {
@@ -330,28 +390,6 @@ export class OnlineLobbyScreen implements Screen {
     }
   }
 
-  private selectionPrompt(parent: HTMLElement, step: string, title: string): void {
-    const prompt = el('section', 'bf-online-select-prompt', parent);
-    el('div', 'bf-online-step', prompt).textContent = step;
-    el('h2', '', prompt).textContent = title;
-  }
-
-  private picker(
-    parent: HTMLElement,
-    label: string,
-    value: string,
-    previous: () => void,
-    next: () => void,
-  ): HTMLElement {
-    const picker = el('div', 'bf-online-picker', parent);
-    el('div', 'bf-online-picker-label', picker).textContent = label;
-    const controls = el('div', 'bf-online-picker-controls', picker);
-    button('PREV', previous, 'bf-online-picker-button', controls);
-    el('strong', 'bf-online-picker-value', controls).textContent = value.toUpperCase();
-    button('NEXT', next, 'bf-online-picker-button', controls);
-    return picker;
-  }
-
   private select(
     parent: HTMLElement,
     label: string,
@@ -378,17 +416,17 @@ export class OnlineLobbyScreen implements Screen {
     tag.textContent = `${visibility} · ${room.players.length} / 4 · ${connectionCopy(state.connection)}`;
   }
 
-  private cycleCharacter(direction: -1 | 1): void {
-    const index = Math.max(0, CHARACTERS.findIndex((character) => character.id === this.selectedCharacter));
-    this.selectedCharacter = CHARACTERS[(index + direction + CHARACTERS.length) % CHARACTERS.length]!.id;
-    this.session.setPlayer({ characterId: this.selectedCharacter, ready: false });
+  private pickCharacter(id: string): void {
+    if (this.selectedCharacter === id) return;
+    this.selectedCharacter = id;
+    this.session.setPlayer({ characterId: id, ready: false });
     this.forceRender();
   }
 
-  private cycleWeapon(direction: -1 | 1): void {
-    const index = Math.max(0, WEAPONS.findIndex((weapon) => weapon.id === this.selectedWeapon));
-    this.selectedWeapon = WEAPONS[(index + direction + WEAPONS.length) % WEAPONS.length]!.id;
-    this.session.setPlayer({ weaponId: this.selectedWeapon, ready: false });
+  private pickWeapon(id: string): void {
+    if (this.selectedWeapon === id) return;
+    this.selectedWeapon = id;
+    this.session.setPlayer({ weaponId: id, ready: false });
     this.forceRender();
   }
 
@@ -396,7 +434,9 @@ export class OnlineLobbyScreen implements Screen {
     const stage = this.stage;
     const state = this.state;
     if (!stage || !state) return;
-    const visible = Boolean(state.room) && this.view !== 'browser';
+    // The loadout steps are a full-screen roster board — the 3D room only
+    // shows in the waiting phase, where everyone's pick stands on a pedestal.
+    const visible = Boolean(state.room) && this.view === 'waiting';
     stage.setVisible(visible);
     if (!visible) return;
     const local = localPlayer(state);

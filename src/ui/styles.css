@@ -101,7 +101,7 @@ html, body {
   margin: 0 0 16px;
   font-size: 34px;
   font-weight: 800;
-  letter-spacing: 2px;
+  letter-spacing: 3px;
   color: var(--text);
 }
 .bf-title-win { color: #2fae4e; }
@@ -128,6 +128,7 @@ html, body {
 .bf-button-red { background: var(--neon-pink); }
 .bf-button-yellow { background: var(--neon-yellow); color: #6a4a00; }
 .bf-button:disabled { filter: saturate(0.2) brightness(0.9); cursor: default; }
+.bf-button:focus-visible { outline: 4px solid #ffffff; outline-offset: 3px; }
 
 @keyframes bf-fade-in { from { opacity: 0; } }
 @keyframes bf-pop-in { from { transform: scale(0.7); opacity: 0; } }
@@ -279,6 +280,107 @@ html, body {
   animation: bf-bounce 1s ease-in-out infinite;
 }
 
+/* ---- game-mode select (title → here → campaign/online) ----
+   Styled like a versus poster: two big candy-striped slabs leaning toward
+   each other, the fighters acting out each mode underneath. */
+.bf-mode-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(var(--safe-t) + 10px) calc(var(--safe-r) + 20px) 10px calc(var(--safe-l) + 20px);
+}
+.bf-mode-screen .bf-map-header { align-self: stretch; }
+.bf-mode-cards {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: min(5vw, 44px);
+  padding-bottom: 16dvh; /* the fighters play out each mode below the slabs */
+}
+.bf-mode-card {
+  appearance: none;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 5px solid #ffffff;
+  border-radius: 30px;
+  padding: clamp(20px, 5dvh, 40px) clamp(24px, 5vw, 52px);
+  min-width: min(38vw, 320px);
+  box-shadow: 0 10px 0 rgba(30, 42, 74, 0.3);
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+  animation: bf-mode-slam 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+.bf-mode-card-campaign {
+  background: linear-gradient(160deg, #5fd66c, #2fae4e);
+  transform: rotate(-2.5deg) translateY(-6px);
+}
+.bf-mode-card-online {
+  background: linear-gradient(160deg, var(--neon-cyan), var(--neon-violet));
+  transform: rotate(2deg) translateY(8px);
+  animation-delay: 0.09s;
+}
+/* Slow candy-stripe drift across each slab. */
+.bf-mode-card::before {
+  content: '';
+  position: absolute;
+  inset: -60px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.09) 0 22px,
+    transparent 22px 44px
+  );
+  animation: bf-stripe-drift 14s linear infinite;
+  pointer-events: none;
+}
+.bf-mode-card > * { position: relative; }
+.bf-mode-card-campaign:hover { transform: rotate(-3.2deg) translateY(-12px) scale(1.03); filter: brightness(1.07); }
+.bf-mode-card-online:hover { transform: rotate(2.7deg) translateY(2px) scale(1.03); filter: brightness(1.07); }
+.bf-mode-card-campaign:active { transform: rotate(-1.6deg) translateY(-2px) scale(0.97); box-shadow: 0 3px 0 rgba(30, 42, 74, 0.3); }
+.bf-mode-card-online:active { transform: rotate(1.2deg) translateY(12px) scale(0.97); box-shadow: 0 3px 0 rgba(30, 42, 74, 0.3); }
+.bf-mode-card:focus-visible { outline: 4px solid #ffffff; outline-offset: 4px; }
+.bf-mode-chip {
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font: 800 12px 'Avenir Next', system-ui, sans-serif;
+  letter-spacing: 2px;
+  color: var(--text);
+  box-shadow: 0 3px 0 rgba(30, 42, 74, 0.2);
+}
+.bf-mode-name {
+  font-size: clamp(34px, 5.5vw, 56px);
+  font-weight: 800;
+  letter-spacing: 4px;
+  line-height: 1.1;
+  color: #ffffff;
+  -webkit-text-stroke: 3px #1e2a4a;
+  paint-order: stroke fill;
+  text-shadow: 0 5px 0 rgba(30, 42, 74, 0.3);
+}
+.bf-mode-tag {
+  font-size: clamp(13px, 1.9vw, 17px);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 2px 0 rgba(30, 42, 74, 0.25);
+}
+@keyframes bf-mode-slam {
+  from { transform: translateY(-60px) scale(1.25); opacity: 0; }
+}
+@keyframes bf-stripe-drift {
+  to { background-position: 124px 124px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bf-mode-card, .bf-mode-card::before, .bf-roster-grid, .bf-map-node { animation: none; }
+}
+
 /* ---- level map ---- */
 .bf-map-screen {
   position: absolute;
@@ -295,11 +397,23 @@ html, body {
 }
 .bf-map-title, .bf-select-title {
   margin: 0;
-  font-size: 30px;
+  font-size: clamp(24px, 4vw, 32px);
   font-weight: 800;
-  letter-spacing: 3px;
+  letter-spacing: 4px;
   color: #ffffff;
+  -webkit-text-stroke: 2px #1e2a4a;
+  paint-order: stroke fill;
   text-shadow: 0 4px 0 rgba(30, 42, 74, 0.3);
+}
+/* Every full-bleed menu shares the online room's soft sky glow. */
+.bf-map-screen::before, .bf-select-screen::before,
+.bf-market-screen::before, .bf-mode-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.2), transparent 55%);
 }
 .bf-gold-chip {
   background: var(--panel);
@@ -319,7 +433,15 @@ html, body {
   padding: 20px 10px;
   scrollbar-width: none;
 }
-.bf-map-node { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 96px; }
+.bf-map-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 96px;
+  animation: bf-card-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 0.05s);
+}
 .bf-map-node-alt { transform: translateY(-26px); }
 .bf-level {
   width: 64px;
@@ -331,7 +453,10 @@ html, body {
   background: var(--neon-cyan);
   box-shadow: 0 5px 0 rgba(30, 42, 74, 0.3);
   cursor: pointer;
+  transition: transform 0.1s ease;
 }
+.bf-level:hover:not(:disabled) { transform: scale(1.1); }
+.bf-level:active:not(:disabled) { transform: scale(0.95); }
 .bf-level-beaten { background: var(--neon-green); }
 .bf-level-next { background: var(--neon-yellow); color: #6a4a00; animation: bf-bounce 1s ease-in-out infinite; }
 .bf-level-locked { background: #b8c4d4; filter: saturate(0.4); cursor: default; }
@@ -369,57 +494,167 @@ html, body {
   padding: calc(var(--safe-t) + 10px) calc(var(--safe-r) + 18px) calc(var(--safe-b) + 10px) calc(var(--safe-l) + 18px);
   gap: 8px;
 }
-.bf-select-body { flex: 1; display: flex; gap: 16px; min-height: 0; }
-.bf-select-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(96px, 1fr));
-  gap: 10px;
-  align-content: start;
+/* Full-screen Smash-style roster: the grid is the whole screen, the bottom
+   bar names your pick and confirms it. */
+.bf-roster-grid {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  flex: 1.2;
+  display: grid;
+  /* Always two even rows of ten — the board reads as one roster, not a wrap. */
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 7px;
+  align-content: center;
+  align-self: center;
+  width: 100%;
+  max-width: 1340px;
+  padding: 6px 2px;
+  /* One quiet rise for the whole board — per-tile pops read as glitchy. */
+  animation: bf-rise-in 0.28s ease-out backwards;
 }
-.bf-weapon-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); flex: 1; }
-.bf-card {
+@keyframes bf-rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+}
+.bf-roster-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border: 3px solid #ffffff;
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 6px 0 rgba(30, 42, 74, 0.25);
+}
+.bf-roster-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bf-roster-name {
+  margin: 0;
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bf-roster-tagline {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bf-roster-stats {
+  display: grid;
+  grid-template-columns: auto minmax(90px, 150px);
+  gap: 3px 8px;
+  align-items: center;
+}
+.bf-stat-label { font-size: 9px; font-weight: 800; color: var(--text-dim); letter-spacing: 1px; }
+.bf-stat-track {
+  height: 10px;
+  border-radius: 6px;
+  background: rgba(30, 42, 74, 0.15);
+  overflow: hidden;
+}
+.bf-stat-fill {
+  height: 100%;
+  background: var(--neon-yellow);
+  border-radius: 6px;
+  transition: width 0.25s ease;
+}
+.bf-tile-future {
+  cursor: default;
+  opacity: 0.55;
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.55);
+}
+.bf-tile-future .bf-tile-portrait { background: linear-gradient(165deg, #6b7ca3, #3a4570); }
+.bf-tile-future .bf-tile-glyph { opacity: 0.65; }
+.bf-tile-future .bf-tile-name { min-height: 19px; }
+
+/* ---- Smash-style select tiles: portrait square + name band BELOW it,
+   so the face is never covered. ---- */
+.bf-tile {
+  --card: #a9bfd8;
+  appearance: none;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  background: var(--panel);
-  border: 4px solid transparent;
-  border-radius: 18px;
-  padding: 10px 6px;
-  cursor: pointer;
-  box-shadow: 0 4px 0 rgba(30, 42, 74, 0.2);
-  transition: transform 0.1s ease;
-  font-family: inherit;
-}
-.bf-card:hover { transform: translateY(-2px); }
-.bf-card-selected { border-color: var(--neon-yellow); }
-.bf-card-locked { filter: saturate(0.15) opacity(0.75); cursor: default; }
-.bf-card-dot {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  padding: 0;
+  overflow: hidden;
   border: 3px solid #ffffff;
-  box-shadow: 0 3px 0 rgba(30, 42, 74, 0.2);
-  font-size: 22px;
-  line-height: 30px;
-  text-align: center;
+  border-radius: 12px;
+  background: rgba(30, 42, 74, 0.85);
+  box-shadow: 0 4px 0 rgba(30, 42, 74, 0.2);
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
 }
-.bf-card-name { font-weight: 800; font-size: 14px; color: var(--text); letter-spacing: 1px; }
-.bf-card-sub { font-size: 11px; color: var(--text-dim); }
-.bf-card-lock { font-size: 11px; font-weight: 700; color: var(--text-dim); }
-.bf-select-side { flex: 1; display: flex; flex-direction: column; gap: 6px; justify-content: flex-end; padding-bottom: 8px; }
-.bf-select-name { margin: 0; font-size: 30px; font-weight: 800; color: #ffffff; text-shadow: 0 3px 0 rgba(30,42,74,0.3); }
-.bf-select-tag { margin: 0; font-size: 14px; font-weight: 600; color: #ffffff; text-shadow: 0 2px 0 rgba(30,42,74,0.3); }
-.bf-select-stats { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
-.bf-stat-row { display: flex; align-items: center; gap: 8px; }
-.bf-stat-label { width: 64px; font-size: 11px; font-weight: 800; color: #ffffff; text-shadow: 0 2px 0 rgba(30,42,74,0.3); }
-.bf-stat-track { flex: 1; height: 12px; border-radius: 8px; background: rgba(30,42,74,0.3); border: 2px solid #ffffff; overflow: hidden; }
-.bf-stat-fill { height: 100%; background: var(--neon-yellow); border-radius: 6px; }
+@keyframes bf-card-pop {
+  from { transform: translateY(18px) scale(0.8); opacity: 0; }
+}
+.bf-tile:hover { transform: translateY(-2px) scale(1.04); z-index: 2; }
+.bf-tile:active { transform: scale(0.96); }
+.bf-tile:focus-visible { outline: 4px solid var(--neon-cyan); outline-offset: 2px; }
+.bf-tile-selected {
+  border-color: var(--neon-yellow);
+  box-shadow: 0 4px 0 rgba(30, 42, 74, 0.2), 0 0 0 3px rgba(255, 201, 62, 0.55);
+}
+.bf-tile-portrait {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--card) 45%, #ffffff),
+    color-mix(in srgb, var(--card) 95%, #1e2a4a)
+  );
+}
+.bf-tile-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.bf-tile-name {
+  padding: 3px 3px 4px;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bf-tile-locked { cursor: default; }
+.bf-tile-locked .bf-tile-face { filter: grayscale(1) brightness(0.32); }
+.bf-tile-locked .bf-tile-name { color: rgba(255, 255, 255, 0.7); }
+.bf-tile-random .bf-tile-portrait {
+  background: linear-gradient(
+    135deg,
+    var(--neon-pink),
+    var(--neon-yellow) 36%,
+    var(--neon-green) 68%,
+    var(--neon-cyan)
+  );
+}
+.bf-tile-glyph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 42px;
+  font-weight: 800;
+  text-shadow: 0 3px 0 rgba(30, 42, 74, 0.35);
+}
 .bf-button-big { font-size: 21px; padding: 15px 30px; }
-.bf-select-hint { text-align: center; color: #ffffff; text-shadow: 0 2px 0 rgba(30,42,74,0.3); }
-.bf-stats-toggle { display: none; }
 
 /* ---- online room browser / cinematic pedestal lobby ---- */
 .bf-online-screen {
@@ -453,6 +688,8 @@ html, body {
   letter-spacing: 3px;
   text-align: center;
   color: #ffffff;
+  -webkit-text-stroke: 2px #1e2a4a;
+  paint-order: stroke fill;
   text-shadow: 0 4px 0 rgba(30, 42, 74, 0.3);
   white-space: nowrap;
 }
@@ -516,25 +753,28 @@ html, body {
   min-height: 0;
   padding: 16px;
   border: 3px solid rgba(255, 255, 255, 0.9);
+  border-top-width: 7px;
   border-radius: 21px;
   background: rgba(246, 250, 255, 0.94);
   color: var(--text);
   box-shadow: 0 7px 0 rgba(10, 18, 44, 0.35), 0 18px 42px rgba(8, 14, 35, 0.24);
 }
+.bf-online-games { border-top-color: var(--neon-cyan); }
+.bf-online-join { border-top-color: var(--neon-violet); }
 .bf-online-panel h2 { margin: 0; font-size: 19px; letter-spacing: 2px; }
 .bf-online-panel-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .bf-online-small-button { padding: 7px 10px; background: var(--neon-cyan); border: 0; }
 .bf-online-room-list { height: calc(100% - 34px); overflow-y: auto; display: flex; flex-direction: column; gap: 9px; padding: 2px 3px 7px; }
 .bf-online-room-row {
   appearance: none;
-  border: 3px solid transparent;
+  border: 3px solid #ffffff;
   border-radius: 15px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 3px 12px;
   padding: 11px 13px;
   color: var(--text);
-  background: linear-gradient(115deg, #e8f5ff, #f4efff);
+  background: linear-gradient(115deg, #d5edff, #ece1ff);
   box-shadow: 0 4px 0 rgba(30, 42, 74, 0.2);
   font-family: inherit;
   text-align: left;
@@ -569,6 +809,16 @@ html, body {
 .bf-online-input:focus { border-color: var(--neon-cyan); box-shadow: 0 0 0 3px rgba(26, 159, 232, 0.18); }
 .bf-online-code-row { display: grid; grid-template-columns: 1fr auto; gap: 7px; }
 .bf-online-host-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+/* Grid children default to min-width auto, which lets long labels punch
+   through the panel edge — clamp them instead of cropping. */
+.bf-online-host-row .bf-online-action,
+.bf-online-code-row .bf-online-action {
+  min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .bf-online-action {
   appearance: none;
   border: 2px solid rgba(255, 255, 255, 0.88);
@@ -589,63 +839,9 @@ html, body {
 .bf-online-secondary { background: linear-gradient(#66779f, #465779); }
 .bf-online-select,
 .bf-online-waiting { position: absolute; inset: 58px 16px 12px; }
-.bf-online-select-prompt {
-  position: absolute;
-  z-index: 3;
-  top: 2px;
-  left: 0;
-  width: min(28vw, 230px);
-  padding: 12px 14px;
-  border: 2px solid rgba(255, 255, 255, 0.8);
-  border-radius: 17px;
-  background: rgba(246, 250, 255, 0.93);
-  color: var(--text);
-  box-shadow: 0 6px 0 rgba(9, 16, 40, 0.32);
-}
-.bf-online-select-prompt h2 { margin: 3px 0 0; font-size: clamp(15px, 2.1vw, 22px); line-height: 1.05; letter-spacing: 1px; }
+/* The loadout steps ARE the full-screen roster board. */
+.bf-online-select { display: flex; flex-direction: column; gap: 8px; }
 .bf-online-step { color: #178dcc; font-size: 10px; font-weight: 900; letter-spacing: 1.3px; }
-.bf-online-selection-plate {
-  position: absolute;
-  z-index: 3;
-  left: 50%;
-  bottom: 86px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  min-width: 180px;
-  padding: 8px 16px;
-  border: 3px solid var(--neon-cyan);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--text);
-  text-align: center;
-  box-shadow: 0 5px 0 rgba(8, 14, 35, 0.44);
-}
-.bf-online-selection-plate strong { font-size: 19px; letter-spacing: 2px; }
-.bf-online-selection-plate span { color: var(--text-dim); font-size: 9px; font-weight: 900; letter-spacing: 1.2px; }
-.bf-online-select-controls {
-  position: absolute;
-  z-index: 4;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: min(92vw, 780px);
-  min-height: 72px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px;
-  border: 3px solid #ffffff;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 7px 0 rgba(8, 14, 35, 0.4);
-}
-.bf-online-picker { flex: 1; min-width: 245px; }
-.bf-online-picker-label { margin: 0 0 3px 5px; color: var(--text-dim); font-size: 9px; font-weight: 900; letter-spacing: 1.3px; }
-.bf-online-picker-controls { display: grid; grid-template-columns: 58px 1fr 58px; align-items: center; gap: 6px; }
-.bf-online-picker-button { min-height: 35px; padding: 6px; }
-.bf-online-picker-value { min-width: 0; overflow: hidden; color: var(--text); font-size: clamp(14px, 2.3vw, 21px); letter-spacing: 1.5px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.bf-online-picker-detail { margin: 3px 5px 0; overflow: hidden; color: var(--text-dim); font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .bf-online-lock { min-width: 145px; }
 .bf-online-room-tag {
   position: absolute;
@@ -694,18 +890,15 @@ html, body {
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 1.3px;
-  transform-origin: 50% 100%;
-  animation: bf-online-open-dance 1.55s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  /* Calm invitation, not a party: gentle breathe + bob (the old lobby feel). */
+  animation: bf-online-open-breathe 1.8s ease-in-out infinite;
 }
-.bf-online-open-plate[data-slot='1'] { animation-delay: -0.38s; }
-.bf-online-open-plate[data-slot='2'] { animation-delay: -0.77s; }
-.bf-online-open-plate[data-slot='3'] { animation-delay: -1.16s; }
-@keyframes bf-online-open-dance {
-  0%, 100% { transform: translate(-50%, calc(-100% - 6px)) translateY(1px) rotate(-2deg) scale(0.97); }
-  18% { transform: translate(-50%, calc(-100% - 6px)) translate(-5px, -13px) rotate(-8deg) scale(1.07); }
-  38% { transform: translate(-50%, calc(-100% - 6px)) translate(3px, -4px) rotate(5deg) scale(1); }
-  58% { transform: translate(-50%, calc(-100% - 6px)) translate(7px, -15px) rotate(9deg) scale(1.08); }
-  78% { transform: translate(-50%, calc(-100% - 6px)) translate(-2px, -3px) rotate(-4deg) scale(1); }
+.bf-online-open-plate[data-slot='1'] { animation-delay: -0.45s; }
+.bf-online-open-plate[data-slot='2'] { animation-delay: -0.9s; }
+.bf-online-open-plate[data-slot='3'] { animation-delay: -1.35s; }
+@keyframes bf-online-open-breathe {
+  0%, 100% { opacity: 0.55; transform: translate(-50%, calc(-100% - 6px)); }
+  50% { opacity: 1; transform: translate(-50%, calc(-100% - 6px)) translateY(-4px); }
 }
 .bf-online-waiting-controls {
   position: absolute;
@@ -756,12 +949,12 @@ html, body {
   .bf-online-input { min-height: 32px; padding: 5px 9px; }
   .bf-online-action { min-height: 33px; padding: 6px 10px; font-size: 10px; }
   .bf-online-select, .bf-online-waiting { inset: 44px 12px 7px; }
-  .bf-online-select-prompt { width: min(27vw, 190px); padding: 8px 10px; }
-  .bf-online-selection-plate { bottom: 66px; padding: 5px 12px; }
-  .bf-online-select-controls { min-height: 57px; padding: 6px; }
-  .bf-online-picker-controls { grid-template-columns: 48px 1fr 48px; }
-  .bf-online-picker-button { min-height: 29px; font-size: 9px; }
-  .bf-online-picker-detail { display: none; }
+  .bf-roster-grid { gap: 5px; }
+  .bf-roster-grid .bf-tile-name { font-size: 8px; padding: 2px 2px 3px; }
+  .bf-roster-bar { padding: 5px 10px; gap: 9px; }
+  .bf-roster-name { font-size: 17px; letter-spacing: 2px; }
+  .bf-roster-tagline { display: none; }
+  .bf-roster-stats { display: none; }
   .bf-online-player-plate { padding: 5px 7px; }
   .bf-online-open-plate { min-height: 43px; }
   .bf-online-waiting-controls { padding: 5px; }
@@ -777,34 +970,19 @@ html, body {
   .bf-online-room-meta { display: none; }
   .bf-online-room-join { grid-row: 1; }
   .bf-online-host-row { grid-template-columns: 1fr; }
-  .bf-online-select-controls { width: 96vw; }
   .bf-online-room-tag { display: none; }
   .bf-online-waiting-controls { width: 97vw; }
   .bf-online-loadout { display: none; }
   .bf-online-settings { min-width: 205px; }
 }
 
-/* Short screens (phones in landscape): compact panel, stats behind a toggle
-   so they never overlay the character preview. */
+/* Short screens (phones in landscape). */
 @media (max-height: 500px) {
-  .bf-select-name { font-size: 20px; margin-top: 0; }
-  .bf-select-tag { font-size: 12px; }
-  .bf-stats-toggle {
-    display: inline-block;
-    align-self: flex-start;
-    padding: 7px 14px;
-    font-size: 12px;
-  }
-  .bf-select-stats { display: none; }
-  .bf-stats-open .bf-select-stats {
-    display: flex;
-    background: var(--panel);
-    border-radius: 14px;
-    padding: 10px 12px;
-    box-shadow: 0 5px 0 rgba(30, 42, 74, 0.2);
-  }
-  .bf-stats-open .bf-stat-label { color: var(--text); text-shadow: none; }
   .bf-button-big { font-size: 17px; padding: 11px 22px; }
+}
+/* Narrow windows: the stat bars are the first thing the roster bar sheds. */
+@media (max-width: 860px) {
+  .bf-roster-stats { display: none; }
 }
 
 /* ---- market ---- */
@@ -829,7 +1007,9 @@ html, body {
   background: rgba(255, 255, 255, 0.5);
   color: var(--text-dim);
   cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
 }
+.bf-tab:hover { background: rgba(255, 255, 255, 0.72); }
 .bf-tab-active { background: var(--panel); color: var(--text); }
 .bf-market-list {
   flex: 1;

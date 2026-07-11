@@ -6,6 +6,7 @@ import { CharacterSelectScreen } from './screens/CharacterSelectScreen';
 import { GameplayScreen } from './screens/GameplayScreen';
 import { LevelMapScreen } from './screens/LevelMapScreen';
 import { MarketScreen } from './screens/MarketScreen';
+import { ModeSelectScreen } from './screens/ModeSelectScreen';
 import { PauseOverlay } from './screens/PauseOverlay';
 import { ReplayLabScreen } from './screens/ReplayLabScreen';
 import { ResultsScreen, type LevelResult } from './screens/ResultsScreen';
@@ -20,10 +21,19 @@ import { WeaponSelectScreen } from './screens/WeaponSelectScreen';
  */
 
 export function goTitle(game: Game): void {
-  game.screens.replace(new TitleScreen(
-    () => goLevelMap(game),
-    () => startOnlineFlow(game, () => goTitle(game)),
-  ));
+  // Tap through the title, THEN pick how you want to fight (Ryder's flow) —
+  // the title itself stays clean, no floating buttons.
+  game.screens.replace(new TitleScreen(() => goModeSelect(game)));
+}
+
+export function goModeSelect(game: Game): void {
+  game.screens.replace(
+    new ModeSelectScreen({
+      onCampaign: () => goLevelMap(game),
+      onOnline: () => startOnlineFlow(game, () => goModeSelect(game)),
+      onBack: () => goTitle(game),
+    }),
+  );
 }
 
 /** `?replaylab` dev tool — sim-determinism harness (see ReplayLabScreen). */
@@ -35,6 +45,7 @@ export function goLevelMap(game: Game): void {
   game.screens.replace(
     new LevelMapScreen({
       onPickLevel: (levelId) => goCharacterSelect(game, levelId),
+      onBack: () => goModeSelect(game),
       onSettings: () =>
         game.screens.push(
           new SettingsScreen(

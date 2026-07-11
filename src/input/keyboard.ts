@@ -27,6 +27,9 @@ export class KeyboardInput {
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (!isGameCode(event.code)) return;
+    // Typing in a text field (e.g. the online nickname) wins over game input —
+    // otherwise WASD/P/space never reach the field.
+    if (isEditableTarget(event.target)) return;
     event.preventDefault();
     this.heldCodes.add(event.code);
     this.interactionQueued = true;
@@ -35,9 +38,12 @@ export class KeyboardInput {
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
     if (!isGameCode(event.code)) return;
-    event.preventDefault();
+    // Always release held state (focus may have moved into a field mid-hold),
+    // but let the field keep the event itself.
     this.heldCodes.delete(event.code);
     this.refresh();
+    if (isEditableTarget(event.target)) return;
+    event.preventDefault();
   };
 
   /** Registers global key listeners. */
@@ -75,6 +81,17 @@ export class KeyboardInput {
     this.moveX = (this.rightHeld ? 1 : 0) - (this.leftHeld ? 1 : 0);
     this.moveY = (this.upHeld ? 1 : 0) - (this.downHeld ? 1 : 0);
   }
+}
+
+/** True when the key event belongs to a text field, not the game. */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target.isContentEditable
+  );
 }
 
 function isGameCode(code: string): boolean {

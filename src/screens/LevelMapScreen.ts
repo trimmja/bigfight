@@ -19,6 +19,7 @@ export class LevelMapScreen implements Screen {
   constructor(
     private readonly callbacks: {
       onPickLevel: (levelId: number) => void;
+      onBack: () => void;
       onSettings: () => void;
     },
   ) {}
@@ -28,6 +29,10 @@ export class LevelMapScreen implements Screen {
     this.root = uiRoot('bf-map-screen');
 
     const header = el('div', 'bf-map-header', this.root);
+    button('◀', () => {
+      events.emit('ui', { kind: 'back' });
+      this.callbacks.onBack();
+    }, 'bf-button bf-button-round', header);
     el('h1', 'bf-map-title', header).textContent = 'CAMPAIGN';
     const gold = el('div', 'bf-gold-chip', header);
     gold.textContent = `G ${game.save.gold}`;
@@ -49,6 +54,7 @@ export class LevelMapScreen implements Screen {
           + (locked ? ' bf-map-node-locked' : ''),
         path,
       );
+      node.style.setProperty('--i', `${level.id - 1}`);
       const bubble = el(
         'button',
         'bf-level' +

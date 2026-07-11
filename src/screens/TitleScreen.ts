@@ -20,10 +20,7 @@ export class TitleScreen implements Screen {
   private t = 0;
   private started = false;
 
-  constructor(
-    private readonly onPlay: () => void,
-    private readonly onOnline?: () => void,
-  ) {}
+  constructor(private readonly onPlay: () => void) {}
 
   enter(game: Game): void {
     // Hero lineup: the three starters idling/jogging on the sky.
@@ -51,18 +48,6 @@ export class TitleScreen implements Screen {
     const word = el('div', 'bf-logo-word', this.root);
     word.innerHTML = '<span>BIG</span> <span class="bf-logo-fight">FIGHT</span>';
     el('div', 'bf-tap-hint', this.root).textContent = 'TAP TO FIGHT';
-
-    if (this.onOnline) {
-      const online = button('ONLINE FIGHTS', () => {
-        if (this.started) return;
-        this.started = true;
-        events.emit('ui', { kind: 'confirm' });
-        this.onOnline?.();
-      }, 'bf-button bf-button-yellow', this.root);
-      online.style.marginTop = '18px';
-      // The rest of the title is the campaign tap target. Keep this distinct.
-      online.addEventListener('pointerdown', (event) => event.stopPropagation());
-    }
 
     const start = (): void => {
       if (this.started) return;
