@@ -67,7 +67,7 @@ function show(): void {
   wrap.rotation.y = -Math.PI / 2 + 0.2;
   attackQueue = [];
   label.textContent = chr === 'comet'
-    ? 'COMET CONCEPT · SPACE CADET · SIGNATURE PREVIEW: METEOR DIVE'
+    ? 'COMET · SPACE CADET · SIGNATURE PREVIEW: METEOR DIVE'
     : OPTION_LABELS[option];
 }
 show();
@@ -105,19 +105,21 @@ syncChrButton();
 // ---------------------------------------------------------------------------
 const lobbyReview = document.getElementById('lobbyReview')!;
 const roomBrowser = document.getElementById('roomBrowser')!;
-const roomLobby = document.getElementById('roomLobby')!;
+const loadoutSelect = document.getElementById('loadoutSelect')!;
+const waitingRoom = document.getElementById('waitingRoom')!;
 const resultOverlay = document.getElementById('resultOverlay')!;
 const lobbyTitle = document.getElementById('lobbyTitle')!;
 const connectionChip = document.getElementById('connectionChip')!;
 const lobbyFighter = document.getElementById('lobbyFighter')!;
+const waitingFighter = document.getElementById('waitingFighter')!;
 const fighterValue = document.getElementById('fighterValue')!;
 const weaponValue = document.getElementById('weaponValue')!;
 const youPick = document.getElementById('youPick')!;
 const youStatus = document.getElementById('youStatus')!;
 const youCard = document.getElementById('youCard')!;
-const readyBtn = document.getElementById('readyBtn')!;
+const waitingReadyBtn = document.getElementById('waitingReadyBtn')!;
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
-const lobbyCharacters: readonly CharId[] = ALL_CHARS.filter((id) => id !== 'comet');
+const lobbyCharacters: readonly CharId[] = ALL_CHARS;
 let lobbyWeaponIndex = 0;
 let lobbyReady = false;
 let lobbyHost = true;
@@ -126,7 +128,8 @@ function openLobbyBrowser(): void {
   document.body.classList.add('lobby-mode');
   lobbyReview.hidden = false;
   roomBrowser.hidden = false;
-  roomLobby.hidden = true;
+  loadoutSelect.hidden = true;
+  waitingRoom.hidden = true;
   resultOverlay.hidden = true;
   lobbyTitle.textContent = 'ONLINE FIGHTS';
   connectionChip.innerHTML = '<span class="dot"></span> DALLAS · 28 MS';
@@ -141,12 +144,12 @@ function closeLobbyReview(): void {
 function enterRoom(name: string, isHost: boolean, isPrivate = false): void {
   lobbyHost = isHost;
   lobbyReady = false;
-  if (chr === 'comet') chr = 'volt';
   option = 'C';
   show();
   syncChrButton();
   roomBrowser.hidden = true;
-  roomLobby.hidden = false;
+  loadoutSelect.hidden = false;
+  waitingRoom.hidden = true;
   resultOverlay.hidden = true;
   lobbyTitle.textContent = name.toUpperCase();
   connectionChip.innerHTML = `<span class="dot"></span> ${isPrivate ? 'PRIVATE · CODE BCDX' : 'DIRECT · 24 MS'}`;
@@ -159,13 +162,29 @@ function syncLobbyLoadout(): void {
   const weapon = WEAPONS[lobbyWeaponIndex] ?? WEAPONS[0]!;
   const name = chr.toUpperCase();
   lobbyFighter.textContent = name;
+  waitingFighter.textContent = name;
   fighterValue.textContent = name;
   weaponValue.textContent = weapon.name.toUpperCase();
   youPick.textContent = `${name} · ${weapon.name.toUpperCase()}`;
-  youStatus.textContent = lobbyReady ? 'READY' : 'PICKING';
-  readyBtn.textContent = lobbyReady ? 'NOT READY' : 'READY';
-  readyBtn.classList.toggle('on', lobbyReady);
+  youStatus.textContent = lobbyReady ? 'READY' : 'NOT READY';
+  waitingReadyBtn.textContent = lobbyReady ? 'NOT READY' : 'READY UP';
+  waitingReadyBtn.classList.toggle('on', lobbyReady);
   startBtn.disabled = lobbyHost && !lobbyReady;
+}
+
+function showWaitingRoom(): void {
+  lobbyReady = true;
+  loadoutSelect.hidden = true;
+  waitingRoom.hidden = false;
+  syncLobbyLoadout();
+}
+
+function showLoadoutSelect(): void {
+  lobbyReady = false;
+  waitingRoom.hidden = true;
+  loadoutSelect.hidden = false;
+  resultOverlay.hidden = true;
+  syncLobbyLoadout();
 }
 
 function cycleLobbyFighter(direction: -1 | 1): void {
@@ -185,7 +204,8 @@ function cycleLobbyWeapon(direction: -1 | 1): void {
 
 document.getElementById('lobbyBtn')!.addEventListener('click', openLobbyBrowser);
 document.getElementById('lobbyBack')!.addEventListener('click', () => {
-  if (!roomLobby.hidden) openLobbyBrowser();
+  if (!waitingRoom.hidden) showLoadoutSelect();
+  else if (!loadoutSelect.hidden) openLobbyBrowser();
   else closeLobbyReview();
 });
 document.querySelectorAll<HTMLElement>('[data-room]').forEach((row) => {
@@ -199,13 +219,17 @@ document.getElementById('fighterPrev')!.addEventListener('click', () => cycleLob
 document.getElementById('fighterNext')!.addEventListener('click', () => cycleLobbyFighter(1));
 document.getElementById('weaponPrev')!.addEventListener('click', () => cycleLobbyWeapon(-1));
 document.getElementById('weaponNext')!.addEventListener('click', () => cycleLobbyWeapon(1));
+document.getElementById('lockInBtn')!.addEventListener('click', showWaitingRoom);
 document.getElementById('danceBtn')!.addEventListener('click', () => { dancingUntil = t + 1.8; });
-readyBtn.addEventListener('click', () => { lobbyReady = !lobbyReady; syncLobbyLoadout(); });
+waitingReadyBtn.addEventListener('click', () => { lobbyReady = !lobbyReady; syncLobbyLoadout(); });
+document.getElementById('changePickBtn')!.addEventListener('click', showLoadoutSelect);
 startBtn.addEventListener('click', () => { if (!startBtn.disabled) resultOverlay.hidden = false; });
 document.getElementById('testResults')!.addEventListener('click', () => { resultOverlay.hidden = false; });
 document.getElementById('sameRoom')!.addEventListener('click', () => {
   resultOverlay.hidden = true;
   lobbyReady = false;
+  waitingRoom.hidden = false;
+  loadoutSelect.hidden = true;
   syncLobbyLoadout();
 });
 
