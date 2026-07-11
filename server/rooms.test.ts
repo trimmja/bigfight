@@ -19,6 +19,13 @@ function ready(rooms: RoomDirectory, playerId: string, characterId: string) {
   rooms.setPlayer(playerId, { characterId, ready: true });
 }
 
+function twoPlayerLobby() {
+  const { rooms } = directory();
+  const room = rooms.create({ playerId: 'a', releaseId: 'release-1', nickname: 'Alpha', visibility: 'public' });
+  rooms.join({ playerId: 'b', releaseId: 'release-1', nickname: 'Bravo', roomId: room.id });
+  return { rooms, room };
+}
+
 function startTwoPlayerMatch() {
   const { rooms, tick } = directory();
   const room = rooms.create({ playerId: 'a', releaseId: 'release-1', nickname: 'Alpha', visibility: 'public' });
@@ -92,6 +99,63 @@ test('countdown requires two selected ready players and cancels on unready', () 
   ready(rooms, 'b', 'kaze');
   assert.equal(rooms.startCountdown('a').phase, 'countdown');
   assert.equal(rooms.setPlayer('b', { ready: false }).phase, 'lobby');
+});
+
+test('a second player cannot lock a claimed character and keeps their current state', () => {
+  const { rooms } = twoPlayerLobby();
+  ready(rooms, 'a', 'volt');
+  rooms.setPlayer('b', { characterId: 'kaze' });
+
+  assert.throws(
+    () => rooms.setPlayer('b', { characterId: 'volt', ready: true }),
+    (error: unknown) => error instanceof RoomError && error.code === 'characterTaken',
+  );
+  const player = rooms.roomForPlayer('b')?.players.find((entry) => entry.playerId === 'b');
+  assert.equal(player?.characterId, 'kaze');
+  assert.equal(player?.ready, false);
+});
+
+test('a second player cannot select a character claimed by a ready player', () => {
+  const { rooms } = twoPlayerLobby();
+  ready(rooms, 'a', 'volt');
+
+  assert.throws(
+    () => rooms.setPlayer('b', { characterId: 'volt' }),
+    (error: unknown) => error instanceof RoomError && error.code === 'characterTaken',
+  );
+  assert.equal(rooms.roomForPlayer('b')?.players.find((player) => player.playerId === 'b')?.characterId, null);
+});
+
+test('unready players may select the same character', () => {
+  const { rooms } = twoPlayerLobby();
+  rooms.setPlayer('a', { characterId: 'volt' });
+  const room = rooms.setPlayer('b', { characterId: 'volt' });
+
+  assert.deepEqual(room.players.map((player) => player.characterId), ['volt', 'volt']);
+  assert.deepEqual(room.players.map((player) => player.ready), [false, false]);
+});
+
+test('a claiming player can re-lock and re-select their own character', () => {
+  const { rooms } = twoPlayerLobby();
+  ready(rooms, 'a', 'volt');
+
+  assert.doesNotThrow(() => rooms.setPlayer('a', { ready: true }));
+  const room = rooms.setPlayer('a', { characterId: 'volt' });
+  const player = room.players.find((entry) => entry.playerId === 'a');
+  assert.equal(player?.characterId, 'volt');
+  assert.equal(player?.ready, true);
+});
+
+test('unreadying releases a character for another player to select and lock', () => {
+  const { rooms } = twoPlayerLobby();
+  ready(rooms, 'a', 'volt');
+  rooms.setPlayer('a', { ready: false });
+
+  rooms.setPlayer('b', { characterId: 'volt' });
+  const room = rooms.setPlayer('b', { ready: true });
+  const player = room.players.find((entry) => entry.playerId === 'b');
+  assert.equal(player?.characterId, 'volt');
+  assert.equal(player?.ready, true);
 });
 
 test('untrusted room settings and visibility are normalized', () => {

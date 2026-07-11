@@ -16,6 +16,10 @@ export interface RosterSlot {
   locked: boolean;
   /** Tooltip shown on locked tiles (how to earn it). */
   lockHint?: string;
+  /** Other players hovering/holding this tile right now (online lobby). */
+  claims?: { label: string; color: string; locked: boolean }[];
+  /** Claimed by another locked-in player — visible but not selectable. */
+  taken?: boolean;
 }
 
 export interface RosterGrid {
@@ -37,19 +41,33 @@ export function buildRosterGrid(
   const tiles = new Map<string, HTMLElement>();
 
   for (const slot of opts.slots) {
-    const tile = el('button', 'bf-tile' + (slot.locked ? ' bf-tile-locked' : ''), root);
+    const taken = Boolean(slot.taken) && !slot.locked;
+    const tile = el(
+      'button',
+      'bf-tile' + (slot.locked ? ' bf-tile-locked' : '') + (taken ? ' bf-tile-taken' : ''),
+      root,
+    );
     tile.type = 'button';
     if (!slot.locked) tile.style.setProperty('--card', slot.color);
     if (slot.locked && slot.lockHint) tile.title = slot.lockHint;
-    tile.disabled = slot.locked;
+    tile.disabled = slot.locked || taken;
     const portrait = el('span', 'bf-tile-portrait', tile);
     const face = el('img', 'bf-tile-face', portrait);
     face.src = slot.portrait;
     face.alt = '';
     face.draggable = false;
     if (slot.locked) el('span', 'bf-tile-glyph', portrait).textContent = '?';
+    if (!slot.locked) {
+      for (const [index, claim] of (slot.claims ?? []).entries()) {
+        const chip = el('span', 'bf-tile-claim' + (claim.locked ? ' bf-tile-claim-locked' : ''), portrait);
+        chip.style.setProperty('--claim-i', `${index}`);
+        chip.style.background = claim.color;
+        chip.textContent = claim.locked ? `${claim.label} ✓` : claim.label;
+      }
+      if (taken) tile.title = 'Locked in by another player — pick a different fighter!';
+    }
     el('span', 'bf-tile-name', tile).textContent = slot.locked ? '???' : slot.name.toUpperCase();
-    if (!slot.locked) tile.addEventListener('click', () => opts.onSelect(slot.id));
+    if (!slot.locked && !taken) tile.addEventListener('click', () => opts.onSelect(slot.id));
     tiles.set(slot.id, tile);
   }
 

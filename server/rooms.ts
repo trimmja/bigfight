@@ -26,7 +26,8 @@ export type RoomErrorCode =
   | 'alreadyInRoom'
   | 'notHost'
   | 'notReady'
-  | 'invalidPhase';
+  | 'invalidPhase'
+  | 'characterTaken';
 
 export class RoomError extends Error {
   constructor(readonly code: RoomErrorCode) {
@@ -170,11 +171,24 @@ export class RoomDirectory {
     const room = this.requireRoomForPlayer(playerId);
     const player = requirePlayer(room, playerId);
     if (room.phase !== 'lobby' && room.phase !== 'countdown') throw new RoomError('invalidPhase');
+    const nextCharacterId = patch.characterId !== undefined ? cleanId(patch.characterId) : player.characterId;
+    const nextReady = patch.ready !== undefined ? patch.ready : player.ready;
+    if (
+      nextCharacterId !== null
+      && (patch.ready === true || patch.characterId !== undefined)
+      && room.players.some((other) => (
+        other.playerId !== playerId
+        && other.ready
+        && other.characterId === nextCharacterId
+      ))
+    ) {
+      throw new RoomError('characterTaken');
+    }
     if (patch.nickname !== undefined) player.nickname = cleanNickname(patch.nickname, player.nickname);
-    if (patch.characterId !== undefined) player.characterId = cleanId(patch.characterId);
+    if (patch.characterId !== undefined) player.characterId = nextCharacterId;
     if (patch.weaponId !== undefined) player.weaponId = cleanId(patch.weaponId) ?? 'rustyPistol';
     if (patch.team === 'A' || patch.team === 'B' || patch.team === null) player.team = patch.team;
-    if (patch.ready !== undefined) player.ready = patch.ready;
+    if (patch.ready !== undefined) player.ready = nextReady;
     if (patch.dance === true) player.danceSeq += 1;
     if (room.phase === 'countdown' && (!player.ready || !player.characterId)) this.cancelCountdownRecord(room);
     this.touch(room);

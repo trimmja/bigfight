@@ -643,6 +643,35 @@ html, body {
 .bf-tile-locked { cursor: default; }
 .bf-tile-locked .bf-tile-face { filter: grayscale(1) brightness(0.32); }
 .bf-tile-locked .bf-tile-name { color: rgba(255, 255, 255, 0.7); }
+/* Online: another player's live pick rides the tile as a slot-colored chip;
+   a ✓ chip + dimmed face = locked in (first to lock claims the fighter). */
+.bf-tile-claim {
+  position: absolute;
+  top: calc(4px + var(--claim-i, 0) * 21px);
+  left: 4px;
+  max-width: calc(100% - 8px);
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 0 rgba(30, 42, 74, 0.35);
+  pointer-events: none;
+  animation: bf-card-pop 0.22s ease backwards;
+}
+.bf-tile-claim-locked { outline: 2px solid #ffffff; }
+.bf-tile-taken { cursor: default; }
+.bf-tile-taken .bf-tile-face { filter: saturate(0.35) brightness(0.55); }
+.bf-tile-taken .bf-tile-name { color: rgba(255, 255, 255, 0.75); }
+/* Friendly amber heads-up (someone locked your fighter) — not an error. */
+.bf-online-notice {
+  background: var(--neon-yellow);
+  color: #1e2a4a;
+}
 .bf-tile-random .bf-tile-portrait {
   background: linear-gradient(
     135deg,

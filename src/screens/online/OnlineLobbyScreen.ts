@@ -42,6 +42,7 @@ export class OnlineLobbyScreen implements Screen {
   private selectedCharacter = 'volt';
   private selectedWeapon = 'rustyPistol';
   private roomId: string | null = null;
+  private notice: string | null = null;
   private unsubscribeState: (() => void) | null = null;
   private unsubscribeMatch: (() => void) | null = null;
   private renderedSignature = '';
@@ -107,6 +108,16 @@ export class OnlineLobbyScreen implements Screen {
       if (state.room.id !== previousRoomId) {
         this.view = local?.characterId || state.room.phase !== 'lobby' ? 'waiting' : 'fighter';
       }
+      // Race safety: someone locked the fighter we're holding while we're not
+      // ready (a simultaneous lock the server rejected, or we idled unready).
+      // Bounce back to the roster with a friendly heads-up to re-pick.
+      if (this.view === 'waiting' && state.room.phase === 'lobby' && local && !local.ready) {
+        const holder = this.lockedByOthers().get(this.selectedCharacter);
+        if (holder) {
+          this.view = 'fighter';
+          this.notice = `${holder.nickname.toUpperCase()} LOCKED ${characterName(this.selectedCharacter)} — PICK ANOTHER FIGHTER!`;
+        }
+      }
       this.syncDances(state.room);
     }
 
@@ -118,6 +129,7 @@ export class OnlineLobbyScreen implements Screen {
       view: this.view,
       character: this.selectedCharacter,
       weapon: this.selectedWeapon,
+      notice: this.notice,
     });
     if (signature !== this.renderedSignature) {
       this.renderedSignature = signature;
@@ -143,6 +155,7 @@ export class OnlineLobbyScreen implements Screen {
     chip.append(connectionCopy(state.connection));
 
     if (state.error) el('div', 'bf-online-error', root).textContent = state.error;
+    else if (this.notice) el('div', 'bf-online-error bf-online-notice', root).textContent = this.notice;
 
     if (!room) this.renderBrowser(root, state);
     else if (this.view === 'fighter') this.renderFighter(root, room, state);
@@ -211,11 +224,26 @@ export class OnlineLobbyScreen implements Screen {
     button('HOST PRIVATE', () => host('private'), 'bf-online-action bf-online-secondary', hostRow);
   }
 
-  private renderFighter(root: HTMLElement, _room: RoomState, _state: OnlineState): void {
+  private renderFighter(root: HTMLElement, _room: RoomState, state: OnlineState): void {
     this.clampLoadoutToSave();
     const save = this.game!.save;
     const def = characterById(this.selectedCharacter);
     const main = el('main', 'bf-online-select', root);
+
+    // Everyone else's live pick rides its tile as a slot-colored chip; a ✓
+    // chip means locked in — first to lock claims the fighter for the match.
+    const claims = new Map<string, { label: string; color: string; locked: boolean }[]>();
+    for (const player of state.room?.players ?? []) {
+      if (player.playerId === state.playerId || !player.characterId) continue;
+      const list = claims.get(player.characterId) ?? [];
+      list.push({
+        label: player.nickname.toUpperCase().slice(0, 10),
+        color: slotCssColor(player.slot),
+        locked: player.ready,
+      });
+      claims.set(player.characterId, list);
+    }
+    const lockedBy = this.lockedByOthers();
 
     // Full-screen Smash-style roster; locked fighters show as ?-silhouettes.
     buildRosterGrid(main, {
@@ -228,6 +256,8 @@ export class OnlineLobbyScreen implements Screen {
         lockHint: character.unlock.type === 'level'
           ? `Beat level ${character.unlock.level} in the campaign`
           : 'Unlock in Market',
+        claims: claims.get(character.id) ?? [],
+        taken: lockedBy.has(character.id),
       })),
       capacity: ROSTER_CAPACITY,
       selectedId: this.selectedCharacter,
@@ -237,17 +267,22 @@ export class OnlineLobbyScreen implements Screen {
     const bar = el('div', 'bf-roster-bar', main);
     const who = el('div', 'bf-roster-who', bar);
     el('h2', 'bf-roster-name', who).textContent = def.name.toUpperCase();
-    el('p', 'bf-roster-tagline', who).textContent = def.tagline;
+    const holder = lockedBy.get(this.selectedCharacter);
+    el('p', 'bf-roster-tagline', who).textContent = holder
+      ? `${holder.nickname.toUpperCase()} locked this fighter — pick another!`
+      : def.tagline;
     const stats = el('div', 'bf-roster-stats', bar);
     this.statBar(stats, 'SPEED', def.speed / 10);
     this.statBar(stats, 'POWER', (def.power - 0.85) / 0.3);
     this.statBar(stats, 'WEIGHT', (def.weight - 80) / 40);
     this.statBar(stats, 'JUMP', (def.jumpVel - 12) / 4.5);
     el('span', 'bf-online-step', bar).textContent = 'STEP 2 OF 4';
-    button('PICK WEAPON ▶', () => {
+    const next = button('PICK WEAPON ▶', () => {
+      this.notice = null;
       this.view = 'weapon';
       this.forceRender();
     }, 'bf-button bf-button-green bf-button-big', bar);
+    next.disabled = Boolean(holder);
   }
 
   private renderWeapon(root: HTMLElement, _room: RoomState, _state: OnlineState): void {
@@ -281,6 +316,7 @@ export class OnlineLobbyScreen implements Screen {
       this.forceRender();
     }, 'bf-button', bar);
     button('LOCK IN ▶', () => {
+      if (this.bounceIfFighterTaken()) return;
       this.session.setPlayer({
         characterId: this.selectedCharacter,
         weaponId: this.selectedWeapon,
@@ -342,6 +378,7 @@ export class OnlineLobbyScreen implements Screen {
     el('strong', '', loadout).textContent = `${characterName(this.selectedCharacter)} · ${weaponName(this.selectedWeapon)}`;
     button('DANCE', () => this.session.setPlayer({ dance: true }), 'bf-online-action bf-online-dance', bottom);
     button(local?.ready ? 'NOT READY' : 'READY UP', () => {
+      if (!local?.ready && this.bounceIfFighterTaken()) return;
       this.session.setPlayer({ ready: !local?.ready });
     }, `bf-online-action ${local?.ready ? 'bf-online-ready-on' : 'bf-online-primary'}`, bottom);
     button('CHANGE', () => {
@@ -417,10 +454,34 @@ export class OnlineLobbyScreen implements Screen {
   }
 
   private pickCharacter(id: string): void {
-    if (this.selectedCharacter === id) return;
+    if (this.selectedCharacter === id || this.lockedByOthers().has(id)) return;
+    this.notice = null;
     this.selectedCharacter = id;
     this.session.setPlayer({ characterId: id, ready: false });
     this.forceRender();
+  }
+
+  /** charId → the locked-in (ready) opponent holding it. */
+  private lockedByOthers(): Map<string, RoomPlayer> {
+    const map = new Map<string, RoomPlayer>();
+    const state = this.state;
+    for (const player of state?.room?.players ?? []) {
+      if (player.playerId === state!.playerId || !player.ready || !player.characterId) continue;
+      if (!map.has(player.characterId)) map.set(player.characterId, player);
+    }
+    return map;
+  }
+
+  /** True (and bounces to the roster with a heads-up) when our current
+   * fighter got locked by someone else — the last line of defense right
+   * before we'd try to lock or ready up with it. */
+  private bounceIfFighterTaken(): boolean {
+    const holder = this.lockedByOthers().get(this.selectedCharacter);
+    if (!holder) return false;
+    this.notice = `${holder.nickname.toUpperCase()} LOCKED ${characterName(this.selectedCharacter)} — PICK ANOTHER FIGHTER!`;
+    this.view = 'fighter';
+    this.forceRender();
+    return true;
   }
 
   private pickWeapon(id: string): void {
@@ -513,6 +574,10 @@ export class OnlineLobbyScreen implements Screen {
 
 function localPlayer(state: OnlineState): RoomPlayer | undefined {
   return state.room?.players.find((player) => player.playerId === state.playerId);
+}
+
+function slotCssColor(slot: number): string {
+  return `#${(PEDESTAL_COLORS[slot] ?? PEDESTAL_COLORS[0]).toString(16).padStart(6, '0')}`;
 }
 
 function readNickname(): string {

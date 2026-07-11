@@ -207,6 +207,9 @@ function handleControl(connection: Connection, raw: RawData): void {
       if (message.t === 'joinRoom' || message.t === 'createRoom') {
         const reason = toJoinFailure(error.code);
         send(connection, { t: 'joinFailed', reason });
+      } else if (message.t === 'setPlayer') {
+        const room = rooms.roomForPlayer(connection.playerId);
+        if (room) send(connection, { t: 'room', room });
       }
       return;
     }
