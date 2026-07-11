@@ -1,6 +1,6 @@
 /** Shared browser/server protocol. Keep runtime values and pure data only. */
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const MAX_PLAYERS = 4;
 export const RELAY_FLAG = 0x80;
 export const RELAY_CHANNEL_GAME = 0;
@@ -48,6 +48,7 @@ export interface RoomState {
   countdownEndsAt: number | null;
   matchId: string | null;
   pauseStartedAt: number | null;
+  pausedBy: string | null;
   result: MatchResultSummary | null;
 }
 
@@ -87,6 +88,9 @@ export type C2S =
   | { t: 'setSettings'; settings: Partial<RoomSettings> }
   | { t: 'startMatch' }
   | { t: 'cancelCountdown' }
+  | { t: 'pauseMatch' }
+  | { t: 'resumeMatch' }
+  | { t: 'forfeitMatch' }
   | { t: 'finishMatch'; matchId: string; result: MatchResultSummary }
   | { t: 'returnToLobby' }
   | { t: 'signal'; to: string; data: unknown }
@@ -100,7 +104,7 @@ export type S2C =
   | { t: 'protocolMismatch'; expected: number }
   | { t: 'countdown'; endsAt: number }
   | { t: 'matchStart'; match: MatchLaunch }
-  | { t: 'matchPaused'; playerId: string; pausedAt: number }
+  | { t: 'matchPaused'; playerId: string; pausedAt: number; reason: 'menu' | 'connection' }
   | { t: 'matchResumed'; pausedAt: number; resumedAt: number }
   | { t: 'signal'; from: string; data: unknown }
   | { t: 'pong'; clientTs: number; serverTs: number };

@@ -19,6 +19,18 @@ function ready(rooms: RoomDirectory, playerId: string, characterId: string) {
   rooms.setPlayer(playerId, { characterId, ready: true });
 }
 
+function startTwoPlayerMatch() {
+  const { rooms, tick } = directory();
+  const room = rooms.create({ playerId: 'a', releaseId: 'release-1', nickname: 'Alpha', visibility: 'public' });
+  rooms.join({ playerId: 'b', releaseId: 'release-1', nickname: 'Bravo', roomId: room.id });
+  ready(rooms, 'a', 'volt');
+  ready(rooms, 'b', 'kaze');
+  rooms.startCountdown('a');
+  tick(3_000);
+  const launch = rooms.beginMatch(room.id);
+  return { rooms, tick, room, launch };
+}
+
 test('public rooms are discoverable and private rooms require their code', () => {
   const { rooms } = directory();
   const publicRoom = rooms.create({ playerId: 'a', releaseId: 'release-1', nickname: 'Alpha', visibility: 'public' });
@@ -96,19 +108,105 @@ test('untrusted room settings and visibility are normalized', () => {
 });
 
 test('an active match pauses for a disconnected player and resumes in place', () => {
-  const { rooms, tick } = directory();
-  const room = rooms.create({ playerId: 'a', releaseId: 'release-1', nickname: 'Alpha', visibility: 'public' });
-  rooms.join({ playerId: 'b', releaseId: 'release-1', nickname: 'Bravo', roomId: room.id });
-  ready(rooms, 'a', 'volt');
-  ready(rooms, 'b', 'kaze');
-  rooms.startCountdown('a');
-  tick(3_000);
-  rooms.beginMatch(room.id);
+  const { rooms } = startTwoPlayerMatch();
   const paused = rooms.setConnected('b', false);
   assert.equal(paused.phase, 'paused');
   assert.equal(paused.pauseStartedAt, 4_000);
+  assert.equal(paused.pausedBy, null);
   const resumed = rooms.setConnected('b', true);
   assert.equal(resumed.phase, 'match');
   assert.equal(resumed.pauseStartedAt, null);
   assert.deepEqual(resumed.players.map((player) => player.connected), [true, true]);
+});
+
+test('a player can pause an active match but cannot pause from another phase', () => {
+  const { rooms, tick } = startTwoPlayerMatch();
+  tick(250);
+  const paused = rooms.pauseMatch('b');
+  assert.equal(paused.phase, 'paused');
+  assert.equal(paused.pauseStartedAt, 4_250);
+  assert.equal(paused.pausedBy, 'b');
+  assert.throws(
+    () => rooms.pauseMatch('a'),
+    (error: unknown) => error instanceof RoomError && error.code === 'invalidPhase',
+  );
+
+  const lobby = directory().rooms;
+  lobby.create({ playerId: 'lobby-player', releaseId: 'release-1', nickname: 'Lobby', visibility: 'public' });
+  assert.throws(
+    () => lobby.pauseMatch('lobby-player'),
+    (error: unknown) => error instanceof RoomError && error.code === 'invalidPhase',
+  );
+});
+
+test('only the voluntary pauser can resume and receives the pause timestamps', () => {
+  const { rooms, tick } = startTwoPlayerMatch();
+  rooms.pauseMatch('a');
+  tick(600);
+  assert.throws(
+    () => rooms.resumeMatch('b'),
+    (error: unknown) => error instanceof RoomError && error.code === 'invalidPhase',
+  );
+  const { room, resumed } = rooms.resumeMatch('a');
+  assert.equal(room.phase, 'match');
+  assert.equal(room.pauseStartedAt, null);
+  assert.equal(room.pausedBy, null);
+  assert.deepEqual(resumed, { pausedAt: 4_000, resumedAt: 4_600 });
+});
+
+test('a reconnect does not dismiss a voluntary menu pause', () => {
+  const { rooms } = startTwoPlayerMatch();
+  rooms.pauseMatch('a');
+  rooms.setConnected('b', false);
+  const reconnected = rooms.setConnected('b', true);
+  assert.equal(reconnected.phase, 'paused');
+  assert.equal(reconnected.pauseStartedAt, 4_000);
+  assert.equal(reconnected.pausedBy, 'a');
+});
+
+test('resuming a menu while a player is disconnected degrades to a connection pause', () => {
+  const { rooms, tick } = startTwoPlayerMatch();
+  rooms.pauseMatch('a');
+  rooms.setConnected('b', false);
+  tick(750);
+  const degraded = rooms.resumeMatch('a');
+  assert.equal(degraded.room.phase, 'paused');
+  assert.equal(degraded.room.pauseStartedAt, 4_000);
+  assert.equal(degraded.room.pausedBy, null);
+  assert.equal(degraded.resumed, null);
+
+  tick(250);
+  const reconnected = rooms.setConnected('b', true);
+  assert.equal(reconnected.phase, 'match');
+  assert.equal(reconnected.pauseStartedAt, null);
+});
+
+test('forfeiting places that player last with zero KOs and ends the match', () => {
+  const { rooms } = startTwoPlayerMatch();
+  rooms.pauseMatch('b');
+  const results = rooms.forfeitMatch('b');
+  assert.equal(results.phase, 'results');
+  assert.deepEqual(results.result, { placements: [0, 1], kosBySlot: [0, 0] });
+  assert.equal(results.pauseStartedAt, null);
+  assert.equal(results.pausedBy, null);
+  assert.deepEqual(results.players.map((player) => player.ready), [false, false]);
+});
+
+test('removing a player mid-match awards results to the survivor before removal', () => {
+  const { rooms } = startTwoPlayerMatch();
+  const results = rooms.removePlayer('b');
+  assert.equal(results?.phase, 'results');
+  assert.deepEqual(results?.result, { placements: [0, 1], kosBySlot: [0, 0] });
+  assert.deepEqual(results?.players.map((player) => player.playerId), ['a']);
+  assert.equal(results?.players[0]?.ready, false);
+});
+
+test('removing a player from the lobby keeps the existing lobby behavior', () => {
+  const { rooms } = directory();
+  const room = rooms.create({ playerId: 'a', releaseId: 'release-1', nickname: 'Alpha', visibility: 'public' });
+  rooms.join({ playerId: 'b', releaseId: 'release-1', nickname: 'Bravo', roomId: room.id });
+  const lobby = rooms.removePlayer('b');
+  assert.equal(lobby?.phase, 'lobby');
+  assert.equal(lobby?.result, null);
+  assert.deepEqual(lobby?.players.map((player) => player.playerId), ['a']);
 });

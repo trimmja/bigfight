@@ -77,6 +77,11 @@ class OnlineFlow {
       tuning: match.tuning,
       nowMs: match.nowMs,
       onMatchEnd: (result) => this.handleMatchEnd(result),
+      actions: {
+        pauseMatch: () => this.session.pauseMatch(),
+        resumeMatch: () => this.session.resumeMatch(),
+        forfeitMatch: () => this.session.forfeitMatch(),
+      },
     });
     this.activeMatchScreen = screen;
     this.game.screens.replace(screen);
@@ -85,9 +90,18 @@ class OnlineFlow {
   private handleMatchEvent(event: OnlineMatchEvent): void {
     const screen = this.activeMatchScreen;
     if (!screen) return;
-    if (event.type === 'paused') screen.pauseForReconnect(event.pausedAt);
+    if (event.type === 'paused') {
+      const nickname = this.activeMatch?.launch.players
+        .find((player) => player.playerId === event.playerId)?.nickname ?? 'A PLAYER';
+      screen.onMatchPaused({
+        pausedAt: event.pausedAt,
+        isLocal: event.playerId === this.state?.playerId,
+        reason: event.reason,
+        nickname,
+      });
+    }
     else if (event.type === 'resumed') {
-      screen.resumeAfterReconnect(event.pausedAt, event.resumedAt);
+      screen.onMatchResumed(event.pausedAt, event.resumedAt);
     }
   }
 
@@ -129,10 +143,12 @@ class OnlineFlow {
     const active = this.activeMatch;
     const local = this.pendingResult;
     const authoritative = this.state?.room?.result;
-    if (!active || !local || !authoritative || this.resultsScreen) return;
+    if (!active || !authoritative || this.resultsScreen) return;
     if (this.state?.room?.phase !== 'results') return;
 
-    const result = resultFromSummary(authoritative, local.winnerTeam);
+    const winnerTeam = local?.winnerTeam ?? active.config.players
+      .find((player) => player.slot === authoritative.placements[0])?.teamId;
+    const result = resultFromSummary(authoritative, winnerTeam);
     if (!this.rewardedMatches.has(active.launch.matchId)) {
       this.rewardedMatches.add(active.launch.matchId);
       this.game.save.gold += result.goldBySlot[active.localSlot] ?? 0;

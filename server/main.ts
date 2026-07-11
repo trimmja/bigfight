@@ -161,6 +161,29 @@ function handleControl(connection: Connection, raw: RawData): void {
         publishRoomLists();
         return;
       }
+      case 'pauseMatch': {
+        const room = rooms.pauseMatch(connection.playerId);
+        publishRoom(room);
+        publishToRoom(room, {
+          t: 'matchPaused',
+          playerId: connection.playerId,
+          pausedAt: room.pauseStartedAt!,
+          reason: 'menu',
+        });
+        return;
+      }
+      case 'resumeMatch': {
+        const { room, resumed } = rooms.resumeMatch(connection.playerId);
+        publishRoom(room);
+        if (resumed) publishToRoom(room, { t: 'matchResumed', ...resumed });
+        return;
+      }
+      case 'forfeitMatch': {
+        const room = rooms.forfeitMatch(connection.playerId);
+        publishRoom(room);
+        publishRoomLists();
+        return;
+      }
       case 'finishMatch': {
         const room = rooms.finishMatch(connection.playerId, message.matchId, message.result);
         publishRoom(room);
@@ -279,7 +302,12 @@ function handleClose(connection: Connection): void {
   const updated = rooms.setConnected(connection.playerId, false);
   publishRoom(updated);
   if (room.phase === 'match' && updated.pauseStartedAt !== null) {
-    publishToRoom(updated, { t: 'matchPaused', playerId: connection.playerId, pausedAt: updated.pauseStartedAt });
+    publishToRoom(updated, {
+      t: 'matchPaused',
+      playerId: connection.playerId,
+      pausedAt: updated.pauseStartedAt,
+      reason: 'connection',
+    });
   }
   publishRoomLists();
   session.expiresAt = Date.now() + RECONNECT_GRACE_MS;

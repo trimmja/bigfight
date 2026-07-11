@@ -33,7 +33,7 @@ export interface OnlineMatchReady {
 
 export type OnlineMatchEvent =
   | { type: 'ready'; match: OnlineMatchReady }
-  | { type: 'paused'; playerId: string; pausedAt: number }
+  | { type: 'paused'; playerId: string; pausedAt: number; reason: 'menu' | 'connection' }
   | { type: 'resumed'; pausedAt: number; resumedAt: number };
 
 type SetPlayerPatch = Omit<Extract<C2S, { t: 'setPlayer' }>, 't'>;
@@ -60,6 +60,7 @@ export class OnlineSession {
           type: 'paused',
           playerId: this.socket.playerId,
           pausedAt: this.socket.serverNow(),
+          reason: 'connection',
         });
       }
       this.emitState();
@@ -123,6 +124,18 @@ export class OnlineSession {
     this.send({ t: 'cancelCountdown' });
   }
 
+  pauseMatch(): void {
+    this.send({ t: 'pauseMatch' });
+  }
+
+  resumeMatch(): void {
+    this.send({ t: 'resumeMatch' });
+  }
+
+  forfeitMatch(): void {
+    this.send({ t: 'forfeitMatch' });
+  }
+
   finishMatch(matchId: string, result: MatchResultSummary): void {
     this.send({ t: 'finishMatch', matchId, result });
   }
@@ -168,7 +181,12 @@ export class OnlineSession {
         this.beginMatch(message.match);
         break;
       case 'matchPaused':
-        this.emitMatch({ type: 'paused', playerId: message.playerId, pausedAt: message.pausedAt });
+        this.emitMatch({
+          type: 'paused',
+          playerId: message.playerId,
+          pausedAt: message.pausedAt,
+          reason: message.reason,
+        });
         break;
       case 'matchResumed':
         this.emitMatch({ type: 'resumed', pausedAt: message.pausedAt, resumedAt: message.resumedAt });
