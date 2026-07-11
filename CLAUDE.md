@@ -42,6 +42,8 @@ their picks, THEN port to the game. Don't restyle live game code on taste-guesse
   portraits are photographed from the live 3D models at runtime (`src/ui/portraits.ts`) so
   art can never drift. Locked = dark silhouette + "?", future slots = plain "?" tiles.
 - Online loadout offers ONLY save-unlocked fighters/weapons (same progression fns as campaign).
+- Toggle buttons describe YOUR STATE, never the opposite action ("[✓] READY!", not
+  "NOT READY") — action-labeled toggles confused the kids (Jacob 2026-07-11).
 - Responsive rule: on phones COMPACT information, never `display:none` it. Hiding "extras"
   bit us twice in one night (stat bars gone on mobile; private-room CODE invisible on small
   iPhones). Verify with a ≤700px-wide window before shipping media queries.
