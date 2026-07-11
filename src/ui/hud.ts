@@ -3,11 +3,11 @@ import type { PowerupId } from '../data/types';
 import { el, uiRoot } from './dom';
 
 const POWERUP_BANNERS: Record<PowerupId, string> = {
-  healOrb: '💚 HEALED!',
-  shieldBubble: '🛡️ SHIELD UP!',
-  rageMode: '🔥 RAGE MODE!',
-  giantHammer: '🔨 GIANT HAMMER!',
-  freezeRay: '❄️ FREEZE RAY!',
+  healOrb: 'HEALED!',
+  shieldBubble: 'SHIELD UP!',
+  rageMode: 'RAGE MODE!',
+  giantHammer: 'GIANT HAMMER!',
+  freezeRay: 'FREEZE RAY!',
 };
 
 /**

@@ -72,10 +72,10 @@ export class SettingsScreen implements Screen {
         void updateAvailable().then((available) => {
           if (available) {
             updateReady = true;
-            updateBtn.textContent = '🔄 UPDATE NOW!';
+            updateBtn.textContent = 'UPDATE NOW!';
             updateBtn.classList.add('bf-button-yellow');
           } else {
-            updateBtn.textContent = 'UP TO DATE ✓';
+            updateBtn.textContent = 'UP TO DATE';
             setTimeout(() => {
               updateBtn.textContent = 'CHECK FOR UPDATES';
             }, 2500);

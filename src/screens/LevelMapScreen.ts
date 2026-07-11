@@ -30,8 +30,8 @@ export class LevelMapScreen implements Screen {
     const header = el('div', 'bf-map-header', this.root);
     el('h1', 'bf-map-title', header).textContent = 'CAMPAIGN';
     const gold = el('div', 'bf-gold-chip', header);
-    gold.textContent = `💰 ${game.save.gold}`;
-    button('⚙', () => this.callbacks.onSettings(), 'bf-button bf-button-round', header);
+    gold.textContent = `G ${game.save.gold}`;
+    button('SET', () => this.callbacks.onSettings(), 'bf-button bf-button-round', header);
 
     const path = el('div', 'bf-map-path', this.root);
     const beaten = game.save.levelsBeaten;
@@ -59,8 +59,8 @@ export class LevelMapScreen implements Screen {
         node,
       );
       bubble.type = 'button';
-      bubble.textContent = boss ? '👑' : `${level.id}`;
-      if (isBeaten) bubble.textContent = '✓';
+      bubble.textContent = boss ? 'B' : `${level.id}`;
+      if (isBeaten) bubble.textContent = 'OK';
       bubble.disabled = locked;
       el('div', 'bf-level-name', node).textContent = locked ? '???' : level.name;
       if (!isBeaten) {
@@ -94,11 +94,11 @@ function rewardPreview(level: LevelDef, revealName: boolean): string {
   const unlocks = level.unlocks;
   if (unlocks?.powerupId && unlocks.stageId) {
     const name = powerupById(unlocks.powerupId).name.toUpperCase();
-    return revealName ? `⭐ WIN ${name}! + STAGE` : '⭐ POWER + 🗺️ STAGE';
+    return revealName ? `WIN ${name}! + STAGE` : 'POWER + STAGE';
   }
   if (unlocks?.characterId) {
     const name = characterById(unlocks.characterId).name.toUpperCase();
-    return revealName ? `🥊 WIN ${name}!` : '🥊 NEW FIGHTER';
+    return revealName ? `WIN ${name}!` : 'NEW FIGHTER';
   }
   if (unlocks?.powerupId) {
     const name = powerupById(unlocks.powerupId).name.toUpperCase();
@@ -106,9 +106,9 @@ function rewardPreview(level: LevelDef, revealName: boolean): string {
   }
   if (unlocks?.stageId) {
     const name = stageById(unlocks.stageId).name.toUpperCase();
-    return revealName ? `🗺️ UNLOCK ${name}!` : '🗺️ NEW STAGE';
+    return revealName ? `UNLOCK ${name}!` : 'NEW STAGE';
   }
-  if (level.id === LEVELS.length) return '🏆 FINAL BOSS';
-  if (level.bossId) return '👑 BOSS FIGHT';
-  return revealName ? '⚡ START HERE!' : '✨ SECRET FIGHT';
+  if (level.id === LEVELS.length) return 'FINAL BOSS';
+  if (level.bossId) return 'BOSS FIGHT';
+  return revealName ? 'START HERE!' : 'SECRET FIGHT';
 }

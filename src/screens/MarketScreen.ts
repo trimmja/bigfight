@@ -9,11 +9,11 @@ import { button, el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
 
 const MATERIAL_ICONS: Record<MaterialId, string> = {
-  boneShard: '🦴',
-  slimeGoo: '🟢',
-  ghostEssence: '👻',
-  feather: '🪶',
-  energyCore: '⚡',
+  boneShard: 'B',
+  slimeGoo: 'S',
+  ghostEssence: 'E',
+  feather: 'F',
+  energyCore: 'C',
 };
 
 /**
@@ -36,7 +36,7 @@ export class MarketScreen implements Screen {
     this.root = uiRoot('bf-market-screen');
 
     const header = el('div', 'bf-select-header', this.root);
-    el('h1', 'bf-select-title', header).textContent = '🛒 MARKET';
+    el('h1', 'bf-select-title', header).textContent = 'MARKET';
     this.goldEl = el('div', 'bf-gold-chip', header);
 
     this.matsEl = el('div', 'bf-mats-row', this.root);
@@ -65,7 +65,7 @@ export class MarketScreen implements Screen {
 
   private refresh(game: Game): void {
     const save = game.save;
-    if (this.goldEl) this.goldEl.textContent = `💰 ${save.gold}`;
+    if (this.goldEl) this.goldEl.textContent = `G ${save.gold}`;
     if (this.matsEl) {
       this.matsEl.replaceChildren();
       for (const [id, icon] of Object.entries(MATERIAL_ICONS) as [MaterialId, string][]) {
@@ -93,7 +93,7 @@ export class MarketScreen implements Screen {
           .map(([id, n]) => `${MATERIAL_ICONS[id as MaterialId]}${n}`)
           .join(' ');
         const buyBtn = button(
-          owned ? 'CRAFTED ✓' : 'CRAFT',
+          owned ? 'CRAFTED' : 'CRAFT',
           () => {
             if (owned || !canAfford(save, weapon.recipe)) return;
             spendMaterials(save, weapon.recipe);
@@ -115,9 +115,9 @@ export class MarketScreen implements Screen {
         const row = el('div', 'bf-market-row', list);
         el('div', 'bf-market-name', row).textContent = def.name;
         el('div', 'bf-market-sub', row).textContent = def.tagline;
-        el('div', 'bf-market-cost', row).textContent = `💰 ${cost}`;
+        el('div', 'bf-market-cost', row).textContent = `G ${cost}`;
         const buyBtn = button(
-          owned ? 'OWNED ✓' : 'BUY',
+          owned ? 'OWNED' : 'BUY',
           () => {
             if (owned || save.gold < cost) return;
             save.gold -= cost;
@@ -138,8 +138,8 @@ export class MarketScreen implements Screen {
         const row = el('div', 'bf-market-row', list);
         el('div', 'bf-market-name', row).textContent = sidekick.name;
         el('div', 'bf-market-sub', row).textContent = sidekick.tagline;
-        el('div', 'bf-market-cost', row).textContent = owned ? '' : `💰 ${sidekick.goldCost}`;
-        const label = equipped ? 'EQUIPPED ✓' : owned ? 'EQUIP' : 'BUY';
+        el('div', 'bf-market-cost', row).textContent = owned ? '' : `G ${sidekick.goldCost}`;
+        const label = equipped ? 'EQUIPPED' : owned ? 'EQUIP' : 'BUY';
         const buyBtn = button(
           label,
           () => {

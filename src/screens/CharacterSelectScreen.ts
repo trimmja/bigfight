@@ -63,7 +63,7 @@ export class CharacterSelectScreen implements Screen {
       el('span', 'bf-card-name', card).textContent = unlocked ? def.name : '???';
       if (!unlocked) {
         el('span', 'bf-card-lock', card).textContent =
-          def.unlock.type === 'level' ? `Beat level ${def.unlock.level}` : `💰 in Market`;
+          def.unlock.type === 'level' ? `Beat level ${def.unlock.level}` : 'Unlock in Market';
       }
       card.disabled = !unlocked;
       card.addEventListener('click', () => this.select(game, def.id, true));
@@ -72,7 +72,7 @@ export class CharacterSelectScreen implements Screen {
     // Random card.
     const randomCard = el('button', 'bf-card bf-card-random', grid);
     randomCard.type = 'button';
-    el('span', 'bf-card-dot', randomCard).textContent = '🎲';
+    el('span', 'bf-card-dot', randomCard).textContent = '?';
     el('span', 'bf-card-name', randomCard).textContent = 'RANDOM';
     randomCard.addEventListener('click', () => {
       const options = unlockedCharacters(game.save);
@@ -105,7 +105,7 @@ export class CharacterSelectScreen implements Screen {
     // On short screens (phones, landscape) stats hide behind this toggle so
     // they don't overlay the character preview.
     button(
-      '📊 STATS',
+      'STATS',
       () => side.classList.toggle('bf-stats-open'),
       'bf-button bf-stats-toggle',
       side,

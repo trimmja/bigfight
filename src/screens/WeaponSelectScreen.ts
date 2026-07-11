@@ -6,10 +6,10 @@ import { button, el, uiRoot } from '../ui/dom';
 import type { Screen } from './Screen';
 
 const CATEGORY_ICONS: Record<string, string> = {
-  gun: '🔫',
-  melee: '⚔️',
-  bomb: '💣',
-  magic: '✨',
+  gun: 'G',
+  melee: 'M',
+  bomb: 'B',
+  magic: 'A',
 };
 
 /**
@@ -40,7 +40,7 @@ export class WeaponSelectScreen implements Screen {
       const card = el('button', 'bf-card', grid);
       card.type = 'button';
       const icon = el('span', 'bf-card-dot', card);
-      icon.textContent = CATEGORY_ICONS[weapon.category] ?? '✨';
+      icon.textContent = CATEGORY_ICONS[weapon.category] ?? 'W';
       el('span', 'bf-card-name', card).textContent = weapon.name;
       el('span', 'bf-card-sub', card).textContent = weapon.tagline;
       card.addEventListener('click', () => {
@@ -50,7 +50,7 @@ export class WeaponSelectScreen implements Screen {
     }
     const randomCard = el('button', 'bf-card bf-card-random', grid);
     randomCard.type = 'button';
-    el('span', 'bf-card-dot', randomCard).textContent = '🎲';
+    el('span', 'bf-card-dot', randomCard).textContent = '?';
     el('span', 'bf-card-name', randomCard).textContent = 'RANDOM';
     randomCard.addEventListener('click', () => {
       events.emit('ui', { kind: 'confirm' });
