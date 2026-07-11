@@ -108,14 +108,15 @@ export class OnlineLobbyScreen implements Screen {
       if (state.room.id !== previousRoomId) {
         this.view = local?.characterId || state.room.phase !== 'lobby' ? 'waiting' : 'fighter';
       }
-      // Race safety: someone locked the fighter we're holding while we're not
-      // ready (a simultaneous lock the server rejected, or we idled unready).
-      // Bounce back to the roster with a friendly heads-up to re-pick.
-      if (this.view === 'waiting' && state.room.phase === 'lobby' && local && !local.ready) {
-        const holder = this.lockedByOthers().get(this.selectedCharacter);
+      // Race safety: someone claimed the fighter we thought we took (a
+      // simultaneous PICK WEAPON the server rejected). Bounce back to the
+      // roster with a friendly heads-up.
+      if ((this.view === 'waiting' || this.view === 'weapon') && state.room.phase === 'lobby'
+        && local && !local.ready && !local.claimed) {
+        const holder = this.claimedByOthers().get(this.selectedCharacter);
         if (holder) {
           this.view = 'fighter';
-          this.notice = `${holder.nickname.toUpperCase()} LOCKED ${characterName(this.selectedCharacter)} — PICK ANOTHER FIGHTER!`;
+          this.notice = `${holder.nickname.toUpperCase()} ${holder.ready ? 'LOCKED' : 'TOOK'} ${characterName(this.selectedCharacter)} — PICK ANOTHER FIGHTER!`;
         }
       }
       this.syncDances(state.room);
@@ -227,11 +228,11 @@ export class OnlineLobbyScreen implements Screen {
   private renderFighter(root: HTMLElement, _room: RoomState, state: OnlineState): void {
     this.clampLoadoutToSave();
     const save = this.game!.save;
-    const def = characterById(this.selectedCharacter);
     const main = el('main', 'bf-online-select', root);
 
     // Everyone else's live pick rides its tile as a slot-colored chip; a ✓
-    // chip means locked in — first to lock claims the fighter for the match.
+    // chip means they CLAIMED it (weapon screen onward) — first come, first
+    // served. Plain chips are just browsing; sharing a highlight is fine.
     const claims = new Map<string, { label: string; color: string; locked: boolean }[]>();
     for (const player of state.room?.players ?? []) {
       if (player.playerId === state.playerId || !player.characterId) continue;
@@ -239,11 +240,23 @@ export class OnlineLobbyScreen implements Screen {
       list.push({
         label: player.nickname.toUpperCase().slice(0, 10),
         color: slotCssColor(player.slot),
-        locked: player.ready,
+        locked: player.claimed || player.ready,
       });
       claims.set(player.characterId, list);
     }
-    const lockedBy = this.lockedByOthers();
+    const claimedBy = this.claimedByOthers();
+    // Broadcast your highlight from the moment the roster shows (the other
+    // players' boards mirror it live). If your last highlight got claimed
+    // while you were away, quietly slide to a free fighter.
+    if (claimedBy.has(this.selectedCharacter)) {
+      const free = unlockedCharacters(save).find((character) => !claimedBy.has(character.id));
+      if (free) this.selectedCharacter = free.id;
+    }
+    const local = localPlayer(state);
+    if (local && local.characterId !== this.selectedCharacter && !claimedBy.has(this.selectedCharacter)) {
+      this.session.setPlayer({ characterId: this.selectedCharacter, claimed: false, ready: false });
+    }
+    const def = characterById(this.selectedCharacter);
 
     // Full-screen Smash-style roster; locked fighters show as ?-silhouettes.
     buildRosterGrid(main, {
@@ -257,7 +270,7 @@ export class OnlineLobbyScreen implements Screen {
           ? `Beat level ${character.unlock.level} in the campaign`
           : 'Unlock in Market',
         claims: claims.get(character.id) ?? [],
-        taken: lockedBy.has(character.id),
+        taken: claimedBy.has(character.id),
       })),
       capacity: ROSTER_CAPACITY,
       selectedId: this.selectedCharacter,
@@ -267,9 +280,9 @@ export class OnlineLobbyScreen implements Screen {
     const bar = el('div', 'bf-roster-bar', main);
     const who = el('div', 'bf-roster-who', bar);
     el('h2', 'bf-roster-name', who).textContent = def.name.toUpperCase();
-    const holder = lockedBy.get(this.selectedCharacter);
+    const holder = claimedBy.get(this.selectedCharacter);
     el('p', 'bf-roster-tagline', who).textContent = holder
-      ? `${holder.nickname.toUpperCase()} locked this fighter — pick another!`
+      ? `${holder.nickname.toUpperCase()} ${holder.ready ? 'locked' : 'took'} this fighter — pick another!`
       : def.tagline;
     const stats = el('div', 'bf-roster-stats', bar);
     this.statBar(stats, 'SPEED', def.speed / 10);
@@ -278,6 +291,10 @@ export class OnlineLobbyScreen implements Screen {
     this.statBar(stats, 'JUMP', (def.jumpVel - 12) / 4.5);
     el('span', 'bf-online-step', bar).textContent = 'STEP 2 OF 4';
     const next = button('PICK WEAPON ▶', () => {
+      if (this.bounceIfFighterTaken()) return;
+      // Advancing past the roster CLAIMS the fighter for you — from here the
+      // other players can't choose it (first come, first served).
+      this.session.setPlayer({ characterId: this.selectedCharacter, claimed: true, ready: false });
       this.notice = null;
       this.view = 'weapon';
       this.forceRender();
@@ -320,6 +337,7 @@ export class OnlineLobbyScreen implements Screen {
       this.session.setPlayer({
         characterId: this.selectedCharacter,
         weaponId: this.selectedWeapon,
+        claimed: true,
         ready: true,
       });
       this.view = 'waiting';
@@ -382,7 +400,8 @@ export class OnlineLobbyScreen implements Screen {
       this.session.setPlayer({ ready: !local?.ready });
     }, `bf-online-action ${local?.ready ? 'bf-online-ready-on' : 'bf-online-primary'}`, bottom);
     button('CHANGE', () => {
-      this.session.setPlayer({ ready: false });
+      // Back to the roster releases your claim so others can grab the fighter.
+      this.session.setPlayer({ claimed: false, ready: false });
       this.view = 'fighter';
       this.forceRender();
     }, 'bf-online-action bf-online-secondary', bottom);
@@ -454,31 +473,34 @@ export class OnlineLobbyScreen implements Screen {
   }
 
   private pickCharacter(id: string): void {
-    if (this.selectedCharacter === id || this.lockedByOthers().has(id)) return;
+    if (this.selectedCharacter === id || this.claimedByOthers().has(id)) return;
     this.notice = null;
     this.selectedCharacter = id;
-    this.session.setPlayer({ characterId: id, ready: false });
+    this.session.setPlayer({ characterId: id, claimed: false, ready: false });
     this.forceRender();
   }
 
-  /** charId → the locked-in (ready) opponent holding it. */
-  private lockedByOthers(): Map<string, RoomPlayer> {
+  /** charId → the opponent who CLAIMED it (took it to the weapon screen or
+   * locked in). Browsing players don't claim — dupes are fine until then. */
+  private claimedByOthers(): Map<string, RoomPlayer> {
     const map = new Map<string, RoomPlayer>();
     const state = this.state;
     for (const player of state?.room?.players ?? []) {
-      if (player.playerId === state!.playerId || !player.ready || !player.characterId) continue;
-      if (!map.has(player.characterId)) map.set(player.characterId, player);
+      if (player.playerId === state!.playerId || !player.characterId) continue;
+      if (!player.claimed && !player.ready) continue;
+      const current = map.get(player.characterId);
+      if (!current || (player.ready && !current.ready)) map.set(player.characterId, player);
     }
     return map;
   }
 
   /** True (and bounces to the roster with a heads-up) when our current
-   * fighter got locked by someone else — the last line of defense right
-   * before we'd try to lock or ready up with it. */
+   * fighter got claimed by someone else — the last line of defense right
+   * before we'd try to claim or lock it ourselves. */
   private bounceIfFighterTaken(): boolean {
-    const holder = this.lockedByOthers().get(this.selectedCharacter);
+    const holder = this.claimedByOthers().get(this.selectedCharacter);
     if (!holder) return false;
-    this.notice = `${holder.nickname.toUpperCase()} LOCKED ${characterName(this.selectedCharacter)} — PICK ANOTHER FIGHTER!`;
+    this.notice = `${holder.nickname.toUpperCase()} ${holder.ready ? 'LOCKED' : 'TOOK'} ${characterName(this.selectedCharacter)} — PICK ANOTHER FIGHTER!`;
     this.view = 'fighter';
     this.forceRender();
     return true;
@@ -544,6 +566,8 @@ export class OnlineLobbyScreen implements Screen {
       return;
     }
     if (this.view === 'weapon') {
+      // Back to the roster releases your claim so others can grab the fighter.
+      this.session.setPlayer({ claimed: false, ready: false });
       this.view = 'fighter';
       this.forceRender();
       return;

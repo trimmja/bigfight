@@ -165,6 +165,7 @@ export class RoomDirectory {
     characterId?: string | null;
     weaponId?: string;
     team?: Team;
+    claimed?: boolean;
     ready?: boolean;
     dance?: boolean;
   }): RoomState {
@@ -172,13 +173,15 @@ export class RoomDirectory {
     const player = requirePlayer(room, playerId);
     if (room.phase !== 'lobby' && room.phase !== 'countdown') throw new RoomError('invalidPhase');
     const nextCharacterId = patch.characterId !== undefined ? cleanId(patch.characterId) : player.characterId;
-    const nextReady = patch.ready !== undefined ? patch.ready : player.ready;
+    // A CLAIMED fighter (its player advanced past the roster, or is locked
+    // in) is exclusive — first come, first served. Browsing dupes are fine:
+    // two players may highlight the same fighter until one claims it.
     if (
       nextCharacterId !== null
-      && (patch.ready === true || patch.characterId !== undefined)
+      && (patch.claimed === true || patch.ready === true || patch.characterId !== undefined)
       && room.players.some((other) => (
         other.playerId !== playerId
-        && other.ready
+        && (other.claimed || other.ready)
         && other.characterId === nextCharacterId
       ))
     ) {
@@ -188,7 +191,9 @@ export class RoomDirectory {
     if (patch.characterId !== undefined) player.characterId = nextCharacterId;
     if (patch.weaponId !== undefined) player.weaponId = cleanId(patch.weaponId) ?? 'rustyPistol';
     if (patch.team === 'A' || patch.team === 'B' || patch.team === null) player.team = patch.team;
-    if (patch.ready !== undefined) player.ready = nextReady;
+    if (patch.claimed !== undefined) player.claimed = patch.claimed && player.characterId !== null;
+    if (patch.ready !== undefined) player.ready = patch.ready;
+    if (player.ready) player.claimed = true; // locking in implies the claim
     if (patch.dance === true) player.danceSeq += 1;
     if (room.phase === 'countdown' && (!player.ready || !player.characterId)) this.cancelCountdownRecord(room);
     this.touch(room);
@@ -218,6 +223,7 @@ export class RoomDirectory {
     if (connected.length < 2 || connected.some((player) => !player.ready || !player.characterId)) {
       throw new RoomError('notReady');
     }
+    if (hasDuplicateFighters(connected)) throw new RoomError('notReady');
     room.phase = 'countdown';
     room.countdownEndsAt = this.now() + Math.max(1_000, durationMs);
     room.result = null;
@@ -241,6 +247,10 @@ export class RoomDirectory {
     if (room.countdownEndsAt === null || this.now() < room.countdownEndsAt) throw new RoomError('invalidPhase');
     const connected = room.players.filter((player) => player.connected);
     if (connected.length < 2 || connected.some((player) => !player.ready || !player.characterId)) {
+      this.cancelCountdownRecord(room);
+      throw new RoomError('notReady');
+    }
+    if (hasDuplicateFighters(connected)) {
       this.cancelCountdownRecord(room);
       throw new RoomError('notReady');
     }
@@ -430,6 +440,7 @@ function createPlayer(playerId: string, nickname: string, slot: number): RoomPla
     characterId: null,
     weaponId: 'rustyPistol',
     team: null,
+    claimed: false,
     ready: false,
     connected: true,
     danceSeq: 0,
@@ -452,6 +463,19 @@ function lowestFreeSlot(players: readonly RoomPlayer[]): number {
 function compactSlots(players: RoomPlayer[]): void {
   players.sort((a, b) => a.slot - b.slot);
   for (let index = 0; index < players.length; index += 1) players[index]!.slot = index as RoomPlayer['slot'];
+}
+
+/** Two players sharing a fighter must never reach a match (belt-and-braces —
+ * setPlayer already rejects duplicate holds, but legacy clients can't be
+ * trusted to have asked). */
+function hasDuplicateFighters(players: readonly RoomPlayer[]): boolean {
+  const seen = new Set<string>();
+  for (const player of players) {
+    if (!player.characterId) continue;
+    if (seen.has(player.characterId)) return true;
+    seen.add(player.characterId);
+  }
+  return false;
 }
 
 function forfeitResult(players: readonly RoomPlayer[], forfeiterId: string): MatchResultSummary {

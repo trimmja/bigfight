@@ -1,6 +1,6 @@
 /** Shared browser/server protocol. Keep runtime values and pure data only. */
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const MAX_PLAYERS = 4;
 export const RELAY_FLAG = 0x80;
 export const RELAY_CHANNEL_GAME = 0;
@@ -25,6 +25,9 @@ export interface RoomPlayer {
   characterId: string | null;
   weaponId: string;
   team: Team;
+  /** Fighter taken past the roster (weapon screen onward) — exclusive,
+   * first come first served. Merely browsing a fighter is NOT a claim. */
+  claimed: boolean;
   ready: boolean;
   connected: boolean;
   danceSeq: number;
@@ -84,7 +87,7 @@ export type C2S =
   | { t: 'createRoom'; nickname: string; visibility: RoomVisibility; name?: string }
   | { t: 'joinRoom'; nickname: string; roomId?: string; code?: string }
   | { t: 'leaveRoom' }
-  | { t: 'setPlayer'; nickname?: string; characterId?: string | null; weaponId?: string; team?: Team; ready?: boolean; dance?: boolean }
+  | { t: 'setPlayer'; nickname?: string; characterId?: string | null; weaponId?: string; team?: Team; claimed?: boolean; ready?: boolean; dance?: boolean }
   | { t: 'setSettings'; settings: Partial<RoomSettings> }
   | { t: 'startMatch' }
   | { t: 'cancelCountdown' }

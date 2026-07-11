@@ -146,16 +146,45 @@ test('a claiming player can re-lock and re-select their own character', () => {
   assert.equal(player?.ready, true);
 });
 
-test('unreadying releases a character for another player to select and lock', () => {
+test('unreadying alone keeps the claim; returning to the roster releases it', () => {
   const { rooms } = twoPlayerLobby();
   ready(rooms, 'a', 'volt');
   rooms.setPlayer('a', { ready: false });
 
+  // Still claimed (a is on their loadout, just not ready) — b can't take it.
+  assert.throws(
+    () => rooms.setPlayer('b', { characterId: 'volt' }),
+    (error: unknown) => error instanceof RoomError && error.code === 'characterTaken',
+  );
+
+  // Back to the roster (claimed=false) releases the fighter for b.
+  rooms.setPlayer('a', { claimed: false, ready: false });
   rooms.setPlayer('b', { characterId: 'volt' });
   const room = rooms.setPlayer('b', { ready: true });
   const player = room.players.find((entry) => entry.playerId === 'b');
   assert.equal(player?.characterId, 'volt');
   assert.equal(player?.ready, true);
+});
+
+test('advancing past the roster (claimed) takes the fighter first come first serve', () => {
+  const { rooms } = twoPlayerLobby();
+  // Both may browse the same fighter freely…
+  rooms.setPlayer('a', { characterId: 'volt' });
+  rooms.setPlayer('b', { characterId: 'volt' });
+
+  // …until a claims it by heading to the weapon screen.
+  const claimedRoom = rooms.setPlayer('a', { claimed: true });
+  assert.equal(claimedRoom.players.find((entry) => entry.playerId === 'a')?.claimed, true);
+
+  // b still holds the highlight but can neither claim nor lock it now.
+  assert.throws(
+    () => rooms.setPlayer('b', { claimed: true }),
+    (error: unknown) => error instanceof RoomError && error.code === 'characterTaken',
+  );
+  assert.throws(
+    () => rooms.setPlayer('b', { characterId: 'volt', ready: true }),
+    (error: unknown) => error instanceof RoomError && error.code === 'characterTaken',
+  );
 });
 
 test('untrusted room settings and visibility are normalized', () => {

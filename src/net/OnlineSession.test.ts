@@ -38,6 +38,7 @@ function player(slot: 0 | 1 | 2 | 3, nickname: string, team: 'A' | 'B' | null): 
     characterId: slot === 0 ? 'volt' : 'kaze',
     weaponId: slot === 0 ? 'rustyPistol' : 'practiceSword',
     team,
+    claimed: true,
     ready: true,
     connected: true,
     danceSeq: 0,
