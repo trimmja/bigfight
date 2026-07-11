@@ -10,6 +10,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run check
+      - run: npm run server:test
+      - run: npm run net:unit
+      - run: npm run net:test
+      - run: npm run net:lobby-test
+      - run: npm run net:ui-test
+      - run: node scripts/replay-ci.mjs
+
   check-token:
     runs-on: ubuntu-latest
     outputs:
@@ -27,7 +45,7 @@ jobs:
           fi
 
   deploy:
-    needs: check-token
+    needs: [validate, check-token]
     if: needs.check-token.outputs.has-token == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -41,4 +59,5 @@ jobs:
       - name: Deploy browser and room server
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP: bigfight-online
         run: node scripts/deploy-server.mjs

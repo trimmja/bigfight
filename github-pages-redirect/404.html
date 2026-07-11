@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>BIG FIGHT has moved</title>
+</head>
+<body>
+  <p>Taking you to <a href="https://playbigfight.com/">playbigfight.com</a>.</p>
+  <script>
+    const target = new URL('https://playbigfight.com/');
+    const legacyPrefix = '/bigfight/';
+    if (location.pathname.startsWith(legacyPrefix)) {
+      target.pathname = `/${location.pathname.slice(legacyPrefix.length)}`;
+    }
+    target.search = location.search;
+    target.hash = location.hash;
+    location.replace(target);
+  </script>
+</body>
+</html>

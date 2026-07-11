@@ -86,7 +86,7 @@ export class TouchInput {
 
     // Sizes +30% (playtest: originals were fiddly for kid thumbs). Offsets
     // recomputed so the 16px gaps hold: JUMP spans 20..120 from the corner,
-    // ATK sits left of it (136+), PWR above it (136+), centers aligned.
+    // ATK sits left of it (136+), WPN above it (136+), centers aligned.
     const jump = this.createButton('JUMP', 'var(--neon-cyan)', 100);
     jump.style.right = 'calc(var(--safe-r) + 20px)';
     jump.style.bottom = 'calc(var(--safe-b) + 20px)';
@@ -97,7 +97,7 @@ export class TouchInput {
     attack.style.bottom = 'calc(var(--safe-b) + 26px)';
     this.bindButton(attack, 'attack');
 
-    const weapon = this.createButton('PWR', 'var(--neon-yellow)', 74);
+    const weapon = this.createButton('WPN', 'var(--neon-yellow)', 74);
     weapon.style.right = 'calc(var(--safe-r) + 33px)';
     weapon.style.bottom = 'calc(var(--safe-b) + 136px)';
     weapon.style.setProperty('--cooldown-frac', '0');
@@ -106,7 +106,7 @@ export class TouchInput {
     this.bindButton(weapon, 'weapon');
     this.weaponButton = weapon;
 
-    const pause = this.createButton('⏸', 'var(--neon-violet)', 44);
+    const pause = this.createButton('II', 'var(--neon-violet)', 44);
     pause.style.right = 'calc(var(--safe-r) + 16px)';
     pause.style.top = 'calc(var(--safe-t) + 14px)';
     pause.style.fontSize = '18px';
