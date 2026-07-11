@@ -13,7 +13,8 @@
     "server:test": "tsx --test server/**/*.test.ts",
     "net:unit": "tsx --test src/net/**/*.test.ts",
     "net:test": "node scripts/webrtc-ci.mjs",
-    "net:lobby-test": "node scripts/lobby-client-ci.mjs"
+    "net:lobby-test": "node scripts/lobby-client-ci.mjs",
+    "net:ui-test": "node scripts/online-ui-ci.mjs"
   },
   "dependencies": {
     "three": "^0.185.1",

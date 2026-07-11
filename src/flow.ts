@@ -1,6 +1,7 @@
 import type { Game } from './Game';
 import { LEVELS, levelById } from './data/levels';
 import type { MaterialId } from './data/types';
+import { startOnlineFlow } from './flowOnline';
 import { CharacterSelectScreen } from './screens/CharacterSelectScreen';
 import { GameplayScreen } from './screens/GameplayScreen';
 import { LevelMapScreen } from './screens/LevelMapScreen';
@@ -19,7 +20,10 @@ import { WeaponSelectScreen } from './screens/WeaponSelectScreen';
  */
 
 export function goTitle(game: Game): void {
-  game.screens.replace(new TitleScreen(() => goLevelMap(game)));
+  game.screens.replace(new TitleScreen(
+    () => goLevelMap(game),
+    () => startOnlineFlow(game, () => goTitle(game)),
+  ));
 }
 
 /** `?replaylab` dev tool — sim-determinism harness (see ReplayLabScreen). */
