@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { WEAPONS } from './data/weapons';
 import { toonRamp } from './render/toon';
 import { poseAttack, poseFightStance, poseRun, type Pose } from './rigs/poses';
+import { PedestalRoom } from './mockup/PedestalRoom';
 import { ALL_CHARS, buildMockRig, OPTION_LABELS, type CharId, type MockRig, type OptionId } from './mockup/rigs';
 
 const canvas = document.getElementById('lab') as HTMLCanvasElement;
@@ -32,6 +33,39 @@ const ground = new THREE.Mesh(
 );
 ground.position.y = -0.09;
 scene.add(ground);
+
+// The online flow shares one visual language: a lit solo pedestal for fighter
+// and weapon selection, then four matching pedestals in the waiting arena.
+const selectionPedestal = new THREE.Group();
+const selectionBase = new THREE.Mesh(
+  new THREE.CylinderGeometry(1.35, 1.48, 0.22, 36),
+  new THREE.MeshToonMaterial({ color: 0xdaf3ff, gradientMap: toonRamp() }),
+);
+selectionBase.position.y = -0.11;
+selectionPedestal.add(selectionBase);
+const selectionRing = new THREE.Mesh(
+  new THREE.TorusGeometry(1.18, 0.07, 8, 36),
+  new THREE.MeshBasicMaterial({ color: 0x1a9fe8 }),
+);
+selectionRing.rotation.x = Math.PI / 2;
+selectionRing.position.y = 0.02;
+selectionPedestal.add(selectionRing);
+selectionPedestal.visible = false;
+scene.add(selectionPedestal);
+
+const waitingColors = [0x1a9fe8, 0xff5a8a, 0xffc93e, 0x4ec95c] as const;
+const pedestalRoom = new PedestalRoom(scene, waitingColors);
+
+function showLobbyScene(mode: 'browser' | 'select' | 'waiting' | 'lab'): void {
+  ground.visible = mode === 'lab';
+  selectionPedestal.visible = mode === 'select';
+  pedestalRoom.setVisible(mode === 'waiting');
+  wrap.visible = mode === 'select' || mode === 'lab';
+  if (mode !== 'waiting') {
+    camera.position.set(0, 1.2, 7);
+    camera.lookAt(0, 0.9, 0);
+  }
+}
 
 function resize(): void {
   renderer.setSize(innerWidth, innerHeight);
@@ -105,13 +139,16 @@ syncChrButton();
 // ---------------------------------------------------------------------------
 const lobbyReview = document.getElementById('lobbyReview')!;
 const roomBrowser = document.getElementById('roomBrowser')!;
-const loadoutSelect = document.getElementById('loadoutSelect')!;
+const fighterSelect = document.getElementById('fighterSelect')!;
+const weaponSelect = document.getElementById('weaponSelect')!;
 const waitingRoom = document.getElementById('waitingRoom')!;
 const resultOverlay = document.getElementById('resultOverlay')!;
 const lobbyTitle = document.getElementById('lobbyTitle')!;
 const connectionChip = document.getElementById('connectionChip')!;
 const lobbyFighter = document.getElementById('lobbyFighter')!;
+const weaponFighter = document.getElementById('weaponFighter')!;
 const waitingFighter = document.getElementById('waitingFighter')!;
+const waitingWeapon = document.getElementById('waitingWeapon')!;
 const fighterValue = document.getElementById('fighterValue')!;
 const weaponValue = document.getElementById('weaponValue')!;
 const youPick = document.getElementById('youPick')!;
@@ -119,54 +156,68 @@ const youStatus = document.getElementById('youStatus')!;
 const youCard = document.getElementById('youCard')!;
 const waitingReadyBtn = document.getElementById('waitingReadyBtn')!;
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
+const arenaPlates = [...document.querySelectorAll<HTMLElement>('.arena-plate')];
 const lobbyCharacters: readonly CharId[] = ALL_CHARS;
 let lobbyWeaponIndex = 0;
 let lobbyReady = false;
 let lobbyHost = true;
+let lobbyRoomName = 'Open Game';
+let lobbyPrivate = false;
 
 function openLobbyBrowser(): void {
   document.body.classList.add('lobby-mode');
   lobbyReview.hidden = false;
   roomBrowser.hidden = false;
-  loadoutSelect.hidden = true;
+  fighterSelect.hidden = true;
+  weaponSelect.hidden = true;
   waitingRoom.hidden = true;
   resultOverlay.hidden = true;
   lobbyTitle.textContent = 'ONLINE FIGHTS';
   connectionChip.innerHTML = '<span class="dot"></span> DALLAS · 28 MS';
+  showLobbyScene('browser');
 }
 
 function closeLobbyReview(): void {
   document.body.classList.remove('lobby-mode');
   lobbyReview.hidden = true;
   resultOverlay.hidden = true;
+  rig?.equipWeapon(null);
+  showLobbyScene('lab');
 }
 
 function enterRoom(name: string, isHost: boolean, isPrivate = false): void {
   lobbyHost = isHost;
+  lobbyRoomName = name;
+  lobbyPrivate = isPrivate;
   lobbyReady = false;
   option = 'C';
   show();
   syncChrButton();
   roomBrowser.hidden = true;
-  loadoutSelect.hidden = false;
+  fighterSelect.hidden = false;
+  weaponSelect.hidden = true;
   waitingRoom.hidden = true;
   resultOverlay.hidden = true;
   lobbyTitle.textContent = name.toUpperCase();
   connectionChip.innerHTML = `<span class="dot"></span> ${isPrivate ? 'PRIVATE · CODE BCDX' : 'DIRECT · 24 MS'}`;
-  youCard.querySelector('.player-card-name')!.textContent = isHost ? 'YOU · HOST' : 'YOU';
+  youCard.querySelector('.arena-plate-top')!.textContent = isHost ? 'P1 · HOST' : 'P1';
   startBtn.hidden = !isHost;
   syncLobbyLoadout();
+  showLobbyScene('select');
 }
 
 function syncLobbyLoadout(): void {
   const weapon = WEAPONS[lobbyWeaponIndex] ?? WEAPONS[0]!;
   const name = chr.toUpperCase();
   lobbyFighter.textContent = name;
+  weaponFighter.textContent = name;
   waitingFighter.textContent = name;
+  waitingWeapon.textContent = weapon.name.toUpperCase();
   fighterValue.textContent = name;
   weaponValue.textContent = weapon.name.toUpperCase();
   youPick.textContent = `${name} · ${weapon.name.toUpperCase()}`;
   youStatus.textContent = lobbyReady ? 'READY' : 'NOT READY';
+  youStatus.hidden = !lobbyReady;
   waitingReadyBtn.textContent = lobbyReady ? 'NOT READY' : 'READY UP';
   waitingReadyBtn.classList.toggle('on', lobbyReady);
   startBtn.disabled = lobbyHost && !lobbyReady;
@@ -174,16 +225,49 @@ function syncLobbyLoadout(): void {
 
 function showWaitingRoom(): void {
   lobbyReady = true;
-  loadoutSelect.hidden = true;
+  fighterSelect.hidden = true;
+  weaponSelect.hidden = true;
   waitingRoom.hidden = false;
+  lobbyTitle.textContent = 'BATTLE LOBBY';
+  connectionChip.innerHTML = `<span class="dot"></span> ${lobbyPrivate ? 'ROOM BCDX' : 'DIRECT · 24 MS'}`;
+  pedestalRoom.setFighter(0, chr);
+  pedestalRoom.setFighter(1, 'kaze');
+  pedestalRoom.setFighter(2, null);
+  pedestalRoom.setFighter(3, null);
+  pedestalRoom.setWeapon(0, WEAPONS[lobbyWeaponIndex]?.id ?? 'rustyPistol');
+  pedestalRoom.setWeapon(1, 'practiceSword');
+  pedestalRoom.setWeapon(2, null);
+  pedestalRoom.setWeapon(3, null);
+  pedestalRoom.setReady(0, true);
+  pedestalRoom.setReady(1, true);
+  pedestalRoom.setLocal(0);
+  showLobbyScene('waiting');
+  pedestalRoom.startFlyIn(camera);
   syncLobbyLoadout();
 }
 
-function showLoadoutSelect(): void {
+function showFighterSelect(): void {
   lobbyReady = false;
   waitingRoom.hidden = true;
-  loadoutSelect.hidden = false;
+  weaponSelect.hidden = true;
+  fighterSelect.hidden = false;
   resultOverlay.hidden = true;
+  lobbyTitle.textContent = lobbyRoomName.toUpperCase();
+  connectionChip.innerHTML = `<span class="dot"></span> ${lobbyPrivate ? 'PRIVATE · CODE BCDX' : 'DIRECT · 24 MS'}`;
+  rig?.equipWeapon(null);
+  showLobbyScene('select');
+  syncLobbyLoadout();
+}
+
+function showWeaponSelect(): void {
+  lobbyReady = false;
+  waitingRoom.hidden = true;
+  fighterSelect.hidden = true;
+  weaponSelect.hidden = false;
+  resultOverlay.hidden = true;
+  lobbyTitle.textContent = lobbyRoomName.toUpperCase();
+  rig?.equipWeapon(WEAPONS[lobbyWeaponIndex] ?? WEAPONS[0]!);
+  showLobbyScene('select');
   syncLobbyLoadout();
 }
 
@@ -199,13 +283,15 @@ function cycleLobbyFighter(direction: -1 | 1): void {
 function cycleLobbyWeapon(direction: -1 | 1): void {
   lobbyWeaponIndex = (lobbyWeaponIndex + direction + WEAPONS.length) % WEAPONS.length;
   lobbyReady = false;
+  rig?.equipWeapon(WEAPONS[lobbyWeaponIndex] ?? WEAPONS[0]!);
   syncLobbyLoadout();
 }
 
 document.getElementById('lobbyBtn')!.addEventListener('click', openLobbyBrowser);
 document.getElementById('lobbyBack')!.addEventListener('click', () => {
-  if (!waitingRoom.hidden) showLoadoutSelect();
-  else if (!loadoutSelect.hidden) openLobbyBrowser();
+  if (!waitingRoom.hidden) showWeaponSelect();
+  else if (!weaponSelect.hidden) showFighterSelect();
+  else if (!fighterSelect.hidden) openLobbyBrowser();
   else closeLobbyReview();
 });
 document.querySelectorAll<HTMLElement>('[data-room]').forEach((row) => {
@@ -217,19 +303,36 @@ document.getElementById('hostPublic')!.addEventListener('click', () => enterRoom
 document.getElementById('hostPrivate')!.addEventListener('click', () => enterRoom('Your Private Game', true, true));
 document.getElementById('fighterPrev')!.addEventListener('click', () => cycleLobbyFighter(-1));
 document.getElementById('fighterNext')!.addEventListener('click', () => cycleLobbyFighter(1));
+document.getElementById('toWeaponBtn')!.addEventListener('click', showWeaponSelect);
 document.getElementById('weaponPrev')!.addEventListener('click', () => cycleLobbyWeapon(-1));
 document.getElementById('weaponNext')!.addEventListener('click', () => cycleLobbyWeapon(1));
+document.getElementById('weaponBackBtn')!.addEventListener('click', showFighterSelect);
 document.getElementById('lockInBtn')!.addEventListener('click', showWaitingRoom);
-document.getElementById('danceBtn')!.addEventListener('click', () => { dancingUntil = t + 1.8; });
-waitingReadyBtn.addEventListener('click', () => { lobbyReady = !lobbyReady; syncLobbyLoadout(); });
-document.getElementById('changePickBtn')!.addEventListener('click', showLoadoutSelect);
+document.getElementById('danceBtn')!.addEventListener('click', () => pedestalRoom.playDance(0));
+waitingReadyBtn.addEventListener('click', () => {
+  lobbyReady = !lobbyReady;
+  pedestalRoom.setReady(0, lobbyReady);
+  syncLobbyLoadout();
+});
+document.getElementById('changePickBtn')!.addEventListener('click', showFighterSelect);
 startBtn.addEventListener('click', () => { if (!startBtn.disabled) resultOverlay.hidden = false; });
 document.getElementById('testResults')!.addEventListener('click', () => { resultOverlay.hidden = false; });
 document.getElementById('sameRoom')!.addEventListener('click', () => {
   resultOverlay.hidden = true;
   lobbyReady = false;
   waitingRoom.hidden = false;
-  loadoutSelect.hidden = true;
+  fighterSelect.hidden = true;
+  weaponSelect.hidden = true;
+  lobbyTitle.textContent = 'BATTLE LOBBY';
+  pedestalRoom.setFighter(0, chr);
+  pedestalRoom.setFighter(1, 'kaze');
+  pedestalRoom.setWeapon(0, WEAPONS[lobbyWeaponIndex]?.id ?? 'rustyPistol');
+  pedestalRoom.setWeapon(1, 'practiceSword');
+  pedestalRoom.setReady(0, false);
+  pedestalRoom.setReady(1, true);
+  pedestalRoom.setLocal(0);
+  showLobbyScene('waiting');
+  pedestalRoom.startFlyIn(camera);
   syncLobbyLoadout();
 });
 
@@ -311,6 +414,17 @@ function tick(dt: number): void {
   const blend = 1 - Math.exp(-(attackQueue.length > 0 ? 55 : 16) * dt);
   rig.setPose(pose, blend);
   rig.update(dt);
+
+  pedestalRoom.update(camera, dt);
+  if (!waitingRoom.hidden) {
+    for (let slot = 0; slot < arenaPlates.length; slot += 1) {
+      const plate = arenaPlates[slot];
+      if (!plate) continue;
+      const pos = pedestalRoom.nameplateScreenPos(slot, camera);
+      plate.style.left = `${pos.x * 100}%`;
+      plate.style.top = `${pos.y * 100}%`;
+    }
+  }
 
   if (spinning) wrap.rotation.y += dt * 1.2;
   else wrap.rotation.y = -Math.PI / 2 + 0.2 + Math.sin(t * 0.4) * 0.12;

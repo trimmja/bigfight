@@ -14,7 +14,9 @@
  */
 import * as THREE from 'three';
 import { clamp, lerp } from '../core/math';
+import type { WeaponDef } from '../data/types';
 import { makeToonMaterial } from '../render/toon';
+import { buildWeaponModel } from '../rigs/weaponBuilders';
 import type { JointName, Pose } from '../rigs/poses';
 
 export type OptionId = 'A' | 'B' | 'C';
@@ -36,7 +38,9 @@ const JOINTS: readonly JointName[] = [
 export class MockRig {
   readonly root = new THREE.Group();
   readonly joints = {} as Record<JointName, THREE.Object3D>;
+  readonly weaponSocket = new THREE.Group();
   private materials: THREE.Material[] = [];
+  private weaponModel: THREE.Group | null = null;
   private facingAngle = 0;
   facingTarget: 1 | -1 = 1;
 
@@ -63,7 +67,28 @@ export class MockRig {
     this.root.rotation.y = this.facingAngle;
   }
 
+  equipWeapon(weapon: WeaponDef | null): void {
+    this.clearWeapon();
+    if (!weapon) return;
+    this.weaponModel = buildWeaponModel(weapon);
+    this.weaponSocket.add(this.weaponModel);
+  }
+
+  private clearWeapon(): void {
+    if (!this.weaponModel) return;
+    this.weaponModel.removeFromParent();
+    const materials = this.weaponModel.userData.weaponMaterials as THREE.Material[] | undefined;
+    for (const material of materials ?? []) material.dispose();
+    this.weaponModel.traverse((child) => {
+      if (!(child instanceof THREE.Sprite)) return;
+      const material = child.material;
+      if (!materials?.includes(material)) material.dispose();
+    });
+    this.weaponModel = null;
+  }
+
   dispose(): void {
+    this.clearWeapon();
     this.root.removeFromParent();
     for (const m of this.materials) m.dispose();
   }
@@ -119,6 +144,8 @@ function buildSkeleton(rig: MockRig, s: Skeleton): void {
   restL.add(armL); restR.add(armR);
   foreArmL.position.y = -s.upperArm; foreArmR.position.y = -s.upperArm;
   armL.add(foreArmL); armR.add(foreArmR);
+  foreArmR.add(rig.weaponSocket);
+  rig.weaponSocket.position.set(0, -s.foreArm, s.depth * 0.5);
 
   legL.position.set(0, 0, -s.legZ); legR.position.set(0, 0, s.legZ);
   hips.add(legL, legR);

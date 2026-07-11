@@ -103,6 +103,64 @@
     .lobby-actions .start { grid-column: 1 / 3; background: #ff5a8a; }
     .lobby-actions .lock-in { grid-column: 1 / 3; background: #4ec95c; }
     .lobby-actions .change { background: #1a9fe8; }
+    .arena-lobby { position: absolute; inset: 56px 0 0; pointer-events: none; }
+    .arena-room-summary { position: absolute; top: 4px; left: 12px; z-index: 3; padding: 7px 11px; border-radius: 13px;
+      background: rgba(255,255,255,.9); box-shadow: 0 4px 0 rgba(30,42,74,.2); font-size: 9px; line-height: 1.35;
+      font-weight: 900; letter-spacing: .7px; color: #5a6a8d; }
+    .arena-plates { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+    .arena-plate { --slot: #1a9fe8; position: absolute; min-width: 84px; max-width: 23vw;
+      transform: translate(-50%, calc(-100% - 8px)); padding: 5px 10px 7px;
+      border: 3px solid #fff; border-top: 5px solid var(--slot); border-radius: 14px; background: rgba(255,255,255,.94);
+      box-shadow: 0 4px 0 rgba(30,42,74,.28); text-align: center; }
+    .arena-plate:nth-child(1) { --slot: #1a9fe8; outline: 2px solid #1a9fe8; outline-offset: 2px; }
+    .arena-plate:nth-child(2) { --slot: #ff5a8a; }
+    .arena-plate:nth-child(3) { --slot: #ffc93e; }
+    .arena-plate:nth-child(4) { --slot: #4ec95c; }
+    .arena-plate-top { display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--slot);
+      font-size: 9px; font-weight: 900; letter-spacing: 1px; }
+    .arena-plate-name { font-size: 11px; font-weight: 900; letter-spacing: .8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .arena-plate-pick { color: #5a6a8d; font-size: 8px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .arena-plate-ready { position: absolute; right: -5px; top: -9px; padding: 2px 5px; border: 2px solid #2e9d46; border-radius: 6px;
+      background: #fff; color: #2e9d46; font-size: 7px; font-weight: 900; transform: rotate(7deg); }
+    .arena-plate-open { border-top-color: #b8c4d4; border-style: dashed; opacity: .74; padding: 10px 14px;
+      color: #5a6a8d; font-size: 10px; font-weight: 900; letter-spacing: 1.5px; animation: bf-arena-open-dance 2.4s ease-in-out infinite; }
+    .arena-plate-open:nth-child(4) { animation-delay: -.65s; animation-direction: reverse; }
+    @keyframes bf-arena-open-dance {
+      0%, 100% { opacity: .68; transform: translate(-50%, calc(-100% - 8px)) rotate(-2deg) scale(1); }
+      22% { opacity: .94; transform: translate(calc(-50% - 7px), calc(-100% - 18px)) rotate(-5deg) scale(1.05); }
+      46% { opacity: .72; transform: translate(calc(-50% + 6px), calc(-100% - 5px)) rotate(4deg) scale(.97); }
+      68% { opacity: .92; transform: translate(calc(-50% + 8px), calc(-100% - 16px)) rotate(5deg) scale(1.04); }
+      84% { opacity: .74; transform: translate(calc(-50% - 4px), calc(-100% - 7px)) rotate(-3deg) scale(.99); }
+    }
+    .arena-bottom { position: absolute; z-index: 4; left: 12px; right: 12px; bottom: 10px; min-height: 55px; display: flex;
+      align-items: center; justify-content: center; gap: 8px; padding: 7px 9px; border-radius: 18px;
+      background: rgba(255,255,255,.94); box-shadow: 0 6px 0 rgba(30,42,74,.22); pointer-events: auto; }
+    .arena-loadout { min-width: 170px; padding-right: 10px; border-right: 2px solid #d5e8f4; }
+    .arena-loadout-label { color: #5a6a8d; font-size: 8px; font-weight: 900; letter-spacing: 1.1px; }
+    .arena-loadout strong { display: block; font-size: 12px; letter-spacing: .8px; }
+    .arena-bottom button { padding: 8px 11px; }
+    .arena-bottom .dance { background: #7657d6; }
+    .arena-bottom .ready { background: #ffc93e; color: #6a4a00; }
+    .arena-bottom .change { background: #1a9fe8; }
+    .arena-bottom .start { background: #ff5a8a; }
+    .arena-bottom .review-link { margin-left: auto; max-width: 96px; font-size: 9px; }
+    .arena-select { position: absolute; inset: 56px 0 0; pointer-events: none; }
+    .arena-select-prompt { position: absolute; left: 12px; top: 5px; z-index: 3; max-width: 180px; padding: 8px 11px;
+      border-radius: 14px; background: rgba(255,255,255,.92); box-shadow: 0 4px 0 rgba(30,42,74,.2); }
+    .arena-select-step { color: #1a9fe8; font-size: 8px; font-weight: 900; letter-spacing: 1.2px; }
+    .arena-select-prompt h2 { margin: 2px 0 0; font-size: 14px; letter-spacing: 1.2px; }
+    .arena-select-plate { --slot: #1a9fe8; position: absolute; z-index: 3; left: 50%; top: 61%; transform: translateX(-50%);
+      min-width: 170px; padding: 5px 10px; border: 3px solid var(--slot); border-radius: 12px;
+      background: rgba(255,255,255,.94); box-shadow: 0 4px 0 rgba(30,42,74,.22); text-align: center; }
+    .arena-select-plate strong { display: block; font-size: 13px; letter-spacing: 1.2px; }
+    .arena-select-plate span { color: #5a6a8d; font-size: 8px; font-weight: 900; letter-spacing: .8px; }
+    .arena-select-bottom { position: absolute; z-index: 4; left: 12px; right: 12px; bottom: 10px; min-height: 55px; display: flex;
+      align-items: center; justify-content: center; gap: 8px; padding: 7px 9px; border-radius: 18px;
+      background: rgba(255,255,255,.94); box-shadow: 0 6px 0 rgba(30,42,74,.22); pointer-events: auto; }
+    .arena-select-bottom .picker { flex: 1; max-width: 310px; padding: 4px 8px; }
+    .arena-select-bottom .picker-controls { grid-template-columns: 36px 1fr 36px; margin-top: 1px; }
+    .arena-select-bottom .lock-in { background: #4ec95c; min-width: 150px; }
+    .arena-select-bottom .change { background: #1a9fe8; }
     .review-link { background: transparent !important; color: #5a6a8d !important; box-shadow: none !important; padding: 4px !important; }
     .result-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       background: rgba(30,42,74,.48); pointer-events: auto; }
@@ -121,6 +179,9 @@
       .picker { padding: 5px; }
       .lobby-actions { gap: 4px; }
       .lobby-review button { padding: 7px 10px; }
+      .arena-lobby, .arena-select { top: 52px; }
+      .arena-bottom { min-height: 51px; }
+      .arena-select-plate { top: 56%; }
     }
     @media (max-width: 650px) {
       .lobby-chip.hide-small { display: none; }
@@ -179,49 +240,50 @@
         <button id="hostPrivate" class="private">HOST PRIVATE GAME</button>
       </aside>
     </main>
-    <main id="loadoutSelect" class="room-lobby" hidden>
-      <section class="selection-card">
-        <div class="selection-step">STEP 2 OF 3</div>
-        <h2>CHOOSE YOUR FIGHTER</h2>
-        <p>Pick one fighter and one weapon. Locking in moves you to the waiting room.</p>
-        <span class="lobby-chip">FFA · 3 STOCKS</span>
-      </section>
-      <div class="fighter-caption"><strong id="lobbyFighter">VOLT</strong><span>YOUR FIGHTER · DRAG TO SPIN</span></div>
-      <aside class="loadout-panel">
-        <h2>YOUR LOADOUT</h2>
+    <main id="fighterSelect" class="arena-select" hidden>
+      <section class="arena-select-prompt"><div class="arena-select-step">STEP 2 OF 4 · FFA</div><h2>CHOOSE YOUR FIGHTER</h2></section>
+      <div class="arena-select-plate"><strong id="lobbyFighter">VOLT</strong><span>YOUR PEDESTAL · DRAG TO SPIN</span></div>
+      <section class="arena-select-bottom">
         <div class="picker">
           <div class="picker-label">FIGHTER</div>
           <div class="picker-controls"><button id="fighterPrev">◀</button><span id="fighterValue" class="picker-value">VOLT</span><button id="fighterNext">▶</button></div>
         </div>
+        <button id="toWeaponBtn" class="lock-in">CHOOSE WEAPON</button>
+      </section>
+    </main>
+    <main id="weaponSelect" class="arena-select" hidden>
+      <section class="arena-select-prompt"><div class="arena-select-step">STEP 3 OF 4 · FFA</div><h2>CHOOSE YOUR WEAPON</h2></section>
+      <div class="arena-select-plate"><strong id="weaponFighter">VOLT</strong><span>FIGHTER LOCKED · WEAPON LOADOUT</span></div>
+      <section class="arena-select-bottom">
         <div class="picker">
           <div class="picker-label">WEAPON BUTTON</div>
           <div class="picker-controls"><button id="weaponPrev">◀</button><span id="weaponValue" class="picker-value">RUSTY PISTOL</span><button id="weaponNext">▶</button></div>
         </div>
-        <div class="lobby-actions">
-          <button id="lockInBtn" class="lock-in">LOCK IN</button>
-        </div>
-      </aside>
-    </main>
-    <main id="waitingRoom" class="room-lobby" hidden>
-      <section class="player-rail">
-        <h2>WAITING ROOM · 2 / 4</h2>
-        <div id="youCard" class="player-card"><span class="player-color"></span><span class="player-card-name">YOU · HOST</span><span id="youPick" class="player-card-pick">VOLT · RUSTY PISTOL</span><span id="youStatus" class="player-status">READY</span></div>
-        <div class="player-card"><span class="player-color"></span><span class="player-card-name">RYDER</span><span class="player-card-pick">KAZE · PRACTICE SWORD</span><span class="player-status">READY</span></div>
-        <div class="player-card player-open">OPEN SLOT</div>
-        <div class="player-card player-open">OPEN SLOT</div>
+        <button id="weaponBackBtn" class="change">CHANGE FIGHTER</button>
+        <button id="lockInBtn" class="lock-in">LOCK IN</button>
       </section>
-      <div class="fighter-caption"><strong id="waitingFighter">VOLT</strong><span>LOCKED IN · CINEMATIC HERO VIEW</span></div>
-      <aside class="waiting-panel">
-        <h2>READY TO FIGHT</h2>
-        <div class="waiting-detail">ROOFTOP<br />FFA · 3 STOCKS<br />DIRECT CONNECTION</div>
-        <div class="lobby-actions">
-          <button id="danceBtn" class="dance">DANCE</button>
-          <button id="waitingReadyBtn" class="ready on">NOT READY</button>
-          <button id="changePickBtn" class="change">CHANGE</button>
-          <button id="startBtn" class="start">START MATCH</button>
+    </main>
+    <main id="waitingRoom" class="arena-lobby" hidden>
+      <section class="arena-plates">
+        <div id="youCard" class="arena-plate">
+          <div class="arena-plate-top">P1 · HOST</div><div class="arena-plate-name">YOU</div>
+          <div id="youPick" class="arena-plate-pick">VOLT · RUSTY PISTOL</div><span id="youStatus" class="arena-plate-ready">READY</span>
         </div>
+        <div class="arena-plate">
+          <div class="arena-plate-top">P2</div><div class="arena-plate-name">RYDER</div>
+          <div class="arena-plate-pick">KAZE · PRACTICE SWORD</div><span class="arena-plate-ready">READY</span>
+        </div>
+        <div class="arena-plate arena-plate-open">P3 · OPEN</div>
+        <div class="arena-plate arena-plate-open">P4 · OPEN</div>
+      </section>
+      <section class="arena-bottom">
+        <div class="arena-loadout"><span class="arena-loadout-label">YOUR LOCKED LOADOUT</span><strong><span id="waitingFighter">VOLT</span> · <span id="waitingWeapon">RUSTY PISTOL</span></strong></div>
+        <button id="danceBtn" class="dance">DANCE</button>
+        <button id="waitingReadyBtn" class="ready on">NOT READY</button>
+        <button id="changePickBtn" class="change">CHANGE</button>
+        <button id="startBtn" class="start">START MATCH</button>
         <button id="testResults" class="review-link">REVIEW RESULTS FLOW</button>
-      </aside>
+      </section>
     </main>
     <div id="resultOverlay" class="result-overlay" hidden>
       <section class="result-card">
