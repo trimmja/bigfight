@@ -953,8 +953,10 @@ html, body {
   .bf-roster-grid .bf-tile-name { font-size: 8px; padding: 2px 2px 3px; }
   .bf-roster-bar { padding: 5px 10px; gap: 9px; }
   .bf-roster-name { font-size: 17px; letter-spacing: 2px; }
-  .bf-roster-tagline { display: none; }
-  .bf-roster-stats { display: none; }
+  .bf-roster-tagline { font-size: 11px; }
+  .bf-roster-stats { grid-template-columns: auto minmax(64px, 110px); gap: 2px 6px; }
+  .bf-stat-label { font-size: 8px; }
+  .bf-stat-track { height: 7px; }
   .bf-online-player-plate { padding: 5px 7px; }
   .bf-online-open-plate { min-height: 43px; }
   .bf-online-waiting-controls { padding: 5px; }
@@ -980,8 +982,8 @@ html, body {
 @media (max-height: 500px) {
   .bf-button-big { font-size: 17px; padding: 11px 22px; }
 }
-/* Narrow windows: the stat bars are the first thing the roster bar sheds. */
-@media (max-width: 860px) {
+/* Only truly cramped windows shed the stat bars. */
+@media (max-width: 600px) {
   .bf-roster-stats { display: none; }
 }
 
